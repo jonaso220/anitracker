@@ -161,7 +161,10 @@ export default function AnimeTracker() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ query: anilistQuery, variables: { search: query } })
         }).then(r => r.json()),
-        fetch(`https://api.tvmaze.com/search/shows?q=${encodeURIComponent(query)}`).then(r => r.json())
+        fetch(`https://api.tvmaze.com/search/shows?q=${encodeURIComponent(query)}`).then(r => {
+          if (!r.ok) throw new Error(`TVMaze HTTP ${r.status}`);
+          return r.json();
+        })
       ]);
       const combined = new Map();
 
@@ -169,7 +172,7 @@ export default function AnimeTracker() {
       console.log('[AniTracker] Jikan:', jikanRes.status, jikanRes.status === 'fulfilled' ? jikanRes.value?.data?.length || 0 : jikanRes.reason?.message);
       console.log('[AniTracker] Kitsu:', kitsuRes.status, kitsuRes.status === 'fulfilled' ? kitsuRes.value?.data?.length || 0 : kitsuRes.reason?.message);
       console.log('[AniTracker] AniList:', anilistRes.status, anilistRes.status === 'fulfilled' ? anilistRes.value?.data?.Page?.media?.length || 0 : anilistRes.reason?.message);
-      console.log('[AniTracker] TVMaze:', tvmazeRes.status, tvmazeRes.status === 'fulfilled' ? (Array.isArray(tvmazeRes.value) ? tvmazeRes.value.length : 'not array: ' + JSON.stringify(tvmazeRes.value)?.slice(0, 200)) : tvmazeRes.reason?.message);
+      console.log('[AniTracker] TVMaze:', tvmazeRes.status, tvmazeRes.status === 'fulfilled' ? (Array.isArray(tvmazeRes.value) ? tvmazeRes.value.length + ' (array)' : typeof tvmazeRes.value + ': ' + JSON.stringify(tvmazeRes.value)?.slice(0, 300)) : tvmazeRes.reason?.message);
 
       // Procesar Jikan (MAL)
       if (jikanRes.status === 'fulfilled' && jikanRes.value?.data) {
@@ -259,6 +262,7 @@ export default function AnimeTracker() {
 
       // Procesar TVMaze (series occidentales, animación, TV en general)
       if (tvmazeRes.status === 'fulfilled' && Array.isArray(tvmazeRes.value)) {
+        console.log('[AniTracker] TVMaze raw results:', tvmazeRes.value.map(r => r.show?.name));
         tvmazeRes.value.slice(0, 10).forEach(result => {
           const s = result.show;
           if (!s) return;
@@ -390,7 +394,32 @@ export default function AnimeTracker() {
       }
 
       console.log('[AniTracker] Final results:', combined.size, [...combined.values()].map(v => `[${v.source}] ${v.title}`));
-      setSearchResults([...combined.values()]);
+
+      // Ordenar por relevancia: resultados cuyo título coincide mejor con la query van primero
+      const results = [...combined.values()];
+      const qNorm = query.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      results.sort((a, b) => {
+        const scoreRelevance = (item) => {
+          const titles = [item.title, item.titleOriginal, item.titleEn, item.titleJp, ...(item.altTitles || [])].filter(Boolean).map(t => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
+          // Coincidencia exacta
+          if (titles.some(t => t === qNorm)) return 100;
+          // Título empieza con la query
+          if (titles.some(t => t.startsWith(qNorm))) return 80;
+          // Query empieza con el título
+          if (titles.some(t => qNorm.startsWith(t))) return 70;
+          // Título contiene la query completa
+          if (titles.some(t => t.includes(qNorm))) return 60;
+          // Query contenida en título
+          if (titles.some(t => qNorm.includes(t))) return 40;
+          // Alguna palabra de la query aparece en el título
+          const qWords = qNorm.split(/\s+/);
+          const matchCount = qWords.filter(w => titles.some(t => t.includes(w))).length;
+          return (matchCount / qWords.length) * 30;
+        };
+        return scoreRelevance(b) - scoreRelevance(a);
+      });
+
+      setSearchResults(results);
     } catch (err) { console.error('[AniTracker] Error:', err); setSearchResults([]); }
     setIsSearching(false);
   }, []);
