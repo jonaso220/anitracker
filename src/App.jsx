@@ -809,6 +809,21 @@ export default function AnimeTracker() {
               {anime.finished ? '✓ Completado' : '⏸ Sin terminar'}
             </div>
           )}
+          {(() => {
+            const ep = anime.currentEp || 0;
+            const total = parseInt(anime.episodes) || 0;
+            if (ep <= 0 && total <= 0) return null;
+            const pct = total > 0 ? Math.min((ep / total) * 100, 100) : 0;
+            const isComplete = total > 0 && ep >= total;
+            return (
+              <div className="card-progress">
+                <div className="card-progress-bar">
+                  <div className={`card-progress-fill ${isComplete ? 'complete' : ''}`} style={{ width: total > 0 ? `${pct}%` : '0%' }}></div>
+                </div>
+                <span className="card-progress-text">{ep}{total > 0 ? ` / ${total}` : ''}</span>
+              </div>
+            );
+          })()}
         </div>
       </div>
     );
@@ -941,6 +956,30 @@ export default function AnimeTracker() {
                 <span className="ep-number">{a.currentEp || 0}</span>
                 <button className="ep-control-btn" onClick={() => { updateEpisode(a.id, 1); setShowAnimeDetail({ ...a, currentEp: (a.currentEp || 0) + 1 }); }}>+</button>
               </div>
+              {(() => {
+                const ep = a.currentEp || 0;
+                const total = parseInt(a.episodes) || 0;
+                if (total <= 0 && ep <= 0) return null;
+                const pct = total > 0 ? Math.min((ep / total) * 100, 100) : 0;
+                const isComplete = total > 0 && ep >= total;
+                return (
+                  <div className="detail-progress">
+                    <div className="detail-progress-bar">
+                      <div className={`detail-progress-fill ${isComplete ? 'complete' : ''}`} style={{ width: total > 0 ? `${pct}%` : '0%' }}></div>
+                    </div>
+                    <div className="detail-progress-label">
+                      {total > 0 ? (
+                        <>
+                          <span>{ep} de {total} episodios</span>
+                          <span className={`detail-progress-pct ${isComplete ? 'complete' : ''}`}>{Math.round(pct)}%</span>
+                        </>
+                      ) : (
+                        <span>{ep} episodios vistos</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           )}
 
@@ -1306,6 +1345,24 @@ export default function AnimeTracker() {
         .status-badge.finished { background: rgba(34,197,94,0.2); color: #4ade80; }
         .status-badge.dropped { background: rgba(251,191,36,0.2); color: #fcd34d; }
 
+        /* CARD PROGRESS BAR */
+        .card-progress { margin-top: 0.4rem; }
+        .card-progress-bar {
+          height: 4px; border-radius: 2px; overflow: hidden;
+          background: rgba(128,128,128,0.15);
+        }
+        .card-progress-fill {
+          height: 100%; border-radius: 2px;
+          background: linear-gradient(90deg, #a855f7, #4ecdc4);
+          transition: width 0.5s ease;
+        }
+        .card-progress-fill.complete {
+          background: linear-gradient(90deg, #22c55e, #4ade80);
+        }
+        .card-progress-text {
+          font-size: 0.6rem; opacity: 0.5; margin-top: 0.15rem; display: block;
+        }
+
         /* SECTIONS */
         .section-header { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
         .section-header h2 {
@@ -1472,6 +1529,27 @@ export default function AnimeTracker() {
           background: linear-gradient(135deg, #818cf8, #4ecdc4);
           -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
         }
+
+        /* DETAIL PROGRESS BAR */
+        .detail-progress { margin-top: 0.85rem; }
+        .detail-progress-bar {
+          height: 8px; border-radius: 4px; overflow: hidden;
+          background: rgba(128,128,128,0.15);
+        }
+        .detail-progress-fill {
+          height: 100%; border-radius: 4px;
+          background: linear-gradient(90deg, #a855f7, #4ecdc4);
+          transition: width 0.5s ease;
+        }
+        .detail-progress-fill.complete {
+          background: linear-gradient(90deg, #22c55e, #4ade80);
+        }
+        .detail-progress-label {
+          display: flex; justify-content: space-between; align-items: center;
+          margin-top: 0.35rem; font-size: 0.8rem; opacity: 0.6;
+        }
+        .detail-progress-pct { font-weight: 700; opacity: 1; }
+        .detail-progress-pct.complete { color: #4ade80; }
 
         .detail-rating-row { display: flex; align-items: center; gap: 0.75rem; }
         .rating-text { font-size: 0.85rem; opacity: 0.5; }
