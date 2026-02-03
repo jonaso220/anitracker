@@ -250,6 +250,63 @@ export default function AnimeTracker() {
         });
       }
 
+      // Ronda 2 (puente Wikipedia): si hay pocos resultados o ninguno coincide bien con la query,
+      // buscar en Wikipedia español para encontrar el nombre original del anime
+      const queryLower = query.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const hasGoodMatch = [...combined.values()].some(v => {
+        const titles = [v.title, v.titleOriginal, v.titleJp, v.titleEn, ...(v.altTitles || [])].filter(Boolean);
+        return titles.some(t => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes(queryLower) || queryLower.includes(t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')));
+      });
+
+      if (!hasGoodMatch && query.length >= 4) {
+        try {
+          // Buscar en Wikipedia en español
+          const wikiRes = await fetch(`https://es.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query + ' anime')}&srlimit=3&format=json&origin=*`).then(r => r.json());
+          const wikiResults = wikiRes?.query?.search || [];
+
+          for (const result of wikiResults) {
+            // Obtener los interwiki links para sacar el título en japonés/inglés
+            try {
+              const pageRes = await fetch(`https://es.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(result.title)}&prop=langlinks&lllimit=10&lllang=ja|en&format=json&origin=*`).then(r => r.json());
+              const pages = pageRes?.query?.pages || {};
+              const page = Object.values(pages)[0];
+              const langlinks = page?.langlinks || [];
+
+              // Buscar título en inglés o japonés
+              const enTitle = langlinks.find(l => l.lang === 'en')?.['*'] || '';
+              const jaTitle = langlinks.find(l => l.lang === 'ja')?.['*'] || '';
+              const searchTitle = enTitle || jaTitle;
+
+              if (searchTitle && searchTitle.length > 2) {
+                // Re-buscar en Jikan con el título original
+                const bridgeRes = await fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(searchTitle)}&limit=3&sfw=true`).then(r => r.json());
+                if (bridgeRes?.data) {
+                  bridgeRes.data.forEach(a => {
+                    if (combined.has(`mal-${a.mal_id}`) || combined.has(`mal-bridge-${a.mal_id}`)) return;
+                    const titleEn = a.title_english || '';
+                    const allTitles = [a.title, titleEn, a.title_japanese, ...(a.title_synonyms || [])].filter(Boolean);
+                    combined.set(`mal-bridge-${a.mal_id}`, {
+                      id: a.mal_id, source: 'MAL',
+                      title: titleEn || a.title, titleOriginal: a.title,
+                      titleJp: a.title_japanese || '', titleEn,
+                      altTitles: [...allTitles, result.title].filter((t, i, arr) => Boolean(t) && arr.indexOf(t) === i && t !== (titleEn || a.title)),
+                      image: a.images?.jpg?.large_image_url || a.images?.jpg?.image_url || '',
+                      genres: a.genres?.map(g => g.name) || [],
+                      synopsis: a.synopsis || 'Sin sinopsis disponible.',
+                      rating: a.score || 0, episodes: a.episodes || '?',
+                      status: a.status || '', year: a.year || a.aired?.prop?.from?.year || '',
+                      type: a.type || '', malUrl: `https://myanimelist.net/anime/${a.mal_id}`,
+                      watchLink: '', currentEp: 0, userRating: 0
+                    });
+                  });
+                  if (bridgeRes.data.length > 0) break; // Si encontró algo, no seguir con más resultados de Wikipedia
+                }
+              }
+            } catch (e) { /* ignorar errores de páginas individuales */ }
+          }
+        } catch (e) { console.log('Wikipedia bridge failed:', e); }
+      }
+
       setSearchResults([...combined.values()]);
     } catch (err) { console.error('Error:', err); setSearchResults([]); }
     setIsSearching(false);
