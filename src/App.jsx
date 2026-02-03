@@ -114,6 +114,13 @@ export default function AnimeTracker() {
     setSearchResults([]);
   };
 
+  const markAsWatchedFromSearch = (anime) => {
+    setWatchedList(prev => [...prev.filter(a => a.id !== anime.id), { ...anime, finished: true, finishedDate: new Date().toLocaleDateString() }]);
+    setShowSearch(false);
+    setSearchQuery('');
+    setSearchResults([]);
+  };
+
   const moveFromWatchLaterToSchedule = (anime, day) => {
     setWatchLater(prev => prev.filter(a => a.id !== anime.id));
     setSchedule(prev => ({ ...prev, [day]: [...prev[day].filter(a => a.id !== anime.id), anime] }));
@@ -234,6 +241,9 @@ export default function AnimeTracker() {
                   </button>
                   <button className="add-btn later-btn" onClick={() => addToWatchLater(anime)}>
                     🕐 Ver más tarde
+                  </button>
+                  <button className="add-btn watched-btn" onClick={() => markAsWatchedFromSearch(anime)}>
+                    ✓ Ya la vi
                   </button>
                 </div>
               </div>
@@ -685,6 +695,8 @@ export default function AnimeTracker() {
         .schedule-btn:hover { background: rgba(168, 85, 247, 0.5); }
         .later-btn { background: linear-gradient(135deg, rgba(251, 191, 36, 0.4), rgba(251, 191, 36, 0.2)); }
         .later-btn:hover { background: rgba(251, 191, 36, 0.5); }
+        .watched-btn { background: linear-gradient(135deg, rgba(34, 197, 94, 0.4), rgba(34, 197, 94, 0.2)); }
+        .watched-btn:hover { background: rgba(34, 197, 94, 0.5); }
 
         .spinner {
           width: 40px; height: 40px;
