@@ -140,15 +140,18 @@ export default function AnimeTracker() {
     if (query.length < 2) { setSearchResults([]); return; }
     setIsSearching(true);
     try {
-      const [jikanRes, kitsuRes, tmdbEsRes, tmdbEnRes, tmdbTvRes] = await Promise.allSettled([
+      // Ronda 1: buscar en todas las fuentes en paralelo
+      const [jikanRes, kitsuRes, tmdbTvEsRes, tmdbTvEnRes, tmdbMultiRes, tmdbMovieRes] = await Promise.allSettled([
         fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(query)}&limit=10&sfw=true`).then(r => r.json()),
         fetch(`https://kitsu.app/api/edge/anime?filter[text]=${encodeURIComponent(query)}&page[limit]=10`).then(r => r.json()),
+        fetch(`https://api.themoviedb.org/3/search/tv?api_key=${TMDB_KEY}&query=${encodeURIComponent(query)}&language=es-ES&page=1`).then(r => r.json()),
+        fetch(`https://api.themoviedb.org/3/search/tv?api_key=${TMDB_KEY}&query=${encodeURIComponent(query)}&language=en-US&page=1`).then(r => r.json()),
         fetch(`https://api.themoviedb.org/3/search/multi?api_key=${TMDB_KEY}&query=${encodeURIComponent(query)}&language=es-ES&page=1`).then(r => r.json()),
-        fetch(`https://api.themoviedb.org/3/search/multi?api_key=${TMDB_KEY}&query=${encodeURIComponent(query)}&language=en-US&page=1`).then(r => r.json()),
-        fetch(`https://api.themoviedb.org/3/search/tv?api_key=${TMDB_KEY}&query=${encodeURIComponent(query)}&language=es-ES&page=1`).then(r => r.json())
+        fetch(`https://api.themoviedb.org/3/search/movie?api_key=${TMDB_KEY}&query=${encodeURIComponent(query)}&language=es-ES&page=1`).then(r => r.json())
       ]);
       const combined = new Map();
 
+      // Procesar Jikan (MAL)
       if (jikanRes.status === 'fulfilled' && jikanRes.value?.data) {
         jikanRes.value.data.forEach(a => {
           const titleEn = a.title_english || '';
@@ -169,6 +172,7 @@ export default function AnimeTracker() {
         });
       }
 
+      // Procesar Kitsu
       if (kitsuRes.status === 'fulfilled' && kitsuRes.value?.data) {
         kitsuRes.value.data.forEach(a => {
           const at = a.attributes;
@@ -191,40 +195,98 @@ export default function AnimeTracker() {
         });
       }
 
-      // Combinar resultados de TMDB (es-ES multi + en-US multi + es-ES tv)
+      // Combinar todos los resultados TMDB (tv es, tv en, multi, movie)
       const tmdbItems = new Map();
-      const processTmdbResults = (res, mediaTypeOverride) => {
+      const processTmdb = (res, mediaTypeOverride) => {
         if (res.status !== 'fulfilled' || !res.value?.results) return;
         res.value.results.forEach(item => {
-          const mt = item.media_type || mediaTypeOverride || 'tv';
+          const mt = item.media_type || mediaTypeOverride;
           if (mt !== 'tv' && mt !== 'movie') return;
           if (!tmdbItems.has(item.id)) tmdbItems.set(item.id, { ...item, media_type: mt });
         });
       };
-      processTmdbResults(tmdbEsRes);
-      processTmdbResults(tmdbEnRes);
-      processTmdbResults(tmdbTvRes, 'tv');
+      processTmdb(tmdbTvEsRes, 'tv');
+      processTmdb(tmdbTvEnRes, 'tv');
+      processTmdb(tmdbMultiRes);
+      processTmdb(tmdbMovieRes, 'movie');
 
+      // Para cada resultado TMDB, agregar al combined y recolectar nombres originales para re-buscar
+      const origNamesToSearch = [];
       [...tmdbItems.values()].slice(0, 12).forEach(item => {
         const isMovie = item.media_type === 'movie';
         const title = isMovie ? (item.title || item.original_title) : (item.name || item.original_name);
         const orig = isMovie ? (item.original_title || '') : (item.original_name || '');
         const titleEs = isMovie ? (item.title || '') : (item.name || '');
         const year = isMovie ? (item.release_date || '').split('-')[0] : (item.first_air_date || '').split('-')[0];
-        const isDup = [...combined.values()].some(e => (e.title || '').toLowerCase() === (title || '').toLowerCase() || (e.title || '').toLowerCase() === (orig || '').toLowerCase());
-        if (!isDup) combined.set(`tmdb-${item.id}`, {
-          id: item.id + 200000, source: 'TMDB',
-          title: titleEs || title, titleOriginal: orig,
-          titleJp: '', titleEn: orig,
-          altTitles: [title, orig, titleEs].filter((t, i, a) => Boolean(t) && a.indexOf(t) === i && t !== (titleEs || title)),
-          image: item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : '',
-          genres: [], synopsis: item.overview || 'Sin sinopsis disponible.',
-          rating: item.vote_average || 0, episodes: isMovie ? 'Película' : '?',
-          status: '', year, type: isMovie ? 'Película' : 'Serie',
-          malUrl: `https://www.themoviedb.org/${item.media_type}/${item.id}`,
-          watchLink: '', currentEp: 0, userRating: 0
-        });
+        const isDup = [...combined.values()].some(e =>
+          (e.title || '').toLowerCase() === (title || '').toLowerCase() ||
+          (e.title || '').toLowerCase() === (orig || '').toLowerCase() ||
+          (e.titleOriginal || '').toLowerCase() === (orig || '').toLowerCase()
+        );
+        if (!isDup) {
+          combined.set(`tmdb-${item.id}`, {
+            id: item.id + 200000, source: 'TMDB',
+            title: titleEs || title, titleOriginal: orig,
+            titleJp: '', titleEn: orig,
+            altTitles: [title, orig, titleEs].filter((t, i, a) => Boolean(t) && a.indexOf(t) === i && t !== (titleEs || title)),
+            image: item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : '',
+            genres: [], synopsis: item.overview || 'Sin sinopsis disponible.',
+            rating: item.vote_average || 0, episodes: isMovie ? 'Película' : '?',
+            status: '', year, type: isMovie ? 'Película' : 'Serie',
+            malUrl: `https://www.themoviedb.org/${item.media_type}/${item.id}`,
+            watchLink: '', currentEp: 0, userRating: 0
+          });
+          // Si el nombre original es diferente al query y no lo encontramos en MAL/Kitsu, guardarlo para re-buscar
+          if (orig && orig.toLowerCase() !== query.toLowerCase() && !isDup) {
+            origNamesToSearch.push(orig);
+          }
+        }
       });
+
+      // Ronda 2 (puente): si TMDB encontró cosas con nombre original diferente, re-buscar en Jikan
+      if (origNamesToSearch.length > 0 && combined.size < 15) {
+        const uniqueNames = [...new Set(origNamesToSearch)].slice(0, 3);
+        const bridgeResults = await Promise.allSettled(
+          uniqueNames.map(name =>
+            fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(name)}&limit=3&sfw=true`).then(r => r.json())
+          )
+        );
+        bridgeResults.forEach(res => {
+          if (res.status !== 'fulfilled' || !res.value?.data) return;
+          res.value.data.forEach(a => {
+            if (combined.has(`mal-${a.mal_id}`)) return;
+            const titleEn = a.title_english || '';
+            const allTitles = [a.title, titleEn, a.title_japanese, ...(a.title_synonyms || [])].filter(Boolean);
+            const isDup = [...combined.values()].some(e =>
+              (e.titleOriginal || '').toLowerCase() === (a.title || '').toLowerCase()
+            );
+            // Reemplazar entrada TMDB con datos MAL más completos, o agregar nueva
+            const tmdbKey = [...combined.entries()].find(([k, v]) =>
+              v.source === 'TMDB' && (v.titleOriginal || '').toLowerCase() === (a.title || '').toLowerCase()
+            );
+            const entry = {
+              id: a.mal_id, source: 'MAL',
+              title: titleEn || a.title, titleOriginal: a.title,
+              titleJp: a.title_japanese || '', titleEn,
+              altTitles: allTitles.filter((t, i, arr) => arr.indexOf(t) === i && t !== (titleEn || a.title)),
+              image: a.images?.jpg?.large_image_url || a.images?.jpg?.image_url || '',
+              genres: a.genres?.map(g => g.name) || [],
+              synopsis: a.synopsis || 'Sin sinopsis disponible.',
+              rating: a.score || 0, episodes: a.episodes || '?',
+              status: a.status || '', year: a.year || a.aired?.prop?.from?.year || '',
+              type: a.type || '', malUrl: `https://myanimelist.net/anime/${a.mal_id}`,
+              watchLink: '', currentEp: 0, userRating: 0
+            };
+            if (tmdbKey) {
+              combined.delete(tmdbKey[0]);
+              combined.set(`mal-${a.mal_id}`, entry);
+            } else if (!isDup) {
+              combined.set(`mal-bridge-${a.mal_id}`, entry);
+            }
+          });
+        });
+      }
+
       setSearchResults([...combined.values()]);
     } catch (err) { console.error('Error:', err); setSearchResults([]); }
     setIsSearching(false);
