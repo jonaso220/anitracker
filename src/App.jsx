@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 
 const daysOfWeek = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 const dayEmojis = ['📅', '🎯', '⚡', '🔥', '🎉', '🌟', '💫'];
-const TMDB_KEY = '4ee01aed05036e4a540afae6f3a8e6c2';
 
 // ============ FIREBASE CONFIG ============
 // Para activar login con Google, necesitás crear un proyecto en https://console.firebase.google.com
@@ -140,14 +139,28 @@ export default function AnimeTracker() {
     if (query.length < 2) { setSearchResults([]); return; }
     setIsSearching(true);
     try {
-      // Ronda 1: buscar en todas las fuentes en paralelo
-      const [jikanRes, kitsuRes, tmdbTvEsRes, tmdbTvEnRes, tmdbMultiRes, tmdbMovieRes] = await Promise.allSettled([
+      // AniList GraphQL query - busca por títulos en todos los idiomas incluyendo español
+      const anilistQuery = `query ($search: String) {
+        Page(page: 1, perPage: 12) {
+          media(search: $search, type: ANIME, sort: SEARCH_MATCH) {
+            id idMal title { romaji english native userPreferred }
+            coverImage { large } bannerImage
+            genres averageScore episodes status seasonYear format
+            description(asHtml: false)
+            siteUrl
+            synonyms
+          }
+        }
+      }`;
+
+      const [jikanRes, kitsuRes, anilistRes] = await Promise.allSettled([
         fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(query)}&limit=10&sfw=true`).then(r => r.json()),
         fetch(`https://kitsu.app/api/edge/anime?filter[text]=${encodeURIComponent(query)}&page[limit]=10`).then(r => r.json()),
-        fetch(`https://api.themoviedb.org/3/search/tv?api_key=${TMDB_KEY}&query=${encodeURIComponent(query)}&language=es-ES&page=1`).then(r => r.json()),
-        fetch(`https://api.themoviedb.org/3/search/tv?api_key=${TMDB_KEY}&query=${encodeURIComponent(query)}&language=en-US&page=1`).then(r => r.json()),
-        fetch(`https://api.themoviedb.org/3/search/multi?api_key=${TMDB_KEY}&query=${encodeURIComponent(query)}&language=es-ES&page=1`).then(r => r.json()),
-        fetch(`https://api.themoviedb.org/3/search/movie?api_key=${TMDB_KEY}&query=${encodeURIComponent(query)}&language=es-ES&page=1`).then(r => r.json())
+        fetch('https://graphql.anilist.co', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: anilistQuery, variables: { search: query } })
+        }).then(r => r.json())
       ]);
       const combined = new Map();
 
@@ -195,94 +208,44 @@ export default function AnimeTracker() {
         });
       }
 
-      // Combinar todos los resultados TMDB (tv es, tv en, multi, movie)
-      const tmdbItems = new Map();
-      const processTmdb = (res, mediaTypeOverride) => {
-        if (res.status !== 'fulfilled' || !res.value?.results) return;
-        res.value.results.forEach(item => {
-          const mt = item.media_type || mediaTypeOverride;
-          if (mt !== 'tv' && mt !== 'movie') return;
-          if (!tmdbItems.has(item.id)) tmdbItems.set(item.id, { ...item, media_type: mt });
-        });
-      };
-      processTmdb(tmdbTvEsRes, 'tv');
-      processTmdb(tmdbTvEnRes, 'tv');
-      processTmdb(tmdbMultiRes);
-      processTmdb(tmdbMovieRes, 'movie');
+      // Procesar AniList
+      if (anilistRes.status === 'fulfilled' && anilistRes.value?.data?.Page?.media) {
+        anilistRes.value.data.Page.media.forEach(a => {
+          const titleEn = a.title?.english || a.title?.userPreferred || '';
+          const titleRomaji = a.title?.romaji || '';
+          const titleNative = a.title?.native || '';
+          const allTitles = [titleEn, titleRomaji, titleNative, ...(a.synonyms || [])].filter(Boolean);
 
-      // Para cada resultado TMDB, agregar al combined y recolectar nombres originales para re-buscar
-      const origNamesToSearch = [];
-      [...tmdbItems.values()].slice(0, 12).forEach(item => {
-        const isMovie = item.media_type === 'movie';
-        const title = isMovie ? (item.title || item.original_title) : (item.name || item.original_name);
-        const orig = isMovie ? (item.original_title || '') : (item.original_name || '');
-        const titleEs = isMovie ? (item.title || '') : (item.name || '');
-        const year = isMovie ? (item.release_date || '').split('-')[0] : (item.first_air_date || '').split('-')[0];
-        const isDup = [...combined.values()].some(e =>
-          (e.title || '').toLowerCase() === (title || '').toLowerCase() ||
-          (e.title || '').toLowerCase() === (orig || '').toLowerCase() ||
-          (e.titleOriginal || '').toLowerCase() === (orig || '').toLowerCase()
-        );
-        if (!isDup) {
-          combined.set(`tmdb-${item.id}`, {
-            id: item.id + 200000, source: 'TMDB',
-            title: titleEs || title, titleOriginal: orig,
-            titleJp: '', titleEn: orig,
-            altTitles: [title, orig, titleEs].filter((t, i, a) => Boolean(t) && a.indexOf(t) === i && t !== (titleEs || title)),
-            image: item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : '',
-            genres: [], synopsis: item.overview || 'Sin sinopsis disponible.',
-            rating: item.vote_average || 0, episodes: isMovie ? 'Película' : '?',
-            status: '', year, type: isMovie ? 'Película' : 'Serie',
-            malUrl: `https://www.themoviedb.org/${item.media_type}/${item.id}`,
+          // Verificar si ya existe en MAL (por mal_id) o por título similar
+          if (a.idMal && combined.has(`mal-${a.idMal}`)) return;
+          const isDup = [...combined.values()].some(e =>
+            (e.title || '').toLowerCase() === (titleEn || '').toLowerCase() ||
+            (e.title || '').toLowerCase() === (titleRomaji || '').toLowerCase() ||
+            (e.titleJp && titleNative && e.titleJp === titleNative)
+          );
+          if (isDup) return;
+
+          // Limpiar sinopsis (quitar tags HTML)
+          const cleanSynopsis = (a.description || 'Sin sinopsis disponible.').replace(/<[^>]*>/g, '').replace(/\n/g, ' ').trim();
+
+          const formatMap = { TV: 'TV', TV_SHORT: 'TV Short', MOVIE: 'Película', SPECIAL: 'Special', OVA: 'OVA', ONA: 'ONA', MUSIC: 'Music' };
+          const statusMap = { FINISHED: 'Finished', RELEASING: 'En emisión', NOT_YET_RELEASED: 'No estrenado', CANCELLED: 'Cancelado', HIATUS: 'En pausa' };
+
+          combined.set(`anilist-${a.id}`, {
+            id: a.id + 300000, source: 'AniList',
+            title: titleEn || titleRomaji, titleOriginal: titleRomaji,
+            titleJp: titleNative, titleEn,
+            altTitles: allTitles.filter((t, i, arr) => arr.indexOf(t) === i && t !== (titleEn || titleRomaji)),
+            image: a.coverImage?.large || '',
+            genres: a.genres || [],
+            synopsis: cleanSynopsis,
+            rating: a.averageScore ? (a.averageScore / 10).toFixed(1) : 0,
+            episodes: a.episodes || '?',
+            status: statusMap[a.status] || a.status || '',
+            year: a.seasonYear || '',
+            type: formatMap[a.format] || a.format || '',
+            malUrl: a.siteUrl || `https://anilist.co/anime/${a.id}`,
             watchLink: '', currentEp: 0, userRating: 0
-          });
-          // Si el nombre original es diferente al query y no lo encontramos en MAL/Kitsu, guardarlo para re-buscar
-          if (orig && orig.toLowerCase() !== query.toLowerCase() && !isDup) {
-            origNamesToSearch.push(orig);
-          }
-        }
-      });
-
-      // Ronda 2 (puente): si TMDB encontró cosas con nombre original diferente, re-buscar en Jikan
-      if (origNamesToSearch.length > 0 && combined.size < 15) {
-        const uniqueNames = [...new Set(origNamesToSearch)].slice(0, 3);
-        const bridgeResults = await Promise.allSettled(
-          uniqueNames.map(name =>
-            fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(name)}&limit=3&sfw=true`).then(r => r.json())
-          )
-        );
-        bridgeResults.forEach(res => {
-          if (res.status !== 'fulfilled' || !res.value?.data) return;
-          res.value.data.forEach(a => {
-            if (combined.has(`mal-${a.mal_id}`)) return;
-            const titleEn = a.title_english || '';
-            const allTitles = [a.title, titleEn, a.title_japanese, ...(a.title_synonyms || [])].filter(Boolean);
-            const isDup = [...combined.values()].some(e =>
-              (e.titleOriginal || '').toLowerCase() === (a.title || '').toLowerCase()
-            );
-            // Reemplazar entrada TMDB con datos MAL más completos, o agregar nueva
-            const tmdbKey = [...combined.entries()].find(([k, v]) =>
-              v.source === 'TMDB' && (v.titleOriginal || '').toLowerCase() === (a.title || '').toLowerCase()
-            );
-            const entry = {
-              id: a.mal_id, source: 'MAL',
-              title: titleEn || a.title, titleOriginal: a.title,
-              titleJp: a.title_japanese || '', titleEn,
-              altTitles: allTitles.filter((t, i, arr) => arr.indexOf(t) === i && t !== (titleEn || a.title)),
-              image: a.images?.jpg?.large_image_url || a.images?.jpg?.image_url || '',
-              genres: a.genres?.map(g => g.name) || [],
-              synopsis: a.synopsis || 'Sin sinopsis disponible.',
-              rating: a.score || 0, episodes: a.episodes || '?',
-              status: a.status || '', year: a.year || a.aired?.prop?.from?.year || '',
-              type: a.type || '', malUrl: `https://myanimelist.net/anime/${a.mal_id}`,
-              watchLink: '', currentEp: 0, userRating: 0
-            };
-            if (tmdbKey) {
-              combined.delete(tmdbKey[0]);
-              combined.set(`mal-${a.mal_id}`, entry);
-            } else if (!isDup) {
-              combined.set(`mal-bridge-${a.mal_id}`, entry);
-            }
           });
         });
       }
@@ -462,7 +425,7 @@ export default function AnimeTracker() {
           )) : searchQuery.length > 1 ? (
             <div className="no-results"><span>😢</span><p>Sin resultados para "{searchQuery}"</p></div>
           ) : (
-            <div className="search-placeholder"><span>🎌</span><p>Buscá cualquier anime o serie</p><p className="search-hint">MyAnimeList · Kitsu · TMDB</p></div>
+            <div className="search-placeholder"><span>🎌</span><p>Buscá cualquier anime o serie</p><p className="search-hint">MyAnimeList · Kitsu · AniList</p></div>
           )}
         </div>
       </div>
