@@ -48,10 +48,6 @@ export default function AnimeTracker() {
   const [showDayPicker, setShowDayPicker] = useState(null);
   const [showMoveDayPicker, setShowMoveDayPicker] = useState(null);
   const [showAnimeDetail, setShowAnimeDetail] = useState(null);
-  const [showLinkEditor, setShowLinkEditor] = useState(null);
-  const [showRatingEditor, setShowRatingEditor] = useState(null);
-  const [linkInput, setLinkInput] = useState('');
-  const [ratingInput, setRatingInput] = useState(0);
   const [darkMode, setDarkMode] = useState(() => {
     try { return localStorage.getItem('anitracker-theme') !== 'light'; } catch { return true; }
   });
@@ -288,7 +284,6 @@ export default function AnimeTracker() {
     setSchedule(prev => { const n = { ...prev }; daysOfWeek.forEach(d => { n[d] = update(n[d]); }); return n; });
     setWatchLater(prev => update(prev));
     setWatchedList(prev => update(prev));
-    setShowLinkEditor(null); setLinkInput('');
   };
 
   const updateUserRating = (animeId, rating) => {
@@ -322,8 +317,8 @@ export default function AnimeTracker() {
     </div>
   );
 
-  const AnimeCard = ({ anime, day, showActions = true, isWatchLater = false, isWatched = false }) => (
-    <div className="anime-card fade-in" onClick={() => setShowAnimeDetail(anime)}>
+  const AnimeCard = ({ anime, day, isWatchLater = false, isWatched = false }) => (
+    <div className="anime-card fade-in" onClick={() => setShowAnimeDetail({ ...anime, _day: day, _isWatchLater: isWatchLater, _isWatched: isWatched })}>
       <div className="anime-card-image">
         <img src={anime.image} alt={anime.title} loading="lazy" />
         {anime.rating > 0 && (
@@ -348,33 +343,6 @@ export default function AnimeTracker() {
           </div>
         )}
       </div>
-      {showActions && (
-        <div className="anime-card-actions" onClick={e => e.stopPropagation()}>
-          {!isWatchLater && !isWatched && (
-            <>
-              <button className="action-btn ep-btn" onClick={() => updateEpisode(anime.id, 1)} title="EP +1">+1</button>
-              <button className="action-btn finish" onClick={() => markAsFinished(anime, day)} title="Finalizar">✓</button>
-              <button className="action-btn drop" onClick={() => dropAnime(anime, day)} title="Dropear">✗</button>
-              <button className="action-btn move-btn" onClick={() => setShowMoveDayPicker({ anime, fromDay: day })} title="Mover día">↔</button>
-              <button className="action-btn link-btn" onClick={() => { setShowLinkEditor(anime); setLinkInput(anime.watchLink || ''); }} title="Link">🔗</button>
-              <button className="action-btn rate-btn" onClick={() => { setShowRatingEditor(anime); setRatingInput(anime.userRating || 0); }} title="Valorar">★</button>
-            </>
-          )}
-          {isWatchLater && (
-            <>
-              <button className="action-btn schedule" onClick={() => setShowDayPicker(anime)} title="Añadir a semana">📅</button>
-              <button className="action-btn link-btn" onClick={() => { setShowLinkEditor(anime); setLinkInput(anime.watchLink || ''); }} title="Link">🔗</button>
-              <button className="action-btn rate-btn" onClick={() => { setShowRatingEditor(anime); setRatingInput(anime.userRating || 0); }} title="Valorar">★</button>
-            </>
-          )}
-          {isWatched && (
-            <>
-              {!anime.finished && <button className="action-btn resume" onClick={() => resumeAnime(anime)} title="Retomar">▶</button>}
-              <button className="action-btn rate-btn" onClick={() => { setShowRatingEditor(anime); setRatingInput(anime.userRating || 0); }} title="Valorar">★</button>
-            </>
-          )}
-        </div>
-      )}
     </div>
   );
 
@@ -426,8 +394,25 @@ export default function AnimeTracker() {
   );
 
   const AnimeDetailModal = () => {
+    const [localRating, setLocalRating] = useState(showAnimeDetail?.userRating || 0);
+    const [localLink, setLocalLink] = useState(showAnimeDetail?.watchLink || '');
+    const [showLinkInput, setShowLinkInput] = useState(false);
+
+    // Reset local state when anime changes
+    useEffect(() => {
+      if (showAnimeDetail) {
+        setLocalRating(showAnimeDetail.userRating || 0);
+        setLocalLink(showAnimeDetail.watchLink || '');
+        setShowLinkInput(false);
+      }
+    }, [showAnimeDetail?.id]);
+
     if (!showAnimeDetail) return null;
     const a = showAnimeDetail;
+    const isSchedule = !a._isWatchLater && !a._isWatched;
+
+    const closeAndDo = (fn) => { setShowAnimeDetail(null); fn(); };
+
     return (
       <div className="modal-overlay" onClick={() => setShowAnimeDetail(null)}>
         <div className="detail-modal fade-in" onClick={e => e.stopPropagation()}>
@@ -451,18 +436,70 @@ export default function AnimeTracker() {
                   <div className="score-bar"><div style={{ width: `${(a.rating / 10) * 100}%` }}></div></div>
                 </div>
               )}
-              {a.currentEp > 0 && <p className="detail-ep">📺 Episodio actual: {a.currentEp}</p>}
-              {a.userRating > 0 && <div className="detail-user-rating"><span>Tu valoración: </span><StarRating rating={a.userRating} size={16} /></div>}
             </div>
           </div>
-          <div className="detail-synopsis"><h4>📖 Sinopsis:</h4><p>{a.synopsis}</p></div>
-          <div className="detail-links">
-            <h4>🔗 Links:</h4>
-            <div className="link-buttons">
-              <a href={a.malUrl} target="_blank" rel="noopener noreferrer" className="platform-btn mal">📊 {a.source || 'Info'}</a>
-              {a.watchLink && <a href={a.watchLink} target="_blank" rel="noopener noreferrer" className="platform-btn watch">▶ Ver anime</a>}
+
+          <div className="detail-synopsis"><h4>📖 Sinopsis</h4><p>{a.synopsis}</p></div>
+
+          {/* EPISODIO */}
+          {isSchedule && (
+            <div className="detail-section">
+              <h4>📺 Episodio actual</h4>
+              <div className="episode-controls">
+                <button className="ep-control-btn" onClick={() => { updateEpisode(a.id, -1); setShowAnimeDetail({ ...a, currentEp: Math.max(0, (a.currentEp || 0) - 1) }); }}>−</button>
+                <span className="ep-number">{a.currentEp || 0}</span>
+                <button className="ep-control-btn" onClick={() => { updateEpisode(a.id, 1); setShowAnimeDetail({ ...a, currentEp: (a.currentEp || 0) + 1 }); }}>+</button>
+              </div>
             </div>
-            {!a.watchLink && <p className="no-link-hint">Usá 🔗 en la tarjeta para agregar un link.</p>}
+          )}
+
+          {/* VALORACIÓN PERSONAL */}
+          <div className="detail-section">
+            <h4>★ Tu valoración</h4>
+            <div className="detail-rating-row">
+              <StarRating rating={localRating} size={24} interactive onChange={(r) => { setLocalRating(r); updateUserRating(a.id, r); setShowAnimeDetail({ ...a, userRating: r }); }} />
+              {localRating > 0 && <span className="rating-text">{localRating}/5</span>}
+            </div>
+          </div>
+
+          {/* LINK */}
+          <div className="detail-section">
+            <h4>🔗 Link de streaming</h4>
+            {a.watchLink && !showLinkInput ? (
+              <div className="detail-link-row">
+                <a href={a.watchLink} target="_blank" rel="noopener noreferrer" className="platform-btn watch">▶ Ver ahora</a>
+                <button className="detail-action-sm" onClick={() => setShowLinkInput(true)}>✏️ Editar</button>
+                <button className="detail-action-sm danger" onClick={() => { updateAnimeLink(a.id, ''); setShowAnimeDetail({ ...a, watchLink: '' }); }}>🗑</button>
+              </div>
+            ) : (
+              <div className="detail-link-edit">
+                <input type="url" placeholder="https://crunchyroll.com/..." value={localLink} onChange={e => setLocalLink(e.target.value)} />
+                <button className="save-link-btn" onClick={() => { updateAnimeLink(a.id, localLink); setShowAnimeDetail({ ...a, watchLink: localLink }); setShowLinkInput(false); }}>Guardar</button>
+                {showLinkInput && <button className="cancel-link-btn" onClick={() => setShowLinkInput(false)}>Cancelar</button>}
+              </div>
+            )}
+          </div>
+
+          {/* INFO LINK */}
+          <div className="detail-section">
+            <a href={a.malUrl} target="_blank" rel="noopener noreferrer" className="platform-btn mal">📊 Ver en {a.source || 'Info'}</a>
+          </div>
+
+          {/* ACCIONES PRINCIPALES */}
+          <div className="detail-actions">
+            {isSchedule && (
+              <>
+                <button className="detail-action-btn finish" onClick={() => closeAndDo(() => markAsFinished(a, a._day))}>✓ Finalizar</button>
+                <button className="detail-action-btn drop" onClick={() => closeAndDo(() => dropAnime(a, a._day))}>✗ Dropear</button>
+                <button className="detail-action-btn move" onClick={() => closeAndDo(() => setShowMoveDayPicker({ anime: a, fromDay: a._day }))}>↔ Mover día</button>
+              </>
+            )}
+            {a._isWatchLater && (
+              <button className="detail-action-btn schedule" onClick={() => closeAndDo(() => setShowDayPicker(a))}>📅 Añadir a semana</button>
+            )}
+            {a._isWatched && !a.finished && (
+              <button className="detail-action-btn resume" onClick={() => closeAndDo(() => resumeAnime(a))}>▶ Retomar</button>
+            )}
           </div>
         </div>
       </div>
@@ -500,42 +537,6 @@ export default function AnimeTracker() {
               {dayEmojis[daysOfWeek.indexOf(d)]} {d}
             </button>
           ))}</div>
-        </div>
-      </div>
-    );
-  };
-
-  const LinkEditorModal = () => {
-    if (!showLinkEditor) return null;
-    return (
-      <div className="modal-overlay" onClick={() => setShowLinkEditor(null)}>
-        <div className="link-editor-modal fade-in" onClick={e => e.stopPropagation()}>
-          <h3>🔗 Link para "{showLinkEditor.title}"</h3>
-          <p className="link-hint">Pegá el link de donde lo estés viendo</p>
-          <input type="url" placeholder="https://..." value={linkInput} onChange={e => setLinkInput(e.target.value)} autoFocus />
-          <div className="link-editor-actions">
-            <button className="save-link-btn" onClick={() => updateAnimeLink(showLinkEditor.id, linkInput)}>💾 Guardar</button>
-            {showLinkEditor.watchLink && <button className="remove-link-btn" onClick={() => updateAnimeLink(showLinkEditor.id, '')}>🗑 Quitar</button>}
-            <button className="cancel-link-btn" onClick={() => setShowLinkEditor(null)}>Cancelar</button>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const RatingEditorModal = () => {
-    if (!showRatingEditor) return null;
-    return (
-      <div className="modal-overlay" onClick={() => setShowRatingEditor(null)}>
-        <div className="link-editor-modal fade-in" onClick={e => e.stopPropagation()}>
-          <h3>★ Valorar "{showRatingEditor.title}"</h3>
-          <div style={{ display: 'flex', justifyContent: 'center', margin: '1.5rem 0' }}>
-            <StarRating rating={ratingInput} size={32} interactive onChange={setRatingInput} />
-          </div>
-          <div className="link-editor-actions">
-            <button className="save-link-btn" onClick={() => updateUserRating(showRatingEditor.id, ratingInput)}>💾 Guardar</button>
-            <button className="cancel-link-btn" onClick={() => setShowRatingEditor(null)}>Cancelar</button>
-          </div>
         </div>
       </div>
     );
@@ -726,25 +727,6 @@ export default function AnimeTracker() {
         .status-badge.finished { background: rgba(34,197,94,0.2); color: #4ade80; }
         .status-badge.dropped { background: rgba(251,191,36,0.2); color: #fcd34d; }
 
-        .anime-card-actions {
-          display: flex; gap: 0.3rem; padding: 0.4rem 0.5rem 0.5rem;
-          opacity: 0; transition: opacity 0.3s ease; flex-wrap: wrap;
-        }
-        .anime-card:hover .anime-card-actions { opacity: 1; }
-
-        .action-btn {
-          flex: 1; padding: 0.35rem; border: none; border-radius: 6px;
-          cursor: pointer; font-size: 0.8rem; transition: all 0.2s ease; min-width: 28px;
-        }
-        .action-btn.finish { background: rgba(34,197,94,0.2); color: #4ade80; }
-        .action-btn.drop { background: rgba(239,68,68,0.2); color: #f87171; }
-        .action-btn.schedule, .action-btn.resume { background: rgba(168,85,247,0.2); color: #c4b5fd; }
-        .action-btn.link-btn { background: rgba(78,205,196,0.2); color: #4ecdc4; }
-        .action-btn.rate-btn { background: rgba(251,191,36,0.2); color: #fbbf24; }
-        .action-btn.ep-btn { background: rgba(99,102,241,0.2); color: #818cf8; font-weight: 700; font-size: 0.7rem; }
-        .action-btn.move-btn { background: rgba(236,72,153,0.2); color: #f472b6; }
-        .action-btn:hover { filter: brightness(1.3); }
-
         /* SECTIONS */
         .section-header { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
         .section-header h2 {
@@ -866,18 +848,78 @@ export default function AnimeTracker() {
         .score-value { font-size: 1rem; font-weight: 700; color: #fcd34d; margin-left: 0.5rem; }
         .score-bar { margin-top: 0.3rem; height: 5px; background: rgba(128,128,128,0.2); border-radius: 3px; overflow: hidden; }
         .score-bar > div { height: 100%; border-radius: 3px; background: linear-gradient(90deg, #ff6b6b, #fcd34d, #4ade80); }
-        .detail-ep { margin-top: 0.5rem; font-size: 0.85rem; color: #818cf8; }
-        .detail-user-rating { margin-top: 0.4rem; display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; }
-        .detail-synopsis { margin-bottom: 1.5rem; }
+
+        .detail-synopsis { margin-bottom: 1rem; }
         .detail-synopsis h4 { font-size: 0.85rem; opacity: 0.5; margin-bottom: 0.4rem; }
         .detail-synopsis p { line-height: 1.6; opacity: 0.8; font-size: 0.85rem; }
-        .detail-links h4 { font-size: 0.85rem; opacity: 0.5; margin-bottom: 0.6rem; }
-        .link-buttons { display: flex; flex-wrap: wrap; gap: 0.6rem; }
-        .platform-btn { padding: 0.6rem 1rem; border-radius: 10px; color: #fff; text-decoration: none; font-weight: 500; transition: all 0.2s; font-size: 0.85rem; }
+
+        .detail-section {
+          padding: 1rem 0; border-top: 1px solid rgba(128,128,128,0.15);
+        }
+        .detail-section h4 { font-size: 0.85rem; opacity: 0.5; margin-bottom: 0.6rem; }
+
+        .episode-controls {
+          display: flex; align-items: center; gap: 1rem;
+        }
+        .ep-control-btn {
+          width: 40px; height: 40px; border-radius: 50%; border: none;
+          font-size: 1.2rem; font-weight: 700; cursor: pointer;
+          transition: all 0.2s; display: flex; align-items: center; justify-content: center;
+        }
+        .dark .ep-control-btn { background: rgba(99,102,241,0.2); color: #818cf8; }
+        .light .ep-control-btn { background: rgba(99,102,241,0.1); color: #6366f1; }
+        .ep-control-btn:hover { transform: scale(1.1); filter: brightness(1.3); }
+        .ep-number {
+          font-size: 1.5rem; font-weight: 700; min-width: 40px; text-align: center;
+          background: linear-gradient(135deg, #818cf8, #4ecdc4);
+          -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+        }
+
+        .detail-rating-row { display: flex; align-items: center; gap: 0.75rem; }
+        .rating-text { font-size: 0.85rem; opacity: 0.5; }
+
+        .detail-link-row { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+        .detail-action-sm {
+          padding: 0.4rem 0.75rem; border-radius: 8px; border: none;
+          font-size: 0.8rem; cursor: pointer; transition: all 0.2s;
+        }
+        .dark .detail-action-sm { background: rgba(255,255,255,0.08); color: #fff; }
+        .light .detail-action-sm { background: rgba(0,0,0,0.06); color: #333; }
+        .detail-action-sm.danger { color: #f87171; }
+        .detail-action-sm:hover { filter: brightness(1.3); }
+
+        .detail-link-edit { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+        .detail-link-edit input {
+          flex: 1; min-width: 200px; padding: 0.6rem 0.85rem;
+          border: 1px solid; border-radius: 10px;
+          font-size: 0.85rem; font-family: inherit;
+        }
+        .dark .detail-link-edit input { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.15); color: #fff; }
+        .light .detail-link-edit input { background: rgba(0,0,0,0.03); border-color: rgba(0,0,0,0.15); color: #1a1a2e; }
+        .detail-link-edit input:focus { outline: none; border-color: rgba(168,85,247,0.5); }
+
+        .detail-actions {
+          display: flex; gap: 0.6rem; flex-wrap: wrap;
+          margin-top: 1.25rem; padding-top: 1.25rem;
+          border-top: 1px solid rgba(128,128,128,0.15);
+        }
+        .detail-action-btn {
+          flex: 1; min-width: 120px; padding: 0.75rem 1rem;
+          border: none; border-radius: 12px; font-family: inherit;
+          font-size: 0.9rem; font-weight: 600; cursor: pointer;
+          transition: all 0.2s;
+        }
+        .detail-action-btn:hover { transform: translateY(-2px); filter: brightness(1.2); }
+        .detail-action-btn.finish { background: linear-gradient(135deg, rgba(34,197,94,0.3), rgba(34,197,94,0.15)); color: #4ade80; }
+        .detail-action-btn.drop { background: linear-gradient(135deg, rgba(239,68,68,0.3), rgba(239,68,68,0.15)); color: #f87171; }
+        .detail-action-btn.move { background: linear-gradient(135deg, rgba(236,72,153,0.3), rgba(236,72,153,0.15)); color: #f472b6; }
+        .detail-action-btn.schedule { background: linear-gradient(135deg, rgba(168,85,247,0.3), rgba(168,85,247,0.15)); color: #c4b5fd; }
+        .detail-action-btn.resume { background: linear-gradient(135deg, rgba(99,102,241,0.3), rgba(99,102,241,0.15)); color: #818cf8; }
+
+        .platform-btn { padding: 0.6rem 1rem; border-radius: 10px; color: #fff; text-decoration: none; font-weight: 500; transition: all 0.2s; font-size: 0.85rem; display: inline-block; }
         .platform-btn:hover { transform: translateY(-2px); }
         .platform-btn.mal { background: linear-gradient(135deg, #2E51A2, #4267B2); }
         .platform-btn.watch { background: linear-gradient(135deg, #22c55e, #16a34a); }
-        .no-link-hint { margin-top: 0.6rem; font-size: 0.75rem; opacity: 0.4; font-style: italic; }
 
         /* DAY PICKER / LINK / RATING MODALS */
         .day-picker-modal, .link-editor-modal {
@@ -896,23 +938,14 @@ export default function AnimeTracker() {
         .day-btn:hover { background: rgba(168,85,247,0.4); }
         .day-btn:last-child { grid-column: 1 / -1; }
 
-        .link-hint { font-size: 0.75rem; opacity: 0.4; margin-bottom: 0.75rem; }
-        .link-editor-modal input {
-          width: 100%; padding: 0.75rem 0.85rem; border: 1px solid; border-radius: 12px;
-          font-size: 0.9rem; font-family: inherit; margin-bottom: 0.75rem;
-        }
-        .dark .link-editor-modal input { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.15); color: #fff; }
-        .light .link-editor-modal input { background: rgba(0,0,0,0.03); border-color: rgba(0,0,0,0.15); color: #1a1a2e; }
-        .link-editor-modal input:focus { outline: none; border-color: rgba(168,85,247,0.5); }
-
-        .link-editor-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
-        .save-link-btn, .remove-link-btn, .cancel-link-btn {
+        .save-link-btn, .cancel-link-btn {
           padding: 0.6rem 1rem; border: none; border-radius: 10px;
           color: #fff; font-family: inherit; cursor: pointer; transition: all 0.2s; font-size: 0.85rem;
         }
         .save-link-btn { background: linear-gradient(135deg, #22c55e, #16a34a); }
-        .remove-link-btn { background: rgba(239,68,68,0.3); }
+        .save-link-btn:hover { transform: translateY(-2px); }
         .cancel-link-btn { background: rgba(128,128,128,0.2); }
+        .cancel-link-btn:hover { filter: brightness(1.3); }
 
         /* SCROLLBAR */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -929,7 +962,6 @@ export default function AnimeTracker() {
           .detail-header { flex-direction: column; align-items: center; text-align: center; }
           .search-result-item { flex-direction: column; align-items: center; text-align: center; }
           .search-result-actions { flex-direction: column; }
-          .anime-card-actions { opacity: 1; }
         }
       `}</style>
 
@@ -1028,8 +1060,6 @@ export default function AnimeTracker() {
       {showAnimeDetail && <AnimeDetailModal />}
       {showDayPicker && <DayPickerModal />}
       {showMoveDayPicker && <MoveDayPickerModal />}
-      {showLinkEditor && <LinkEditorModal />}
-      {showRatingEditor && <RatingEditorModal />}
     </div>
   );
 }
