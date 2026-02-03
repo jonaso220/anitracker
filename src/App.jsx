@@ -530,35 +530,64 @@ export default function AnimeTracker() {
           padding: 1rem 2rem 3rem; position: relative; z-index: 1;
         }
 
-        .schedule-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-          gap: 1.5rem;
+        .schedule-rows {
+          display: flex; flex-direction: column; gap: 1rem;
         }
 
-        .day-column {
-          background: rgba(255, 255, 255, 0.03);
-          border-radius: 20px; padding: 1.25rem;
-          border: 1px solid rgba(255, 255, 255, 0.08);
-          min-height: 400px;
+        .day-row {
+          display: flex; gap: 1.25rem; align-items: stretch;
+          background: rgba(255, 255, 255, 0.02);
+          border-radius: 20px; padding: 1rem;
+          border: 1px solid rgba(255, 255, 255, 0.06);
+          min-height: 120px;
         }
 
-        .day-header {
-          font-size: 1.1rem; font-weight: 600;
-          margin-bottom: 1rem; padding-bottom: 0.75rem;
-          border-bottom: 2px solid;
-          border-image: linear-gradient(90deg, #a855f7, #4ecdc4) 1;
-          display: flex; align-items: center; gap: 0.5rem;
+        .day-label {
+          display: flex; flex-direction: column;
+          align-items: center; justify-content: center;
+          min-width: 90px; width: 90px; flex-shrink: 0;
+          padding: 0.75rem 0.5rem;
+          background: linear-gradient(135deg, rgba(168, 85, 247, 0.1), rgba(78, 205, 196, 0.1));
+          border-radius: 14px;
+          border: 1px solid rgba(168, 85, 247, 0.15);
+          gap: 0.3rem;
         }
-        .day-header span { font-size: 1.3rem; }
+        .day-emoji { font-size: 1.4rem; }
+        .day-name {
+          font-size: 0.85rem; font-weight: 600;
+          background: linear-gradient(135deg, #c4b5fd, #4ecdc4);
+          -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+        }
+        .day-count {
+          font-size: 0.7rem; padding: 0.15rem 0.5rem;
+          background: rgba(168, 85, 247, 0.25);
+          border-radius: 10px; color: #c4b5fd;
+        }
+
+        .day-animes {
+          display: flex; gap: 1rem;
+          overflow-x: auto; flex: 1;
+          padding: 0.25rem 0;
+          align-items: flex-start;
+        }
+        .day-animes::-webkit-scrollbar { height: 6px; }
+        .day-animes::-webkit-scrollbar-track { background: transparent; }
+        .day-animes::-webkit-scrollbar-thumb { background: rgba(168, 85, 247, 0.2); border-radius: 3px; }
+
+        .day-empty {
+          display: flex; align-items: center; justify-content: center;
+          flex: 1; color: rgba(255, 255, 255, 0.2);
+          font-size: 0.85rem; font-style: italic;
+        }
 
         .anime-card {
           background: rgba(255, 255, 255, 0.05);
           border-radius: 16px; overflow: hidden;
-          margin-bottom: 1rem; cursor: pointer;
+          cursor: pointer;
           transition: all 0.3s ease;
           border: 1px solid rgba(255, 255, 255, 0.08);
           position: relative;
+          min-width: 150px; width: 150px; flex-shrink: 0;
         }
         .anime-card:hover {
           transform: translateY(-5px);
@@ -911,7 +940,13 @@ export default function AnimeTracker() {
 
         @media (max-width: 768px) {
           .header-content { flex-direction: column; gap: 1rem; }
-          .schedule-grid { grid-template-columns: 1fr; }
+          .day-row { flex-direction: column; }
+          .day-label {
+            flex-direction: row; width: 100%; min-width: unset;
+            padding: 0.6rem 1rem; gap: 0.6rem;
+          }
+          .day-animes { padding-bottom: 0.5rem; }
+          .anime-card { min-width: 140px; width: 140px; }
           .detail-header { flex-direction: column; align-items: center; text-align: center; }
           .detail-genres { justify-content: center; }
           .search-result-item { flex-direction: column; align-items: center; text-align: center; }
@@ -943,19 +978,25 @@ export default function AnimeTracker() {
 
       <main className="main-content">
         {activeTab === 'schedule' && (
-          <div className="schedule-grid">
+          <div className="schedule-rows">
             {daysOfWeek.map((day, i) => (
-              <div key={day} className="day-column">
-                <h3 className="day-header"><span>{dayEmojis[i]}</span>{day}</h3>
-                {schedule[day].length > 0 ? (
-                  schedule[day].map(anime => (
-                    <AnimeCard key={anime.id} anime={anime} day={day} />
-                  ))
-                ) : (
-                  <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.3)', padding: '2rem 0' }}>
-                    <p style={{ fontSize: '0.85rem' }}>Sin animes</p>
-                  </div>
-                )}
+              <div key={day} className="day-row">
+                <div className="day-label">
+                  <span className="day-emoji">{dayEmojis[i]}</span>
+                  <span className="day-name">{day}</span>
+                  <span className="day-count">{schedule[day].length}</span>
+                </div>
+                <div className="day-animes">
+                  {schedule[day].length > 0 ? (
+                    schedule[day].map(anime => (
+                      <AnimeCard key={anime.id} anime={anime} day={day} />
+                    ))
+                  ) : (
+                    <div className="day-empty">
+                      <p>Sin animes</p>
+                    </div>
+                  )}
+                </div>
               </div>
             ))}
           </div>
