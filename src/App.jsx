@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 const daysOfWeek = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 const dayEmojis = ['📅', '🎯', '⚡', '🔥', '🎉', '🌟', '💫'];
@@ -35,6 +35,17 @@ const initFirebase = async () => {
     firebaseDb = { doc, setDoc, getDoc };
   } catch (e) { console.error('Firebase init error:', e); }
 };
+
+const StarRating = React.memo(({ rating, size = 16, interactive = false, onChange }) => (
+  <div className="star-rating" style={{ fontSize: size }}>
+    {[1, 2, 3, 4, 5].map(s => (
+      <span key={s} className={`star ${s <= rating ? 'filled' : ''}`}
+        onClick={interactive ? (e) => { e.stopPropagation(); onChange?.(s === rating ? 0 : s); } : undefined}
+        style={interactive ? { cursor: 'pointer' } : {}}
+      >{s <= rating ? '★' : '☆'}</span>
+    ))}
+  </div>
+));
 
 const emptySchedule = { 'Lunes': [], 'Martes': [], 'Miércoles': [], 'Jueves': [], 'Viernes': [], 'Sábado': [], 'Domingo': [] };
 
@@ -126,6 +137,7 @@ export default function AnimeTracker() {
       const snap = await firebaseDb.getDoc(firebaseDb.doc(db, 'users', uid));
       if (snap.exists()) {
         const data = snap.data();
+        loadedFromCloudAt.current = Date.now();
         if (data.schedule) setSchedule(JSON.parse(data.schedule));
         if (data.watchedList) setWatchedList(JSON.parse(data.watchedList));
         if (data.watchLater) setWatchLater(JSON.parse(data.watchLater));
@@ -136,8 +148,11 @@ export default function AnimeTracker() {
 
   // Auto-sync when data changes and user is logged in
   const syncTimer = useRef(null);
+  const loadedFromCloudAt = useRef(0);
   useEffect(() => {
     if (!user) return;
+    // Ignorar cambios que vienen del load (3 setState = 3 triggers en ~100ms)
+    if (Date.now() - loadedFromCloudAt.current < 3000) return;
     if (syncTimer.current) clearTimeout(syncTimer.current);
     syncTimer.current = setTimeout(() => saveToCloud(user.uid), 2000);
   }, [schedule, watchedList, watchLater, user]);
@@ -153,13 +168,18 @@ export default function AnimeTracker() {
 
     if (malIds.length === 0 && anilistIds.length === 0) return;
 
-    // Evitar spam: solo consultar cada 15 min
+    // Evitar spam: solo consultar cada 15 min, pero invalidar si hay IDs nuevos
     const cacheKey = 'anitracker-airing-cache';
     const cacheTimeKey = 'anitracker-airing-time';
+    const cacheIdsKey = 'anitracker-airing-ids';
+    const currentIds = [...malIds, ...anilistIds].sort().join(',');
     try {
       const cached = localStorage.getItem(cacheKey);
       const cachedTime = localStorage.getItem(cacheTimeKey);
-      if (cached && cachedTime && Date.now() - parseInt(cachedTime) < 15 * 60 * 1000) {
+      const cachedIds = localStorage.getItem(cacheIdsKey) || '';
+      const cacheValid = cached && cachedTime && Date.now() - parseInt(cachedTime) < 15 * 60 * 1000;
+      const idsMatch = cachedIds === currentIds;
+      if (cacheValid && idsMatch) {
         setAiringData(JSON.parse(cached));
         return;
       }
@@ -237,6 +257,7 @@ export default function AnimeTracker() {
         try {
           localStorage.setItem(cacheKey, JSON.stringify(newAiring));
           localStorage.setItem(cacheTimeKey, Date.now().toString());
+          localStorage.setItem(cacheIdsKey, currentIds);
         } catch (e) {}
         console.log('[AniTracker] Airing data loaded:', Object.keys(newAiring).length, 'anime with upcoming episodes');
       } catch (err) {
@@ -246,7 +267,13 @@ export default function AnimeTracker() {
   }, [schedule]);
 
   // ============ BÚSQUEDA ============
-  const searchAnime = useCallback(async (query) => {
+  const parseEpisodes = (val) => {
+    if (val === null || val === undefined || val === '?' || val === '') return null;
+    const n = parseInt(val);
+    return isNaN(n) || n <= 0 ? null : n;
+  };
+
+  const searchAnime = async (query) => {
     if (query.length < 2) { setSearchResults([]); return; }
     setIsSearching(true);
     try {
@@ -292,7 +319,7 @@ export default function AnimeTracker() {
             image: a.images?.jpg?.large_image_url || a.images?.jpg?.image_url || '',
             genres: a.genres?.map(g => g.name) || [],
             synopsis: a.synopsis || 'Sin sinopsis disponible.',
-            rating: a.score || 0, episodes: a.episodes || '?',
+            rating: a.score || 0, episodes: parseEpisodes(a.episodes),
             status: a.status || '', year: a.year || a.aired?.prop?.from?.year || '',
             type: a.type || '', malUrl: `https://myanimelist.net/anime/${a.mal_id}`,
             watchLink: '', currentEp: 0, userRating: 0
@@ -316,7 +343,7 @@ export default function AnimeTracker() {
             image: at.posterImage?.large || at.posterImage?.medium || '', genres: [],
             synopsis: at.synopsis || 'Sin sinopsis disponible.',
             rating: at.averageRating ? (parseFloat(at.averageRating) / 10).toFixed(1) : 0,
-            episodes: at.episodeCount || '?', status: at.status || '',
+            episodes: parseEpisodes(at.episodeCount), status: at.status || '',
             year: at.startDate ? at.startDate.split('-')[0] : '', type: at.showType || '',
             malUrl: `https://kitsu.app/anime/${a.id}`, watchLink: '', currentEp: 0, userRating: 0
           });
@@ -355,7 +382,7 @@ export default function AnimeTracker() {
             genres: a.genres || [],
             synopsis: cleanSynopsis,
             rating: a.averageScore ? (a.averageScore / 10).toFixed(1) : 0,
-            episodes: a.episodes || '?',
+            episodes: parseEpisodes(a.episodes),
             status: statusMap[a.status] || a.status || '',
             year: a.seasonYear || '',
             type: formatMap[a.format] || a.format || '',
@@ -393,7 +420,7 @@ export default function AnimeTracker() {
             genres: genres,
             synopsis: synopsis,
             rating: s.rating?.average || 0,
-            episodes: '?',
+            episodes: null,
             status: statusMap[s.status] || s.status || '',
             year: year,
             type: s.type || 'Serie',
@@ -452,7 +479,7 @@ export default function AnimeTracker() {
                       image: a.images?.jpg?.large_image_url || a.images?.jpg?.image_url || '',
                       genres: a.genres?.map(g => g.name) || [],
                       synopsis: a.synopsis || 'Sin sinopsis disponible.',
-                      rating: a.score || 0, episodes: a.episodes || '?',
+                      rating: a.score || 0, episodes: parseEpisodes(a.episodes),
                       status: a.status || '', year: a.year || a.aired?.prop?.from?.year || '',
                       type: a.type || '', malUrl: `https://myanimelist.net/anime/${a.mal_id}`,
                       watchLink: '', currentEp: 0, userRating: 0
@@ -479,7 +506,7 @@ export default function AnimeTracker() {
                       altTitles: [result.title].filter(Boolean),
                       image: s.image?.original || s.image?.medium || '',
                       genres: s.genres || [], synopsis: synopsis,
-                      rating: s.rating?.average || 0, episodes: '?',
+                      rating: s.rating?.average || 0, episodes: null,
                       status: statusMap2[s.status] || s.status || '',
                       year: s.premiered ? s.premiered.split('-')[0] : '',
                       type: s.type || 'Serie',
@@ -524,7 +551,7 @@ export default function AnimeTracker() {
       setSearchResults(results);
     } catch (err) { console.error('[AniTracker] Error:', err); setSearchResults([]); }
     setIsSearching(false);
-  }, []);
+  };
 
   const handleSearch = (query) => {
     setSearchQuery(query);
@@ -575,8 +602,12 @@ export default function AnimeTracker() {
   };
 
   const moveAnimeToDay = (anime, fromDay, toDay) => {
-    removeFromSchedule(anime.id, fromDay);
-    setSchedule(prev => ({ ...prev, [toDay]: [...prev[toDay].filter(a => a.id !== anime.id), anime] }));
+    setSchedule(prev => {
+      const next = { ...prev };
+      next[fromDay] = next[fromDay].filter(a => a.id !== anime.id);
+      next[toDay] = [...next[toDay].filter(a => a.id !== anime.id), anime];
+      return next;
+    });
     setShowMoveDayPicker(null);
   };
 
@@ -786,7 +817,6 @@ export default function AnimeTracker() {
     setSchedule(prev => { const n = { ...prev }; daysOfWeek.forEach(d => { n[d] = update(n[d]); }); return n; });
     setWatchLater(prev => update(prev));
     setWatchedList(prev => update(prev));
-    setShowRatingEditor(null);
   };
 
   // ============ FILTRADO SERIES VISTAS ============
@@ -801,17 +831,6 @@ export default function AnimeTracker() {
   };
 
   // ============ COMPONENTES ============
-  const StarRating = ({ rating, size = 16, interactive = false, onChange }) => (
-    <div className="star-rating" style={{ fontSize: size }}>
-      {[1, 2, 3, 4, 5].map(s => (
-        <span key={s} className={`star ${s <= rating ? 'filled' : ''}`}
-          onClick={interactive ? (e) => { e.stopPropagation(); onChange?.(s === rating ? 0 : s); } : undefined}
-          style={interactive ? { cursor: 'pointer' } : {}}
-        >{s <= rating ? '★' : '☆'}</span>
-      ))}
-    </div>
-  );
-
   const AnimeCard = ({ anime, day, isWatchLater = false, isWatched = false, cardIndex, cardDay }) => {
     const airing = airingData[anime.id];
     const airingBadge = airing ? (
@@ -870,7 +889,7 @@ export default function AnimeTracker() {
           )}
           {(() => {
             const ep = anime.currentEp || 0;
-            const total = parseInt(anime.episodes) || 0;
+            const total = anime.episodes || 0;
             if (ep <= 0 && total <= 0) return null;
             const pct = total > 0 ? Math.min((ep / total) * 100, 100) : 0;
             const isComplete = total > 0 && ep >= total;
@@ -944,24 +963,34 @@ export default function AnimeTracker() {
 
     // Reset local state when anime changes
     useEffect(() => {
+      let cancelled = false;
+      const abortCtrl = new AbortController();
+
       if (showAnimeDetail) {
         setLocalRating(showAnimeDetail.userRating || 0);
         setLocalLink(showAnimeDetail.watchLink || '');
         setShowLinkInput(false);
         setTranslatedSynopsis(null);
+        setIsTranslating(false);
 
         // Traducir sinopsis
         const syn = showAnimeDetail.synopsis;
         if (!syn || syn.length < 10) return;
 
-        // Detectar si ya está en español (heurística simple)
-        const esWords = /\b(que|los|las|una|del|por|con|para|como|pero|más|también|esta|este|sobre|tiene|hace|puede|entre|desde|hasta|cuando|donde|porque|aunque|mientras|después|antes|durante|hacia|según|mediante)\b/i;
-        const matchCount = (syn.match(new RegExp(esWords, 'gi')) || []).length;
+        // Detectar idioma (español vs inglés)
+        const esPattern = /\b(que|los|las|una|del|por|con|para|como|pero|más|también|esta|este|sobre|tiene|hace|puede|entre|desde|hasta|cuando|donde|porque|aunque|mientras|después|antes|durante|hacia|según|mediante|ser|está|son|han|fue|muy|sin|hay|todo|cada|otro|ella|ellos|quien|cual|esto|eso|sus|nos|al|lo)\b/gi;
+        const enPattern = /\b(the|and|but|with|for|that|this|from|are|was|were|been|have|has|had|will|would|could|should|their|they|them|which|when|where|who|what|into|about|after|before|between|through|during|being|each|other|than|then|some|only|also|very|just|over|such|more)\b/gi;
+        const esMatches = (syn.match(esPattern) || []).length;
+        const enMatches = (syn.match(enPattern) || []).length;
         const wordCount = syn.split(/\s+/).length;
-        if (matchCount / wordCount > 0.08) {
+
+        // Si tiene bastantes palabras en español y más español que inglés → ya está en español
+        if (esMatches > enMatches && esMatches / wordCount > 0.06) {
           setTranslatedSynopsis(syn);
           return;
         }
+        // Si no tiene casi nada de inglés ni español (japonés, etc) → intentar traducir igual
+        // Si es claramente inglés → traducir
 
         // Revisar cache
         const cacheKey = `anitracker-tr-${showAnimeDetail.id}`;
@@ -972,15 +1001,15 @@ export default function AnimeTracker() {
 
         // Traducir via MyMemory
         setIsTranslating(true);
-        const text = syn.slice(0, 1500); // Límite de MyMemory
-        fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|es`)
+        const text = syn.slice(0, 1500);
+        fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|es`, { signal: abortCtrl.signal })
           .then(r => r.json())
           .then(data => {
+            if (cancelled) return;
             if (data.responseStatus === 200 && data.responseData?.translatedText) {
               let translated = data.responseData.translatedText;
-              // MyMemory a veces devuelve MAYÚSCULAS cuando falla — detectar
               if (translated === translated.toUpperCase() && translated.length > 50) {
-                setTranslatedSynopsis(syn); // Fallback al original
+                setTranslatedSynopsis(syn);
               } else {
                 setTranslatedSynopsis(translated);
                 try { localStorage.setItem(cacheKey, translated); } catch (e) {}
@@ -989,9 +1018,11 @@ export default function AnimeTracker() {
               setTranslatedSynopsis(syn);
             }
           })
-          .catch(() => setTranslatedSynopsis(syn))
-          .finally(() => setIsTranslating(false));
+          .catch((err) => { if (!cancelled) setTranslatedSynopsis(syn); })
+          .finally(() => { if (!cancelled) setIsTranslating(false); });
       }
+
+      return () => { cancelled = true; abortCtrl.abort(); };
     }, [showAnimeDetail?.id]);
 
     if (!showAnimeDetail) return null;
@@ -1069,7 +1100,7 @@ export default function AnimeTracker() {
               </div>
               {(() => {
                 const ep = a.currentEp || 0;
-                const total = parseInt(a.episodes) || 0;
+                const total = a.episodes || 0;
                 if (total <= 0 && ep <= 0) return null;
                 const pct = total > 0 ? Math.min((ep / total) * 100, 100) : 0;
                 const isComplete = total > 0 && ep >= total;
@@ -1909,9 +1940,12 @@ export default function AnimeTracker() {
               <button className={`sort-btn ${watchedSort === 'title' ? 'active' : ''}`} onClick={() => setWatchedSort('title')}>A-Z</button>
             </div>
             <div className="anime-grid">
-              {getFilteredWatched().length > 0 ? getFilteredWatched().map(a => (
-                <AnimeCard key={a.id} anime={a} isWatched />
-              )) : <div className="empty-state"><span>🎬</span><p>No hay resultados</p></div>}
+              {(() => {
+                const filtered = getFilteredWatched();
+                return filtered.length > 0 ? filtered.map(a => (
+                  <AnimeCard key={a.id} anime={a} isWatched />
+                )) : <div className="empty-state"><span>🎬</span><p>No hay resultados</p></div>;
+              })()}
             </div>
           </>
         )}
