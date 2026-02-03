@@ -593,27 +593,27 @@ export default function AnimeTracker() {
     setDragState({ anime: null, fromDay: null });
     setDropTarget(null);
     setDropIndex(null);
+    dropIndexRef.current = null;
   };
 
   const handleDragOverRow = (e, day) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     if (dropTarget !== day) setDropTarget(day);
-    // Si no hay cards en este día, index = 0
     if (!schedule[day] || schedule[day].length === 0) {
+      dropIndexRef.current = 0;
       setDropIndex(0);
     }
   };
 
   const handleDragOverCard = (e, day, cardIndex) => {
     e.preventDefault();
-    e.stopPropagation();
     e.dataTransfer.dropEffect = 'move';
     if (dropTarget !== day) setDropTarget(day);
-    // Detectar mitad izquierda o derecha de la card
     const rect = e.currentTarget.getBoundingClientRect();
     const midX = rect.left + rect.width / 2;
     const idx = e.clientX < midX ? cardIndex : cardIndex + 1;
+    dropIndexRef.current = idx;
     setDropIndex(idx);
   };
 
@@ -621,18 +621,16 @@ export default function AnimeTracker() {
     const rect = e.currentTarget.getBoundingClientRect();
     const { clientX, clientY } = e;
     if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) {
-      if (dropTarget === day) { setDropTarget(null); setDropIndex(null); }
+      if (dropTarget === day) { setDropTarget(null); setDropIndex(null); dropIndexRef.current = null; }
     }
   };
 
   const insertAnimeAtPosition = (anime, fromDay, toDay, index) => {
     setSchedule(prev => {
       const next = { ...prev };
-      // Remover del día origen
       if (fromDay) {
         next[fromDay] = next[fromDay].filter(a => a.id !== anime.id);
       }
-      // Insertar en posición del día destino
       const targetList = [...(next[toDay] || []).filter(a => a.id !== anime.id)];
       const clampedIdx = Math.min(index ?? targetList.length, targetList.length);
       targetList.splice(clampedIdx, 0, anime);
@@ -644,18 +642,19 @@ export default function AnimeTracker() {
   const handleDrop = (e, toDay) => {
     e.preventDefault();
     const { anime, fromDay } = dragState;
-    if (!anime) { setDropTarget(null); setDropIndex(null); return; }
-    insertAnimeAtPosition(anime, fromDay, toDay, dropIndex);
+    const idx = dropIndexRef.current;
+    if (!anime) { setDropTarget(null); setDropIndex(null); dropIndexRef.current = null; return; }
+    insertAnimeAtPosition(anime, fromDay, toDay, idx);
     setDragState({ anime: null, fromDay: null });
     setDropTarget(null);
     setDropIndex(null);
+    dropIndexRef.current = null;
     setShowMoveDayPicker(null);
   };
 
   // Touch drag (mobile)
   const touchRef = useRef({ timer: null, active: false, anime: null, fromDay: null, startY: 0, ghost: null });
   const dayRowRefs = useRef({});
-  const cardRefs = useRef({});
 
   const handleTouchStart = (e, anime, day) => {
     const touch = e.touches[0];
@@ -715,15 +714,13 @@ export default function AnimeTracker() {
 
     // Detectar posición entre cards
     if (foundDay) {
-      const cards = cardRefs.current[foundDay] || [];
-      let foundIdx = cards.length; // default: al final
+      const rowEl = dayRowRefs.current[foundDay];
+      const cards = rowEl ? rowEl.querySelectorAll('.anime-card') : [];
+      let foundIdx = cards.length;
       for (let i = 0; i < cards.length; i++) {
-        const el = cards[i];
-        if (el) {
-          const rect = el.getBoundingClientRect();
-          const midX = rect.left + rect.width / 2;
-          if (touch.clientX < midX) { foundIdx = i; break; }
-        }
+        const rect = cards[i].getBoundingClientRect();
+        const midX = rect.left + rect.width / 2;
+        if (touch.clientX < midX) { foundIdx = i; break; }
       }
       dropIndexRef.current = foundIdx;
       setDropIndex(foundIdx);
@@ -804,7 +801,7 @@ export default function AnimeTracker() {
     </div>
   );
 
-  const AnimeCard = ({ anime, day, isWatchLater = false, isWatched = false }) => {
+  const AnimeCard = ({ anime, day, isWatchLater = false, isWatched = false, cardIndex, cardDay }) => {
     const airing = airingData[anime.id];
     const airingBadge = airing ? (
       airing.hasAired ? 'airing-new' :
@@ -829,12 +826,13 @@ export default function AnimeTracker() {
         draggable={isDraggable}
         onDragStart={isDraggable ? (e) => handleDragStart(e, anime, day) : undefined}
         onDragEnd={isDraggable ? handleDragEnd : undefined}
+        onDragOver={isDraggable && cardIndex != null ? (e) => handleDragOverCard(e, cardDay, cardIndex) : undefined}
         onTouchStart={isDraggable ? (e) => handleTouchStart(e, anime, day) : undefined}
         onTouchMove={isDraggable ? (e) => handleTouchMove(e, day) : undefined}
         onTouchEnd={isDraggable ? handleTouchEnd : undefined}
       >
         <div className="anime-card-image">
-          <img src={anime.image} alt={anime.title} loading="lazy" />
+          <img src={anime.image} alt={anime.title} loading="lazy" draggable="false" />
           {anime.rating > 0 && (
             <div className="anime-card-score">⭐ {Number(anime.rating).toFixed ? Number(anime.rating).toFixed(1) : anime.rating}</div>
           )}
@@ -1246,8 +1244,6 @@ export default function AnimeTracker() {
         .day-row.drag-source { opacity: 0.6; }
         .anime-card.draggable { cursor: grab; }
         .anime-card.draggable:active { cursor: grabbing; }
-
-        .card-drag-wrapper { flex-shrink: 0; }
 
         .drop-indicator {
           width: 3px; min-height: 80px; align-self: stretch; flex-shrink: 0;
@@ -1805,13 +1801,7 @@ export default function AnimeTracker() {
                       {dropTarget === day && dropIndex === idx && dragState.anime && dragState.anime.id !== a.id && (
                         <div className="drop-indicator"></div>
                       )}
-                      <div
-                        ref={el => { if (!cardRefs.current[day]) cardRefs.current[day] = []; cardRefs.current[day][idx] = el; }}
-                        onDragOver={(e) => handleDragOverCard(e, day, idx)}
-                        className="card-drag-wrapper"
-                      >
-                        <AnimeCard anime={a} day={day} />
-                      </div>
+                      <AnimeCard anime={a} day={day} cardIndex={idx} cardDay={day} />
                       {dropTarget === day && dropIndex === idx + 1 && idx === schedule[day].length - 1 && dragState.anime && (
                         <div className="drop-indicator"></div>
                       )}
