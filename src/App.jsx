@@ -165,6 +165,12 @@ export default function AnimeTracker() {
       ]);
       const combined = new Map();
 
+      console.log('[AniTracker] Search query:', query);
+      console.log('[AniTracker] Jikan:', jikanRes.status, jikanRes.status === 'fulfilled' ? jikanRes.value?.data?.length || 0 : jikanRes.reason?.message);
+      console.log('[AniTracker] Kitsu:', kitsuRes.status, kitsuRes.status === 'fulfilled' ? kitsuRes.value?.data?.length || 0 : kitsuRes.reason?.message);
+      console.log('[AniTracker] AniList:', anilistRes.status, anilistRes.status === 'fulfilled' ? anilistRes.value?.data?.Page?.media?.length || 0 : anilistRes.reason?.message);
+      console.log('[AniTracker] TVMaze:', tvmazeRes.status, tvmazeRes.status === 'fulfilled' ? (Array.isArray(tvmazeRes.value) ? tvmazeRes.value.length : 'not array: ' + JSON.stringify(tvmazeRes.value)?.slice(0, 200)) : tvmazeRes.reason?.message);
+
       // Procesar Jikan (MAL)
       if (jikanRes.status === 'fulfilled' && jikanRes.value?.data) {
         jikanRes.value.data.forEach(a => {
@@ -383,8 +389,9 @@ export default function AnimeTracker() {
         } catch (e) { console.log('Wikipedia bridge failed:', e); }
       }
 
+      console.log('[AniTracker] Final results:', combined.size, [...combined.values()].map(v => `[${v.source}] ${v.title}`));
       setSearchResults([...combined.values()]);
-    } catch (err) { console.error('Error:', err); setSearchResults([]); }
+    } catch (err) { console.error('[AniTracker] Error:', err); setSearchResults([]); }
     setIsSearching(false);
   }, []);
 
