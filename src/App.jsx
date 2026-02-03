@@ -68,6 +68,7 @@ export default function AnimeTracker() {
     try { const s = localStorage.getItem('watchLater'); return s ? JSON.parse(s) : []; }
     catch { return []; }
   });
+  const [airingData, setAiringData] = useState({});
 
   useEffect(() => { localStorage.setItem('animeSchedule', JSON.stringify(schedule)); }, [schedule]);
   useEffect(() => { localStorage.setItem('watchedAnimes', JSON.stringify(watchedList)); }, [watchedList]);
@@ -134,6 +135,109 @@ export default function AnimeTracker() {
     syncTimer.current = setTimeout(() => saveToCloud(user.uid), 2000);
   }, [schedule, watchedList, watchLater, user]);
 
+  // ============ AIRING DATA (AniList) ============
+  const airingCheckRef = useRef(null);
+  useEffect(() => {
+    // Recolectar todos los anime del schedule que tengan MAL ID (id < 100000)
+    const allAnime = daysOfWeek.flatMap(d => schedule[d] || []);
+    const malIds = allAnime.filter(a => a.id && a.id < 100000).map(a => a.id);
+    // También animes de AniList (id entre 300000-400000, restar offset)
+    const anilistIds = allAnime.filter(a => a.id >= 300000 && a.id < 400000).map(a => a.id - 300000);
+
+    if (malIds.length === 0 && anilistIds.length === 0) return;
+
+    // Evitar spam: solo consultar cada 15 min
+    const cacheKey = 'anitracker-airing-cache';
+    const cacheTimeKey = 'anitracker-airing-time';
+    try {
+      const cached = localStorage.getItem(cacheKey);
+      const cachedTime = localStorage.getItem(cacheTimeKey);
+      if (cached && cachedTime && Date.now() - parseInt(cachedTime) < 15 * 60 * 1000) {
+        setAiringData(JSON.parse(cached));
+        return;
+      }
+    } catch (e) {}
+
+    if (airingCheckRef.current) clearTimeout(airingCheckRef.current);
+    airingCheckRef.current = setTimeout(async () => {
+      try {
+        const queries = [];
+
+        // Query por MAL IDs
+        if (malIds.length > 0) {
+          queries.push(`malQuery: Page(page: 1, perPage: 50) {
+            media(idMal_in: [${malIds.join(',')}], type: ANIME) {
+              id idMal status
+              title { romaji english }
+              nextAiringEpisode { airingAt episode timeUntilAiring }
+              episodes
+            }
+          }`);
+        }
+
+        // Query por AniList IDs
+        if (anilistIds.length > 0) {
+          queries.push(`alQuery: Page(page: 1, perPage: 50) {
+            media(id_in: [${anilistIds.join(',')}], type: ANIME) {
+              id idMal status
+              title { romaji english }
+              nextAiringEpisode { airingAt episode timeUntilAiring }
+              episodes
+            }
+          }`);
+        }
+
+        const gqlQuery = `query { ${queries.join('\n')} }`;
+        const res = await fetch('https://graphql.anilist.co', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: gqlQuery })
+        }).then(r => r.json());
+
+        const newAiring = {};
+        const processMedia = (media) => {
+          if (!media) return;
+          media.forEach(m => {
+            // Mapear al ID que usamos en la app
+            const appId = m.idMal && m.idMal < 100000 ? m.idMal : (m.id + 300000);
+            const airing = m.nextAiringEpisode;
+            if (airing) {
+              const airingDate = new Date(airing.airingAt * 1000);
+              const now = new Date();
+              const diffHours = (airingDate - now) / (1000 * 60 * 60);
+              const isToday = airingDate.toDateString() === now.toDateString();
+              const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate() + 1);
+              const isTomorrow = airingDate.toDateString() === tomorrow.toDateString();
+              const isThisWeek = diffHours > 0 && diffHours <= 7 * 24;
+              const hasAired = diffHours <= 0 && diffHours > -24; // Aired in last 24h
+
+              newAiring[appId] = {
+                episode: airing.episode,
+                airingAt: airing.airingAt,
+                timeUntilAiring: airing.timeUntilAiring,
+                isToday, isTomorrow, isThisWeek, hasAired,
+                totalEpisodes: m.episodes,
+                title: m.title?.english || m.title?.romaji || ''
+              };
+            }
+          });
+        };
+
+        if (res.data?.malQuery?.media) processMedia(res.data.malQuery.media);
+        if (res.data?.alQuery?.media) processMedia(res.data.alQuery.media);
+
+        setAiringData(newAiring);
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify(newAiring));
+          localStorage.setItem(cacheTimeKey, Date.now().toString());
+        } catch (e) {}
+        console.log('[AniTracker] Airing data loaded:', Object.keys(newAiring).length, 'anime with upcoming episodes');
+      } catch (err) {
+        console.error('[AniTracker] Airing check failed:', err);
+      }
+    }, 1000);
+  }, [schedule]);
+
   // ============ BÚSQUEDA ============
   const searchAnime = useCallback(async (query) => {
     if (query.length < 2) { setSearchResults([]); return; }
@@ -167,12 +271,6 @@ export default function AnimeTracker() {
         })
       ]);
       const combined = new Map();
-
-      console.log('[AniTracker] Search query:', query);
-      console.log('[AniTracker] Jikan:', jikanRes.status, jikanRes.status === 'fulfilled' ? jikanRes.value?.data?.length || 0 : jikanRes.reason?.message);
-      console.log('[AniTracker] Kitsu:', kitsuRes.status, kitsuRes.status === 'fulfilled' ? kitsuRes.value?.data?.length || 0 : kitsuRes.reason?.message);
-      console.log('[AniTracker] AniList:', anilistRes.status, anilistRes.status === 'fulfilled' ? anilistRes.value?.data?.Page?.media?.length || 0 : anilistRes.reason?.message);
-      console.log('[AniTracker] TVMaze:', tvmazeRes.status, tvmazeRes.status === 'fulfilled' ? (Array.isArray(tvmazeRes.value) ? tvmazeRes.value.length + ' (array)' : typeof tvmazeRes.value + ': ' + JSON.stringify(tvmazeRes.value)?.slice(0, 300)) : tvmazeRes.reason?.message);
 
       // Procesar Jikan (MAL)
       if (jikanRes.status === 'fulfilled' && jikanRes.value?.data) {
@@ -262,7 +360,6 @@ export default function AnimeTracker() {
 
       // Procesar TVMaze (series occidentales, animación, TV en general)
       if (tvmazeRes.status === 'fulfilled' && Array.isArray(tvmazeRes.value)) {
-        console.log('[AniTracker] TVMaze raw results:', tvmazeRes.value.map(r => r.show?.name));
         tvmazeRes.value.slice(0, 10).forEach(result => {
           const s = result.show;
           if (!s) return;
@@ -392,8 +489,6 @@ export default function AnimeTracker() {
           }
         } catch (e) { console.log('Wikipedia bridge failed:', e); }
       }
-
-      console.log('[AniTracker] Final results:', combined.size, [...combined.values()].map(v => `[${v.source}] ${v.title}`));
 
       // Ordenar por relevancia: resultados cuyo título coincide mejor con la query van primero
       const results = [...combined.values()];
@@ -525,34 +620,51 @@ export default function AnimeTracker() {
     </div>
   );
 
-  const AnimeCard = ({ anime, day, isWatchLater = false, isWatched = false }) => (
-    <div className="anime-card fade-in" onClick={() => setShowAnimeDetail({ ...anime, _day: day, _isWatchLater: isWatchLater, _isWatched: isWatched })}>
-      <div className="anime-card-image">
-        <img src={anime.image} alt={anime.title} loading="lazy" />
-        {anime.rating > 0 && (
-          <div className="anime-card-score">⭐ {Number(anime.rating).toFixed ? Number(anime.rating).toFixed(1) : anime.rating}</div>
-        )}
-        {anime.currentEp > 0 && (
-          <div className="anime-card-ep">EP {anime.currentEp}</div>
-        )}
-      </div>
-      <div className="anime-card-content">
-        <h3>{anime.title}</h3>
-        <div className="anime-genres">
-          {(anime.genres || []).slice(0, 2).map((g, i) => <span key={i} className="genre-tag">{g}</span>)}
+  const AnimeCard = ({ anime, day, isWatchLater = false, isWatched = false }) => {
+    const airing = airingData[anime.id];
+    const airingBadge = airing ? (
+      airing.hasAired ? 'airing-new' :
+      airing.isToday ? 'airing-today' :
+      airing.isTomorrow ? 'airing-tomorrow' : null
+    ) : null;
+    const airingText = airing ? (
+      airing.hasAired ? `🆕 Ep. ${airing.episode} disponible` :
+      airing.isToday ? `🔴 Ep. ${airing.episode} hoy` :
+      airing.isTomorrow ? `📢 Ep. ${airing.episode} mañana` : null
+    ) : null;
+
+    return (
+      <div className={`anime-card fade-in ${airingBadge ? 'has-airing' : ''}`} onClick={() => setShowAnimeDetail({ ...anime, _day: day, _isWatchLater: isWatchLater, _isWatched: isWatched })}>
+        <div className="anime-card-image">
+          <img src={anime.image} alt={anime.title} loading="lazy" />
+          {anime.rating > 0 && (
+            <div className="anime-card-score">⭐ {Number(anime.rating).toFixed ? Number(anime.rating).toFixed(1) : anime.rating}</div>
+          )}
+          {anime.currentEp > 0 && (
+            <div className="anime-card-ep">EP {anime.currentEp}</div>
+          )}
+          {airingBadge && (
+            <div className={`anime-card-airing ${airingBadge}`}>{airingText}</div>
+          )}
         </div>
-        {anime.userRating > 0 && <StarRating rating={anime.userRating} size={12} />}
-        {anime.watchLink && (
-          <a href={anime.watchLink} target="_blank" rel="noopener noreferrer" className="watch-link-badge" onClick={e => e.stopPropagation()}>▶ Ver</a>
-        )}
-        {isWatched && (
-          <div className={`status-badge ${anime.finished ? 'finished' : 'dropped'}`}>
-            {anime.finished ? '✓ Completado' : '⏸ Sin terminar'}
+        <div className="anime-card-content">
+          <h3>{anime.title}</h3>
+          <div className="anime-genres">
+            {(anime.genres || []).slice(0, 2).map((g, i) => <span key={i} className="genre-tag">{g}</span>)}
           </div>
-        )}
+          {anime.userRating > 0 && <StarRating rating={anime.userRating} size={12} />}
+          {anime.watchLink && (
+            <a href={anime.watchLink} target="_blank" rel="noopener noreferrer" className="watch-link-badge" onClick={e => e.stopPropagation()}>▶ Ver</a>
+          )}
+          {isWatched && (
+            <div className={`status-badge ${anime.finished ? 'finished' : 'dropped'}`}>
+              {anime.finished ? '✓ Completado' : '⏸ Sin terminar'}
+            </div>
+          )}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   // ============ MODALS ============
   const SearchModal = () => (
@@ -648,6 +760,29 @@ export default function AnimeTracker() {
           </div>
 
           <div className="detail-synopsis"><h4>📖 Sinopsis</h4><p>{a.synopsis}</p></div>
+
+          {/* PRÓXIMO EPISODIO */}
+          {airingData[a.id] && (() => {
+            const air = airingData[a.id];
+            const airDate = new Date(air.airingAt * 1000);
+            const formatDate = (d) => {
+              const days = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+              const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+              return `${days[d.getDay()]} ${d.getDate()} ${months[d.getMonth()]} · ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+            };
+            const label = air.hasAired ? '🆕 ¡Episodio disponible!' :
+              air.isToday ? '🔴 Sale hoy' :
+              air.isTomorrow ? '📢 Sale mañana' : '📡 Próximamente';
+            return (
+              <div className={`detail-section detail-airing ${air.hasAired ? 'aired' : air.isToday ? 'today' : ''}`}>
+                <h4>{label}</h4>
+                <div className="detail-airing-info">
+                  <span className="detail-airing-ep">Episodio {air.episode}{air.totalEpisodes ? ` de ${air.totalEpisodes}` : ''}</span>
+                  <span className="detail-airing-date">{formatDate(airDate)}</span>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* EPISODIO */}
           {isSchedule && (
@@ -913,6 +1048,83 @@ export default function AnimeTracker() {
           padding: 0.15rem 0.4rem; border-radius: 6px; font-size: 0.65rem; font-weight: 700; color: #fff;
         }
 
+        .anime-card-airing {
+          position: absolute; bottom: 0; left: 0; right: 0;
+          padding: 0.3rem 0.5rem; font-size: 0.65rem; font-weight: 700;
+          text-align: center; color: #fff;
+        }
+        .anime-card-airing.airing-new {
+          background: linear-gradient(135deg, rgba(34,197,94,0.9), rgba(16,185,129,0.9));
+          animation: airingPulse 2s ease-in-out infinite;
+        }
+        .anime-card-airing.airing-today {
+          background: linear-gradient(135deg, rgba(239,68,68,0.9), rgba(220,38,38,0.9));
+          animation: airingPulse 2s ease-in-out infinite;
+        }
+        .anime-card-airing.airing-tomorrow {
+          background: linear-gradient(135deg, rgba(251,191,36,0.85), rgba(245,158,11,0.85));
+          color: #1a1a2e;
+        }
+        @keyframes airingPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.8; } }
+
+        .anime-card.has-airing { border-color: rgba(168,85,247,0.4); }
+
+        /* AIRING SECTION */
+        .airing-section {
+          border-radius: 20px; padding: 1.25rem; margin-bottom: 1.25rem;
+          border: 1px solid;
+        }
+        .dark .airing-section {
+          background: linear-gradient(135deg, rgba(239,68,68,0.05), rgba(168,85,247,0.05));
+          border-color: rgba(239,68,68,0.15);
+        }
+        .light .airing-section {
+          background: linear-gradient(135deg, rgba(239,68,68,0.05), rgba(168,85,247,0.05));
+          border-color: rgba(239,68,68,0.2);
+        }
+        .airing-header {
+          display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;
+        }
+        .airing-icon { font-size: 1.3rem; }
+        .airing-header h3 {
+          font-size: 1.1rem; font-weight: 700;
+          background: linear-gradient(135deg, #ef4444, #a855f7);
+          -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+        }
+        .airing-count {
+          background: rgba(239,68,68,0.2); padding: 0.15rem 0.6rem;
+          border-radius: 20px; font-size: 0.75rem; font-weight: 600; color: #f87171;
+        }
+        .airing-list { display: flex; flex-direction: column; gap: 0.5rem; }
+        .airing-item {
+          display: flex; align-items: center; gap: 0.75rem;
+          padding: 0.6rem 0.75rem; border-radius: 12px;
+          cursor: pointer; transition: all 0.2s ease;
+          border: 1px solid transparent;
+        }
+        .dark .airing-item { background: rgba(255,255,255,0.03); }
+        .light .airing-item { background: rgba(0,0,0,0.03); }
+        .airing-item:hover { transform: translateX(4px); border-color: rgba(168,85,247,0.3); }
+        .airing-item.today { border-left: 3px solid #ef4444; }
+        .airing-item.aired { border-left: 3px solid #22c55e; }
+        .airing-img {
+          width: 40px; height: 40px; border-radius: 8px; object-fit: cover; flex-shrink: 0;
+        }
+        .airing-info { flex: 1; min-width: 0; }
+        .airing-title {
+          font-size: 0.85rem; font-weight: 600; display: block;
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .airing-ep { font-size: 0.7rem; opacity: 0.6; }
+        .airing-time {
+          font-size: 0.75rem; font-weight: 700; padding: 0.25rem 0.6rem;
+          border-radius: 8px; white-space: nowrap; flex-shrink: 0;
+        }
+        .airing-time.aired { background: rgba(34,197,94,0.2); color: #4ade80; }
+        .airing-time.today { background: rgba(239,68,68,0.2); color: #f87171; animation: airingPulse 2s ease-in-out infinite; }
+        .airing-time.tomorrow { background: rgba(251,191,36,0.2); color: #fbbf24; }
+        .airing-time.later { background: rgba(168,85,247,0.15); color: #c4b5fd; }
+
         .anime-card-content { padding: 0.6rem; }
         .anime-card-content h3 { font-size: 0.8rem; font-weight: 600; margin-bottom: 0.35rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .anime-genres { display: flex; flex-wrap: wrap; gap: 0.25rem; }
@@ -1066,6 +1278,25 @@ export default function AnimeTracker() {
         }
         .detail-section h4 { font-size: 0.85rem; opacity: 0.5; margin-bottom: 0.6rem; }
 
+        .detail-airing {
+          border-radius: 12px; padding: 0.85rem 1rem !important;
+          margin-top: 0.5rem;
+        }
+        .detail-airing h4 { opacity: 1 !important; font-size: 0.9rem !important; }
+        .dark .detail-airing { background: rgba(168,85,247,0.08); }
+        .light .detail-airing { background: rgba(168,85,247,0.06); }
+        .detail-airing.today h4 { color: #ef4444; }
+        .dark .detail-airing.today { background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.2); }
+        .light .detail-airing.today { background: rgba(239,68,68,0.06); }
+        .detail-airing.aired h4 { color: #22c55e; }
+        .dark .detail-airing.aired { background: rgba(34,197,94,0.1); border-color: rgba(34,197,94,0.2); }
+        .light .detail-airing.aired { background: rgba(34,197,94,0.06); }
+        .detail-airing-info {
+          display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+        }
+        .detail-airing-ep { font-weight: 700; font-size: 0.95rem; }
+        .detail-airing-date { font-size: 0.8rem; opacity: 0.6; }
+
         .episode-controls {
           display: flex; align-items: center; gap: 1rem;
         }
@@ -1209,6 +1440,54 @@ export default function AnimeTracker() {
       <main className="main-content">
         {activeTab === 'schedule' && (
           <div className="schedule-rows">
+            {/* Sección: Episodios esta semana */}
+            {Object.keys(airingData).length > 0 && (() => {
+              const allAnime = daysOfWeek.flatMap(d => (schedule[d] || []).map(a => ({ ...a, _day: d })));
+              const airingAnime = allAnime.filter(a => airingData[a.id]).map(a => ({
+                ...a,
+                airing: airingData[a.id]
+              })).sort((a, b) => a.airing.airingAt - b.airing.airingAt);
+
+              if (airingAnime.length === 0) return null;
+
+              const formatAiringTime = (airing) => {
+                if (airing.hasAired) return '¡Ya disponible!';
+                if (airing.isToday) {
+                  const hours = Math.floor(airing.timeUntilAiring / 3600);
+                  const mins = Math.floor((airing.timeUntilAiring % 3600) / 60);
+                  return hours > 0 ? `En ${hours}h ${mins}m` : `En ${mins}m`;
+                }
+                if (airing.isTomorrow) return 'Mañana';
+                const date = new Date(airing.airingAt * 1000);
+                const dayNames = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+                return dayNames[date.getDay()];
+              };
+
+              return (
+                <div className="airing-section fade-in">
+                  <div className="airing-header">
+                    <span className="airing-icon">📡</span>
+                    <h3>Próximos episodios</h3>
+                    <span className="airing-count">{airingAnime.length}</span>
+                  </div>
+                  <div className="airing-list">
+                    {airingAnime.map(a => (
+                      <div key={a.id} className={`airing-item ${a.airing.hasAired ? 'aired' : a.airing.isToday ? 'today' : ''}`}
+                        onClick={() => setShowAnimeDetail({ ...a, _day: a._day, _isWatchLater: false, _isWatched: false })}>
+                        <img src={a.image} alt={a.title} className="airing-img" />
+                        <div className="airing-info">
+                          <span className="airing-title">{a.title}</span>
+                          <span className="airing-ep">Ep. {a.airing.episode}{a.airing.totalEpisodes ? ` / ${a.airing.totalEpisodes}` : ''}</span>
+                        </div>
+                        <div className={`airing-time ${a.airing.hasAired ? 'aired' : a.airing.isToday ? 'today' : a.airing.isTomorrow ? 'tomorrow' : 'later'}`}>
+                          {formatAiringTime(a.airing)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
             {daysOfWeek.map((day, i) => (
               <div key={day} className="day-row fade-in">
                 <div className="day-label">
