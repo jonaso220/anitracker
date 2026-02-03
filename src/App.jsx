@@ -140,10 +140,12 @@ export default function AnimeTracker() {
     if (query.length < 2) { setSearchResults([]); return; }
     setIsSearching(true);
     try {
-      const [jikanRes, kitsuRes, tmdbRes] = await Promise.allSettled([
+      const [jikanRes, kitsuRes, tmdbEsRes, tmdbEnRes, tmdbTvRes] = await Promise.allSettled([
         fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(query)}&limit=10&sfw=true`).then(r => r.json()),
         fetch(`https://kitsu.app/api/edge/anime?filter[text]=${encodeURIComponent(query)}&page[limit]=10`).then(r => r.json()),
-        fetch(`https://api.themoviedb.org/3/search/multi?api_key=${TMDB_KEY}&query=${encodeURIComponent(query)}&language=es-ES&page=1`).then(r => r.json())
+        fetch(`https://api.themoviedb.org/3/search/multi?api_key=${TMDB_KEY}&query=${encodeURIComponent(query)}&language=es-ES&page=1`).then(r => r.json()),
+        fetch(`https://api.themoviedb.org/3/search/multi?api_key=${TMDB_KEY}&query=${encodeURIComponent(query)}&language=en-US&page=1`).then(r => r.json()),
+        fetch(`https://api.themoviedb.org/3/search/tv?api_key=${TMDB_KEY}&query=${encodeURIComponent(query)}&language=es-ES&page=1`).then(r => r.json())
       ]);
       const combined = new Map();
 
@@ -189,28 +191,40 @@ export default function AnimeTracker() {
         });
       }
 
-      if (tmdbRes.status === 'fulfilled' && tmdbRes.value?.results) {
-        tmdbRes.value.results.filter(i => i.media_type === 'tv' || i.media_type === 'movie').slice(0, 10).forEach(item => {
-          const isMovie = item.media_type === 'movie';
-          const title = isMovie ? (item.title || item.original_title) : (item.name || item.original_name);
-          const orig = isMovie ? (item.original_title || '') : (item.original_name || '');
-          const titleEs = isMovie ? (item.title || '') : (item.name || '');
-          const year = isMovie ? (item.release_date || '').split('-')[0] : (item.first_air_date || '').split('-')[0];
-          const isDup = [...combined.values()].some(e => (e.title || '').toLowerCase() === (title || '').toLowerCase() || (e.title || '').toLowerCase() === (orig || '').toLowerCase());
-          if (!isDup) combined.set(`tmdb-${item.id}`, {
-            id: item.id + 200000, source: 'TMDB',
-            title: titleEs || title, titleOriginal: orig,
-            titleJp: '', titleEn: orig,
-            altTitles: [title, orig, titleEs].filter((t, i, a) => Boolean(t) && a.indexOf(t) === i && t !== (titleEs || title)),
-            image: item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : '',
-            genres: [], synopsis: item.overview || 'Sin sinopsis disponible.',
-            rating: item.vote_average || 0, episodes: isMovie ? 'Película' : '?',
-            status: '', year, type: isMovie ? 'Película' : 'Serie',
-            malUrl: `https://www.themoviedb.org/${item.media_type}/${item.id}`,
-            watchLink: '', currentEp: 0, userRating: 0
-          });
+      // Combinar resultados de TMDB (es-ES multi + en-US multi + es-ES tv)
+      const tmdbItems = new Map();
+      const processTmdbResults = (res, mediaTypeOverride) => {
+        if (res.status !== 'fulfilled' || !res.value?.results) return;
+        res.value.results.forEach(item => {
+          const mt = item.media_type || mediaTypeOverride || 'tv';
+          if (mt !== 'tv' && mt !== 'movie') return;
+          if (!tmdbItems.has(item.id)) tmdbItems.set(item.id, { ...item, media_type: mt });
         });
-      }
+      };
+      processTmdbResults(tmdbEsRes);
+      processTmdbResults(tmdbEnRes);
+      processTmdbResults(tmdbTvRes, 'tv');
+
+      [...tmdbItems.values()].slice(0, 12).forEach(item => {
+        const isMovie = item.media_type === 'movie';
+        const title = isMovie ? (item.title || item.original_title) : (item.name || item.original_name);
+        const orig = isMovie ? (item.original_title || '') : (item.original_name || '');
+        const titleEs = isMovie ? (item.title || '') : (item.name || '');
+        const year = isMovie ? (item.release_date || '').split('-')[0] : (item.first_air_date || '').split('-')[0];
+        const isDup = [...combined.values()].some(e => (e.title || '').toLowerCase() === (title || '').toLowerCase() || (e.title || '').toLowerCase() === (orig || '').toLowerCase());
+        if (!isDup) combined.set(`tmdb-${item.id}`, {
+          id: item.id + 200000, source: 'TMDB',
+          title: titleEs || title, titleOriginal: orig,
+          titleJp: '', titleEn: orig,
+          altTitles: [title, orig, titleEs].filter((t, i, a) => Boolean(t) && a.indexOf(t) === i && t !== (titleEs || title)),
+          image: item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : '',
+          genres: [], synopsis: item.overview || 'Sin sinopsis disponible.',
+          rating: item.vote_average || 0, episodes: isMovie ? 'Película' : '?',
+          status: '', year, type: isMovie ? 'Película' : 'Serie',
+          malUrl: `https://www.themoviedb.org/${item.media_type}/${item.id}`,
+          watchLink: '', currentEp: 0, userRating: 0
+        });
+      });
       setSearchResults([...combined.values()]);
     } catch (err) { console.error('Error:', err); setSearchResults([]); }
     setIsSearching(false);
