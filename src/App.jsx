@@ -44,31 +44,87 @@ export default function AnimeTracker() {
   useEffect(() => { localStorage.setItem('watchedAnimes', JSON.stringify(watchedList)); }, [watchedList]);
   useEffect(() => { localStorage.setItem('watchLater', JSON.stringify(watchLater)); }, [watchLater]);
 
-  // Búsqueda con API de Jikan (MyAnimeList)
+  // Búsqueda combinada: Jikan (MyAnimeList) + Kitsu
   const searchAnime = useCallback(async (query) => {
     if (query.length < 2) { setSearchResults([]); return; }
     setIsSearching(true);
     try {
-      const res = await fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(query)}&limit=15&sfw=true`);
-      const data = await res.json();
-      if (data.data) {
-        const results = data.data.map(anime => ({
-          id: anime.mal_id,
-          title: anime.title,
-          titleJp: anime.title_japanese || '',
-          image: anime.images?.jpg?.large_image_url || anime.images?.jpg?.image_url || '',
-          genres: anime.genres?.map(g => g.name) || [],
-          synopsis: anime.synopsis || 'Sin sinopsis disponible.',
-          rating: anime.score || 0,
-          episodes: anime.episodes || '?',
-          status: anime.status || '',
-          year: anime.year || anime.aired?.prop?.from?.year || '',
-          type: anime.type || '',
-          malUrl: `https://myanimelist.net/anime/${anime.mal_id}`,
-          watchLink: ''
-        }));
-        setSearchResults(results);
+      // Buscar en ambas APIs en paralelo
+      const [jikanRes, kitsuRes] = await Promise.allSettled([
+        fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(query)}&limit=10&sfw=true`).then(r => r.json()),
+        fetch(`https://kitsu.app/api/edge/anime?filter[text]=${encodeURIComponent(query)}&page[limit]=10`).then(r => r.json())
+      ]);
+
+      const combined = new Map();
+
+      // Procesar resultados de Jikan (MyAnimeList)
+      if (jikanRes.status === 'fulfilled' && jikanRes.value?.data) {
+        jikanRes.value.data.forEach(anime => {
+          const titleEn = anime.title_english || '';
+          const synonyms = anime.title_synonyms || [];
+          const allTitles = [anime.title, titleEn, anime.title_japanese, ...synonyms].filter(Boolean);
+          combined.set(`mal-${anime.mal_id}`, {
+            id: anime.mal_id,
+            source: 'MAL',
+            title: titleEn || anime.title,
+            titleOriginal: anime.title,
+            titleJp: anime.title_japanese || '',
+            titleEn: titleEn,
+            altTitles: allTitles.filter((t, i, arr) => arr.indexOf(t) === i && t !== (titleEn || anime.title)),
+            image: anime.images?.jpg?.large_image_url || anime.images?.jpg?.image_url || '',
+            genres: anime.genres?.map(g => g.name) || [],
+            synopsis: anime.synopsis || 'Sin sinopsis disponible.',
+            rating: anime.score || 0,
+            episodes: anime.episodes || '?',
+            status: anime.status || '',
+            year: anime.year || anime.aired?.prop?.from?.year || '',
+            type: anime.type || '',
+            malUrl: `https://myanimelist.net/anime/${anime.mal_id}`,
+            watchLink: ''
+          });
+        });
       }
+
+      // Procesar resultados de Kitsu
+      if (kitsuRes.status === 'fulfilled' && kitsuRes.value?.data) {
+        kitsuRes.value.data.forEach(anime => {
+          const attrs = anime.attributes;
+          const titleEn = attrs.titles?.en || attrs.titles?.en_us || attrs.canonicalTitle || '';
+          const titleJp = attrs.titles?.ja_jp || '';
+          const allTitles = [titleEn, titleJp, attrs.canonicalTitle, ...(attrs.abbreviatedTitles || [])].filter(Boolean);
+          
+          // Evitar duplicados: buscar si ya existe por título similar
+          const isDuplicate = [...combined.values()].some(existing => {
+            const existTitle = (existing.title || '').toLowerCase();
+            const newTitle = (titleEn || attrs.canonicalTitle || '').toLowerCase();
+            return existTitle === newTitle || existing.titleJp === titleJp;
+          });
+
+          if (!isDuplicate) {
+            combined.set(`kitsu-${anime.id}`, {
+              id: parseInt(anime.id) + 100000,
+              source: 'Kitsu',
+              title: titleEn || attrs.canonicalTitle,
+              titleOriginal: attrs.canonicalTitle || '',
+              titleJp: titleJp,
+              titleEn: titleEn,
+              altTitles: allTitles.filter((t, i, arr) => arr.indexOf(t) === i && t !== (titleEn || attrs.canonicalTitle)),
+              image: attrs.posterImage?.large || attrs.posterImage?.medium || attrs.posterImage?.original || '',
+              genres: [],
+              synopsis: attrs.synopsis || 'Sin sinopsis disponible.',
+              rating: attrs.averageRating ? (parseFloat(attrs.averageRating) / 10).toFixed(1) : 0,
+              episodes: attrs.episodeCount || '?',
+              status: attrs.status || '',
+              year: attrs.startDate ? attrs.startDate.split('-')[0] : '',
+              type: attrs.showType || '',
+              malUrl: `https://kitsu.app/anime/${anime.id}`,
+              watchLink: ''
+            });
+          }
+        });
+      }
+
+      setSearchResults([...combined.values()]);
     } catch (err) {
       console.error('Error buscando:', err);
       setSearchResults([]);
@@ -201,7 +257,7 @@ export default function AnimeTracker() {
         <div className="search-header">
           <input
             type="text"
-            placeholder="🔍 Buscar en MyAnimeList..."
+            placeholder="🔍 Buscar anime (nombre en español, inglés o japonés)..."
             value={searchQuery}
             onChange={(e) => handleSearch(e.target.value)}
             autoFocus
@@ -212,19 +268,25 @@ export default function AnimeTracker() {
           {isSearching ? (
             <div className="search-placeholder">
               <div className="spinner"></div>
-              <p>Buscando en MyAnimeList...</p>
+              <p>Buscando anime...</p>
             </div>
           ) : searchResults.length > 0 ? (
             searchResults.map(anime => (
               <div key={anime.id} className="search-result-item">
                 <img src={anime.image} alt={anime.title} />
                 <div className="search-result-info">
-                  <h4>{anime.title}</h4>
+                  <div className="search-result-title-row">
+                    <h4>{anime.title}</h4>
+                    <span className="source-badge">{anime.source || 'MAL'}</span>
+                  </div>
+                  {anime.altTitles && anime.altTitles.length > 0 && (
+                    <p className="alt-titles">También: {anime.altTitles.slice(0, 3).join(' · ')}</p>
+                  )}
                   <div className="search-result-meta">
                     {anime.type && <span className="meta-tag type">{anime.type}</span>}
                     {anime.year && <span className="meta-tag year">{anime.year}</span>}
                     {anime.episodes && <span className="meta-tag eps">{anime.episodes} eps</span>}
-                    {anime.rating > 0 && <span className="meta-tag score">⭐ {anime.rating.toFixed(1)}</span>}
+                    {anime.rating > 0 && <span className="meta-tag score">⭐ {Number(anime.rating).toFixed(1)}</span>}
                   </div>
                   <div className="search-result-genres">
                     {(anime.genres || []).slice(0, 3).map((g, i) => (
@@ -232,7 +294,7 @@ export default function AnimeTracker() {
                     ))}
                   </div>
                   <a href={anime.malUrl} target="_blank" rel="noopener noreferrer" className="mal-link">
-                    Ver en MyAnimeList ↗
+                    Ver en {anime.source || 'MyAnimeList'} ↗
                   </a>
                 </div>
                 <div className="search-result-actions">
@@ -256,8 +318,8 @@ export default function AnimeTracker() {
           ) : (
             <div className="search-placeholder">
               <span>🎌</span>
-              <p>Buscá cualquier anime en MyAnimeList</p>
-              <p className="search-hint">Escribí al menos 2 letras para buscar</p>
+              <p>Buscá cualquier anime por nombre en español, inglés o japonés</p>
+              <p className="search-hint">Se busca en MyAnimeList y Kitsu</p>
             </div>
           )}
         </div>
@@ -654,7 +716,22 @@ export default function AnimeTracker() {
         }
 
         .search-result-info { flex: 1; min-width: 200px; }
-        .search-result-info h4 { font-size: 1.05rem; margin-bottom: 0.4rem; }
+        .search-result-info h4 { font-size: 1.05rem; margin-bottom: 0; }
+
+        .search-result-title-row {
+          display: flex; align-items: center; gap: 0.5rem;
+          margin-bottom: 0.3rem; flex-wrap: wrap;
+        }
+        .source-badge {
+          font-size: 0.6rem; padding: 0.15rem 0.4rem;
+          border-radius: 4px; font-weight: 600; text-transform: uppercase;
+          background: rgba(78, 205, 196, 0.2); color: #4ecdc4;
+        }
+        .alt-titles {
+          font-size: 0.72rem; color: rgba(255,255,255,0.4);
+          margin-bottom: 0.4rem; font-style: italic;
+          line-height: 1.3;
+        }
 
         .search-result-meta { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.4rem; }
         .meta-tag {
