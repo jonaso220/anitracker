@@ -939,6 +939,8 @@ export default function AnimeTracker() {
     const [localRating, setLocalRating] = useState(showAnimeDetail?.userRating || 0);
     const [localLink, setLocalLink] = useState(showAnimeDetail?.watchLink || '');
     const [showLinkInput, setShowLinkInput] = useState(false);
+    const [translatedSynopsis, setTranslatedSynopsis] = useState(null);
+    const [isTranslating, setIsTranslating] = useState(false);
 
     // Reset local state when anime changes
     useEffect(() => {
@@ -946,6 +948,49 @@ export default function AnimeTracker() {
         setLocalRating(showAnimeDetail.userRating || 0);
         setLocalLink(showAnimeDetail.watchLink || '');
         setShowLinkInput(false);
+        setTranslatedSynopsis(null);
+
+        // Traducir sinopsis
+        const syn = showAnimeDetail.synopsis;
+        if (!syn || syn.length < 10) return;
+
+        // Detectar si ya está en español (heurística simple)
+        const esWords = /\b(que|los|las|una|del|por|con|para|como|pero|más|también|esta|este|sobre|tiene|hace|puede|entre|desde|hasta|cuando|donde|porque|aunque|mientras|después|antes|durante|hacia|según|mediante)\b/i;
+        const matchCount = (syn.match(new RegExp(esWords, 'gi')) || []).length;
+        const wordCount = syn.split(/\s+/).length;
+        if (matchCount / wordCount > 0.08) {
+          setTranslatedSynopsis(syn);
+          return;
+        }
+
+        // Revisar cache
+        const cacheKey = `anitracker-tr-${showAnimeDetail.id}`;
+        try {
+          const cached = localStorage.getItem(cacheKey);
+          if (cached) { setTranslatedSynopsis(cached); return; }
+        } catch (e) {}
+
+        // Traducir via MyMemory
+        setIsTranslating(true);
+        const text = syn.slice(0, 1500); // Límite de MyMemory
+        fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|es`)
+          .then(r => r.json())
+          .then(data => {
+            if (data.responseStatus === 200 && data.responseData?.translatedText) {
+              let translated = data.responseData.translatedText;
+              // MyMemory a veces devuelve MAYÚSCULAS cuando falla — detectar
+              if (translated === translated.toUpperCase() && translated.length > 50) {
+                setTranslatedSynopsis(syn); // Fallback al original
+              } else {
+                setTranslatedSynopsis(translated);
+                try { localStorage.setItem(cacheKey, translated); } catch (e) {}
+              }
+            } else {
+              setTranslatedSynopsis(syn);
+            }
+          })
+          .catch(() => setTranslatedSynopsis(syn))
+          .finally(() => setIsTranslating(false));
       }
     }, [showAnimeDetail?.id]);
 
@@ -981,7 +1026,14 @@ export default function AnimeTracker() {
             </div>
           </div>
 
-          <div className="detail-synopsis"><h4>📖 Sinopsis</h4><p>{a.synopsis}</p></div>
+          <div className="detail-synopsis">
+            <h4>📖 Sinopsis</h4>
+            {isTranslating ? (
+              <p className="synopsis-loading">Traduciendo<span className="dot-anim">...</span></p>
+            ) : (
+              <p>{translatedSynopsis || a.synopsis || 'Sin sinopsis disponible.'}</p>
+            )}
+          </div>
 
           {/* PRÓXIMO EPISODIO */}
           {airingData[a.id] && (() => {
@@ -1556,6 +1608,9 @@ export default function AnimeTracker() {
         .detail-synopsis { margin-bottom: 1rem; }
         .detail-synopsis h4 { font-size: 0.85rem; opacity: 0.5; margin-bottom: 0.4rem; }
         .detail-synopsis p { line-height: 1.6; opacity: 0.8; font-size: 0.85rem; }
+        .synopsis-loading { opacity: 0.4; font-style: italic; }
+        .dot-anim { animation: dotPulse 1.5s ease-in-out infinite; }
+        @keyframes dotPulse { 0% { opacity: 0.2; } 50% { opacity: 1; } 100% { opacity: 0.2; } }
 
         .detail-section {
           padding: 1rem 0; border-top: 1px solid rgba(128,128,128,0.15);
