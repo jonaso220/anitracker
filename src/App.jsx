@@ -56,10 +56,12 @@ export default function AnimeTracker() {
   const [syncing, setSyncing] = useState(false);
   const searchTimeout = useRef(null);
   const [dragState, setDragState] = useState({ anime: null, fromDay: null });
+  const dragRef = useRef({ anime: null, fromDay: null });
   const [dropTarget, setDropTarget] = useState(null);
   const dropTargetRef = useRef(null);
   const [dropIndex, setDropIndex] = useState(null);
   const dropIndexRef = useRef(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   const [schedule, setSchedule] = useState(() => {
     try { const s = localStorage.getItem('animeSchedule'); return s ? JSON.parse(s) : { ...emptySchedule }; }
@@ -580,17 +582,20 @@ export default function AnimeTracker() {
 
   // ============ DRAG & DROP ============
   const handleDragStart = (e, anime, fromDay) => {
-    setDragState({ anime, fromDay });
+    dragRef.current = { anime, fromDay };
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', anime.id.toString());
-    requestAnimationFrame(() => {
-      if (e.target) e.target.style.opacity = '0.4';
-    });
+    // Delay state update so browser captures the drag ghost BEFORE re-render
+    setTimeout(() => {
+      setDragState({ anime, fromDay });
+      setIsDragging(true);
+    }, 0);
   };
 
   const handleDragEnd = (e) => {
-    e.target.style.opacity = '1';
+    dragRef.current = { anime: null, fromDay: null };
     setDragState({ anime: null, fromDay: null });
+    setIsDragging(false);
     setDropTarget(null);
     setDropIndex(null);
     dropIndexRef.current = null;
@@ -641,11 +646,13 @@ export default function AnimeTracker() {
 
   const handleDrop = (e, toDay) => {
     e.preventDefault();
-    const { anime, fromDay } = dragState;
+    const { anime, fromDay } = dragRef.current;
     const idx = dropIndexRef.current;
     if (!anime) { setDropTarget(null); setDropIndex(null); dropIndexRef.current = null; return; }
     insertAnimeAtPosition(anime, fromDay, toDay, idx);
+    dragRef.current = { anime: null, fromDay: null };
     setDragState({ anime: null, fromDay: null });
+    setIsDragging(false);
     setDropTarget(null);
     setDropIndex(null);
     dropIndexRef.current = null;
@@ -675,7 +682,9 @@ export default function AnimeTracker() {
       document.body.appendChild(ghost);
       touchRef.current.ghost = ghost;
       if (navigator.vibrate) navigator.vibrate(30);
+      dragRef.current = { anime, fromDay: day };
       setDragState({ anime, fromDay: day });
+      setIsDragging(true);
     }, 400);
   };
 
@@ -749,7 +758,9 @@ export default function AnimeTracker() {
     touchRef.current.fromDay = null;
     dropTargetRef.current = null;
     dropIndexRef.current = null;
+    dragRef.current = { anime: null, fromDay: null };
     setDragState({ anime: null, fromDay: null });
+    setIsDragging(false);
     setDropTarget(null);
     setDropIndex(null);
   };
@@ -1785,7 +1796,7 @@ export default function AnimeTracker() {
             {daysOfWeek.map((day, i) => (
               <div key={day}
                 ref={el => { dayRowRefs.current[day] = el; }}
-                className={`day-row fade-in ${dropTarget === day ? 'drop-target' : ''} ${dragState.fromDay === day && dragState.anime ? 'drag-source' : ''}`}
+                className={`day-row fade-in ${dropTarget === day ? 'drop-target' : ''} ${isDragging && dragState.fromDay === day ? 'drag-source' : ''}`}
                 onDragOver={(e) => handleDragOverRow(e, day)}
                 onDragLeave={(e) => handleDragLeave(e, day)}
                 onDrop={(e) => handleDrop(e, day)}
@@ -1798,11 +1809,11 @@ export default function AnimeTracker() {
                 <div className="day-animes">
                   {schedule[day].length > 0 ? schedule[day].map((a, idx) => (
                     <React.Fragment key={a.id}>
-                      {dropTarget === day && dropIndex === idx && dragState.anime && dragState.anime.id !== a.id && (
+                      {dropTarget === day && dropIndex === idx && isDragging && dragState.anime?.id !== a.id && (
                         <div className="drop-indicator"></div>
                       )}
                       <AnimeCard anime={a} day={day} cardIndex={idx} cardDay={day} />
-                      {dropTarget === day && dropIndex === idx + 1 && idx === schedule[day].length - 1 && dragState.anime && (
+                      {dropTarget === day && dropIndex === idx + 1 && idx === schedule[day].length - 1 && isDragging && (
                         <div className="drop-indicator"></div>
                       )}
                     </React.Fragment>
