@@ -58,6 +58,8 @@ export default function AnimeTracker() {
   const [dragState, setDragState] = useState({ anime: null, fromDay: null });
   const [dropTarget, setDropTarget] = useState(null);
   const dropTargetRef = useRef(null);
+  const [dropIndex, setDropIndex] = useState(null);
+  const dropIndexRef = useRef(null);
 
   const [schedule, setSchedule] = useState(() => {
     try { const s = localStorage.getItem('animeSchedule'); return s ? JSON.parse(s) : { ...emptySchedule }; }
@@ -590,48 +592,80 @@ export default function AnimeTracker() {
     e.target.style.opacity = '1';
     setDragState({ anime: null, fromDay: null });
     setDropTarget(null);
+    setDropIndex(null);
   };
 
-  const handleDragOver = (e, day) => {
+  const handleDragOverRow = (e, day) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     if (dropTarget !== day) setDropTarget(day);
+    // Si no hay cards en este día, index = 0
+    if (!schedule[day] || schedule[day].length === 0) {
+      setDropIndex(0);
+    }
+  };
+
+  const handleDragOverCard = (e, day, cardIndex) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'move';
+    if (dropTarget !== day) setDropTarget(day);
+    // Detectar mitad izquierda o derecha de la card
+    const rect = e.currentTarget.getBoundingClientRect();
+    const midX = rect.left + rect.width / 2;
+    const idx = e.clientX < midX ? cardIndex : cardIndex + 1;
+    setDropIndex(idx);
   };
 
   const handleDragLeave = (e, day) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const { clientX, clientY } = e;
     if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) {
-      if (dropTarget === day) setDropTarget(null);
+      if (dropTarget === day) { setDropTarget(null); setDropIndex(null); }
     }
+  };
+
+  const insertAnimeAtPosition = (anime, fromDay, toDay, index) => {
+    setSchedule(prev => {
+      const next = { ...prev };
+      // Remover del día origen
+      if (fromDay) {
+        next[fromDay] = next[fromDay].filter(a => a.id !== anime.id);
+      }
+      // Insertar en posición del día destino
+      const targetList = [...(next[toDay] || []).filter(a => a.id !== anime.id)];
+      const clampedIdx = Math.min(index ?? targetList.length, targetList.length);
+      targetList.splice(clampedIdx, 0, anime);
+      next[toDay] = targetList;
+      return next;
+    });
   };
 
   const handleDrop = (e, toDay) => {
     e.preventDefault();
-    setDropTarget(null);
     const { anime, fromDay } = dragState;
-    if (!anime) return;
-    if (fromDay !== toDay) {
-      moveAnimeToDay(anime, fromDay, toDay);
-    }
+    if (!anime) { setDropTarget(null); setDropIndex(null); return; }
+    insertAnimeAtPosition(anime, fromDay, toDay, dropIndex);
     setDragState({ anime: null, fromDay: null });
+    setDropTarget(null);
+    setDropIndex(null);
+    setShowMoveDayPicker(null);
   };
 
   // Touch drag (mobile)
   const touchRef = useRef({ timer: null, active: false, anime: null, fromDay: null, startY: 0, ghost: null });
   const dayRowRefs = useRef({});
+  const cardRefs = useRef({});
 
   const handleTouchStart = (e, anime, day) => {
     const touch = e.touches[0];
     touchRef.current.startY = touch.clientY;
     touchRef.current.startX = touch.clientX;
     touchRef.current.moved = false;
-    // Long press de 400ms activa el drag
     touchRef.current.timer = setTimeout(() => {
       touchRef.current.active = true;
       touchRef.current.anime = anime;
       touchRef.current.fromDay = day;
-      // Crear ghost element
       const ghost = document.createElement('div');
       ghost.className = 'touch-drag-ghost';
       ghost.textContent = anime.title;
@@ -641,9 +675,7 @@ export default function AnimeTracker() {
         background:linear-gradient(135deg,#a855f7,#4ecdc4);color:#fff;box-shadow:0 8px 25px rgba(168,85,247,0.5);`;
       document.body.appendChild(ghost);
       touchRef.current.ghost = ghost;
-      // Vibrate si disponible
       if (navigator.vibrate) navigator.vibrate(30);
-      // Highlight source
       setDragState({ anime, fromDay: day });
     }, 400);
   };
@@ -655,7 +687,6 @@ export default function AnimeTracker() {
     if (dx > 10 || dy > 10) touchRef.current.moved = true;
 
     if (!touchRef.current.active) {
-      // Si se movió antes del long-press, cancelar
       if (touchRef.current.moved && touchRef.current.timer) {
         clearTimeout(touchRef.current.timer);
         touchRef.current.timer = null;
@@ -663,25 +694,43 @@ export default function AnimeTracker() {
       return;
     }
     e.preventDefault();
-    // Mover ghost
     if (touchRef.current.ghost) {
       touchRef.current.ghost.style.top = (touch.clientY - 20) + 'px';
       touchRef.current.ghost.style.left = (touch.clientX - 60) + 'px';
     }
-    // Detectar sobre qué día estamos
-    let found = null;
+    // Detectar día
+    let foundDay = null;
     for (const d of daysOfWeek) {
       const el = dayRowRefs.current[d];
       if (el) {
         const rect = el.getBoundingClientRect();
         if (touch.clientY >= rect.top && touch.clientY <= rect.bottom) {
-          found = d;
+          foundDay = d;
           break;
         }
       }
     }
-    dropTargetRef.current = found;
-    setDropTarget(found);
+    dropTargetRef.current = foundDay;
+    setDropTarget(foundDay);
+
+    // Detectar posición entre cards
+    if (foundDay) {
+      const cards = cardRefs.current[foundDay] || [];
+      let foundIdx = cards.length; // default: al final
+      for (let i = 0; i < cards.length; i++) {
+        const el = cards[i];
+        if (el) {
+          const rect = el.getBoundingClientRect();
+          const midX = rect.left + rect.width / 2;
+          if (touch.clientX < midX) { foundIdx = i; break; }
+        }
+      }
+      dropIndexRef.current = foundIdx;
+      setDropIndex(foundIdx);
+    } else {
+      dropIndexRef.current = null;
+      setDropIndex(null);
+    }
   };
 
   const handleTouchEnd = () => {
@@ -694,17 +743,18 @@ export default function AnimeTracker() {
       touchRef.current.ghost = null;
     }
     const target = dropTargetRef.current;
+    const idx = dropIndexRef.current;
     if (touchRef.current.active && touchRef.current.anime && target) {
-      if (touchRef.current.fromDay !== target) {
-        moveAnimeToDay(touchRef.current.anime, touchRef.current.fromDay, target);
-      }
+      insertAnimeAtPosition(touchRef.current.anime, touchRef.current.fromDay, target, idx);
     }
     touchRef.current.active = false;
     touchRef.current.anime = null;
     touchRef.current.fromDay = null;
     dropTargetRef.current = null;
+    dropIndexRef.current = null;
     setDragState({ anime: null, fromDay: null });
     setDropTarget(null);
+    setDropIndex(null);
   };
 
   const updateEpisode = (animeId, delta) => {
@@ -1196,6 +1246,17 @@ export default function AnimeTracker() {
         .day-row.drag-source { opacity: 0.6; }
         .anime-card.draggable { cursor: grab; }
         .anime-card.draggable:active { cursor: grabbing; }
+
+        .card-drag-wrapper { flex-shrink: 0; }
+
+        .drop-indicator {
+          width: 3px; min-height: 80px; align-self: stretch; flex-shrink: 0;
+          border-radius: 3px;
+          background: linear-gradient(180deg, #a855f7, #4ecdc4);
+          box-shadow: 0 0 10px rgba(168,85,247,0.5);
+          animation: dropPulse 1s ease-in-out infinite;
+        }
+        @keyframes dropPulse { 0%, 100% { opacity: 1; box-shadow: 0 0 10px rgba(168,85,247,0.5); } 50% { opacity: 0.7; box-shadow: 0 0 20px rgba(168,85,247,0.8); } }
 
         .day-label {
           display: flex; flex-direction: column;
@@ -1728,8 +1789,8 @@ export default function AnimeTracker() {
             {daysOfWeek.map((day, i) => (
               <div key={day}
                 ref={el => { dayRowRefs.current[day] = el; }}
-                className={`day-row fade-in ${dropTarget === day ? 'drop-target' : ''} ${dragState.fromDay === day ? 'drag-source' : ''}`}
-                onDragOver={(e) => handleDragOver(e, day)}
+                className={`day-row fade-in ${dropTarget === day ? 'drop-target' : ''} ${dragState.fromDay === day && dragState.anime ? 'drag-source' : ''}`}
+                onDragOver={(e) => handleDragOverRow(e, day)}
                 onDragLeave={(e) => handleDragLeave(e, day)}
                 onDrop={(e) => handleDrop(e, day)}
               >
@@ -1739,8 +1800,22 @@ export default function AnimeTracker() {
                   <span className="day-count">{schedule[day].length}</span>
                 </div>
                 <div className="day-animes">
-                  {schedule[day].length > 0 ? schedule[day].map(a => (
-                    <AnimeCard key={a.id} anime={a} day={day} />
+                  {schedule[day].length > 0 ? schedule[day].map((a, idx) => (
+                    <React.Fragment key={a.id}>
+                      {dropTarget === day && dropIndex === idx && dragState.anime && dragState.anime.id !== a.id && (
+                        <div className="drop-indicator"></div>
+                      )}
+                      <div
+                        ref={el => { if (!cardRefs.current[day]) cardRefs.current[day] = []; cardRefs.current[day][idx] = el; }}
+                        onDragOver={(e) => handleDragOverCard(e, day, idx)}
+                        className="card-drag-wrapper"
+                      >
+                        <AnimeCard anime={a} day={day} />
+                      </div>
+                      {dropTarget === day && dropIndex === idx + 1 && idx === schedule[day].length - 1 && dragState.anime && (
+                        <div className="drop-indicator"></div>
+                      )}
+                    </React.Fragment>
                   )) : <div className="day-empty">{dropTarget === day ? '⬇️ Soltar aquí' : 'Sin animes'}</div>}
                 </div>
               </div>
