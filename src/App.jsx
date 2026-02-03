@@ -153,14 +153,15 @@ export default function AnimeTracker() {
         }
       }`;
 
-      const [jikanRes, kitsuRes, anilistRes] = await Promise.allSettled([
+      const [jikanRes, kitsuRes, anilistRes, tvmazeRes] = await Promise.allSettled([
         fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(query)}&limit=10&sfw=true`).then(r => r.json()),
         fetch(`https://kitsu.app/api/edge/anime?filter[text]=${encodeURIComponent(query)}&page[limit]=10`).then(r => r.json()),
         fetch('https://graphql.anilist.co', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ query: anilistQuery, variables: { search: query } })
-        }).then(r => r.json())
+        }).then(r => r.json()),
+        fetch(`https://api.tvmaze.com/search/shows?q=${encodeURIComponent(query)}`).then(r => r.json())
       ]);
       const combined = new Map();
 
@@ -250,6 +251,44 @@ export default function AnimeTracker() {
         });
       }
 
+      // Procesar TVMaze (series occidentales, animación, TV en general)
+      if (tvmazeRes.status === 'fulfilled' && Array.isArray(tvmazeRes.value)) {
+        tvmazeRes.value.slice(0, 10).forEach(result => {
+          const s = result.show;
+          if (!s) return;
+          const title = s.name || '';
+          // Deduplicar contra lo que ya tenemos
+          const isDup = [...combined.values()].some(e =>
+            (e.title || '').toLowerCase() === title.toLowerCase() ||
+            (e.titleEn || '').toLowerCase() === title.toLowerCase() ||
+            (e.titleOriginal || '').toLowerCase() === title.toLowerCase()
+          );
+          if (isDup) return;
+
+          const genres = s.genres || [];
+          const year = s.premiered ? s.premiered.split('-')[0] : '';
+          const statusMap = { Running: 'En emisión', Ended: 'Finalizado', 'To Be Determined': 'Por determinar', 'In Development': 'En desarrollo' };
+          const synopsis = (s.summary || 'Sin sinopsis disponible.').replace(/<[^>]*>/g, '').trim();
+
+          combined.set(`tvmaze-${s.id}`, {
+            id: s.id + 400000, source: 'TVMaze',
+            title: title, titleOriginal: title,
+            titleJp: '', titleEn: title,
+            altTitles: [],
+            image: s.image?.original || s.image?.medium || '',
+            genres: genres,
+            synopsis: synopsis,
+            rating: s.rating?.average || 0,
+            episodes: '?',
+            status: statusMap[s.status] || s.status || '',
+            year: year,
+            type: s.type || 'Serie',
+            malUrl: s.url || `https://www.tvmaze.com/shows/${s.id}`,
+            watchLink: '', currentEp: 0, userRating: 0
+          });
+        });
+      }
+
       // Ronda 2 (puente Wikipedia): si hay pocos resultados o ninguno coincide bien con la query,
       // buscar en Wikipedia español para encontrar el nombre original del anime
       const queryLower = query.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -278,10 +317,16 @@ export default function AnimeTracker() {
               const searchTitle = enTitle || jaTitle;
 
               if (searchTitle && searchTitle.length > 2) {
-                // Re-buscar en Jikan con el título original
-                const bridgeRes = await fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(searchTitle)}&limit=3&sfw=true`).then(r => r.json());
-                if (bridgeRes?.data) {
-                  bridgeRes.data.forEach(a => {
+                // Re-buscar en Jikan (anime) y TVMaze (series) con el título original
+                const [bridgeRes, bridgeTvRes] = await Promise.allSettled([
+                  fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(searchTitle)}&limit=3&sfw=true`).then(r => r.json()),
+                  fetch(`https://api.tvmaze.com/search/shows?q=${encodeURIComponent(searchTitle)}`).then(r => r.json())
+                ]);
+                let foundSomething = false;
+
+                // Resultados Jikan bridge
+                if (bridgeRes.status === 'fulfilled' && bridgeRes.value?.data) {
+                  bridgeRes.value.data.forEach(a => {
                     if (combined.has(`mal-${a.mal_id}`) || combined.has(`mal-bridge-${a.mal_id}`)) return;
                     const titleEn = a.title_english || '';
                     const allTitles = [a.title, titleEn, a.title_japanese, ...(a.title_synonyms || [])].filter(Boolean);
@@ -298,9 +343,40 @@ export default function AnimeTracker() {
                       type: a.type || '', malUrl: `https://myanimelist.net/anime/${a.mal_id}`,
                       watchLink: '', currentEp: 0, userRating: 0
                     });
+                    foundSomething = true;
                   });
-                  if (bridgeRes.data.length > 0) break; // Si encontró algo, no seguir con más resultados de Wikipedia
                 }
+
+                // Resultados TVMaze bridge (para series occidentales)
+                if (bridgeTvRes.status === 'fulfilled' && Array.isArray(bridgeTvRes.value)) {
+                  bridgeTvRes.value.slice(0, 3).forEach(r => {
+                    const s = r.show;
+                    if (!s) return;
+                    const isDup = [...combined.values()].some(e =>
+                      (e.title || '').toLowerCase() === (s.name || '').toLowerCase()
+                    );
+                    if (isDup || combined.has(`tvmaze-${s.id}`)) return;
+                    const synopsis = (s.summary || 'Sin sinopsis disponible.').replace(/<[^>]*>/g, '').trim();
+                    const statusMap2 = { Running: 'En emisión', Ended: 'Finalizado', 'To Be Determined': 'Por determinar', 'In Development': 'En desarrollo' };
+                    combined.set(`tvmaze-bridge-${s.id}`, {
+                      id: s.id + 400000, source: 'TVMaze',
+                      title: s.name, titleOriginal: s.name,
+                      titleJp: '', titleEn: s.name,
+                      altTitles: [result.title].filter(Boolean),
+                      image: s.image?.original || s.image?.medium || '',
+                      genres: s.genres || [], synopsis: synopsis,
+                      rating: s.rating?.average || 0, episodes: '?',
+                      status: statusMap2[s.status] || s.status || '',
+                      year: s.premiered ? s.premiered.split('-')[0] : '',
+                      type: s.type || 'Serie',
+                      malUrl: s.url || `https://www.tvmaze.com/shows/${s.id}`,
+                      watchLink: '', currentEp: 0, userRating: 0
+                    });
+                    foundSomething = true;
+                  });
+                }
+
+                if (foundSomething) break;
               }
             } catch (e) { /* ignorar errores de páginas individuales */ }
           }
@@ -482,7 +558,7 @@ export default function AnimeTracker() {
           )) : searchQuery.length > 1 ? (
             <div className="no-results"><span>😢</span><p>Sin resultados para "{searchQuery}"</p></div>
           ) : (
-            <div className="search-placeholder"><span>🎌</span><p>Buscá cualquier anime o serie</p><p className="search-hint">MyAnimeList · Kitsu · AniList</p></div>
+            <div className="search-placeholder"><span>🎌</span><p>Buscá cualquier anime o serie</p><p className="search-hint">MyAnimeList · Kitsu · AniList · TVMaze</p></div>
           )}
         </div>
       </div>
