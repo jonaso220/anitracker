@@ -44,15 +44,18 @@ export default function AnimeTracker() {
   useEffect(() => { localStorage.setItem('watchedAnimes', JSON.stringify(watchedList)); }, [watchedList]);
   useEffect(() => { localStorage.setItem('watchLater', JSON.stringify(watchLater)); }, [watchLater]);
 
-  // Búsqueda combinada: Jikan (MyAnimeList) + Kitsu
+  // Búsqueda combinada: Jikan (MyAnimeList) + Kitsu + TMDB
+  const TMDB_KEY = '4ee01aed05036e4a540afae6f3a8e6c2';
+
   const searchAnime = useCallback(async (query) => {
     if (query.length < 2) { setSearchResults([]); return; }
     setIsSearching(true);
     try {
-      // Buscar en ambas APIs en paralelo
-      const [jikanRes, kitsuRes] = await Promise.allSettled([
+      // Buscar en las 3 APIs en paralelo
+      const [jikanRes, kitsuRes, tmdbRes] = await Promise.allSettled([
         fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(query)}&limit=10&sfw=true`).then(r => r.json()),
-        fetch(`https://kitsu.app/api/edge/anime?filter[text]=${encodeURIComponent(query)}&page[limit]=10`).then(r => r.json())
+        fetch(`https://kitsu.app/api/edge/anime?filter[text]=${encodeURIComponent(query)}&page[limit]=10`).then(r => r.json()),
+        fetch(`https://api.themoviedb.org/3/search/multi?api_key=${TMDB_KEY}&query=${encodeURIComponent(query)}&language=es-ES&page=1`).then(r => r.json())
       ]);
 
       const combined = new Map();
@@ -93,11 +96,10 @@ export default function AnimeTracker() {
           const titleJp = attrs.titles?.ja_jp || '';
           const allTitles = [titleEn, titleJp, attrs.canonicalTitle, ...(attrs.abbreviatedTitles || [])].filter(Boolean);
           
-          // Evitar duplicados: buscar si ya existe por título similar
           const isDuplicate = [...combined.values()].some(existing => {
             const existTitle = (existing.title || '').toLowerCase();
             const newTitle = (titleEn || attrs.canonicalTitle || '').toLowerCase();
-            return existTitle === newTitle || existing.titleJp === titleJp;
+            return existTitle === newTitle || (existing.titleJp && titleJp && existing.titleJp === titleJp);
           });
 
           if (!isDuplicate) {
@@ -122,6 +124,50 @@ export default function AnimeTracker() {
             });
           }
         });
+      }
+
+      // Procesar resultados de TMDB (series y películas)
+      if (tmdbRes.status === 'fulfilled' && tmdbRes.value?.results) {
+        tmdbRes.value.results
+          .filter(item => item.media_type === 'tv' || item.media_type === 'movie')
+          .slice(0, 10)
+          .forEach(item => {
+            const isMovie = item.media_type === 'movie';
+            const title = isMovie ? (item.title || item.original_title) : (item.name || item.original_name);
+            const originalTitle = isMovie ? (item.original_title || '') : (item.original_name || '');
+            const titleEs = isMovie ? (item.title || '') : (item.name || '');
+            const allTitles = [title, originalTitle, titleEs].filter(Boolean);
+            const year = isMovie ? (item.release_date || '').split('-')[0] : (item.first_air_date || '').split('-')[0];
+
+            const isDuplicate = [...combined.values()].some(existing => {
+              const existTitle = (existing.title || '').toLowerCase();
+              const newTitle = (title || '').toLowerCase();
+              const origTitle = (originalTitle || '').toLowerCase();
+              return existTitle === newTitle || existTitle === origTitle;
+            });
+
+            if (!isDuplicate) {
+              combined.set(`tmdb-${item.id}`, {
+                id: item.id + 200000,
+                source: 'TMDB',
+                title: titleEs || title,
+                titleOriginal: originalTitle,
+                titleJp: '',
+                titleEn: isMovie ? (item.original_title || '') : (item.original_name || ''),
+                altTitles: allTitles.filter((t, i, arr) => arr.indexOf(t) === i && t !== (titleEs || title)),
+                image: item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : '',
+                genres: [],
+                synopsis: item.overview || 'Sin sinopsis disponible.',
+                rating: item.vote_average || 0,
+                episodes: isMovie ? 'Película' : '?',
+                status: '',
+                year: year,
+                type: isMovie ? 'Película' : 'Serie',
+                malUrl: `https://www.themoviedb.org/${item.media_type}/${item.id}`,
+                watchLink: ''
+              });
+            }
+          });
       }
 
       setSearchResults([...combined.values()]);
@@ -318,8 +364,8 @@ export default function AnimeTracker() {
           ) : (
             <div className="search-placeholder">
               <span>🎌</span>
-              <p>Buscá cualquier anime por nombre en español, inglés o japonés</p>
-              <p className="search-hint">Se busca en MyAnimeList y Kitsu</p>
+              <p>Buscá cualquier anime o serie por nombre</p>
+              <p className="search-hint">Se busca en MyAnimeList, Kitsu y TMDB</p>
             </div>
           )}
         </div>
