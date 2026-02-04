@@ -94,6 +94,7 @@ export default function AnimeTracker() {
   useEffect(() => { localStorage.setItem('anitracker-theme', darkMode ? 'dark' : 'light'); }, [darkMode]);
 
   // Firebase Auth
+  const hasLoadedUser = useRef(null);
   useEffect(() => {
     if (!FIREBASE_ENABLED) return;
     initFirebase().then(async () => {
@@ -103,10 +104,19 @@ export default function AnimeTracker() {
         const result = await firebaseAuth.getRedirectResult(auth);
         if (result?.user) {
           setUser(result.user);
-          loadFromCloud(result.user.uid);
+          if (hasLoadedUser.current !== result.user.uid) {
+            hasLoadedUser.current = result.user.uid;
+            loadFromCloud(result.user.uid);
+          }
         }
       } catch (e) { console.error('Redirect result error:', e); }
-      firebaseAuth.onAuthStateChanged(auth, (u) => { setUser(u); if (u) loadFromCloud(u.uid); });
+      firebaseAuth.onAuthStateChanged(auth, (u) => { 
+        setUser(u); 
+        if (u && hasLoadedUser.current !== u.uid) {
+          hasLoadedUser.current = u.uid;
+          loadFromCloud(u.uid);
+        }
+      });
     });
   }, []);
 
@@ -160,35 +170,37 @@ export default function AnimeTracker() {
   const loadFromCloud = async (uid) => {
     if (!firebaseDb || !db || !uid) return;
     setSyncing(true);
-    loadedFromCloudAt.current = Date.now();
     try {
       const snap = await firebaseDb.getDoc(firebaseDb.doc(db, 'users', uid));
       if (snap.exists()) {
         const data = snap.data();
-        loadedFromCloudAt.current = Date.now();
+        // Marcar que estamos cargando para que auto-sync lo ignore
+        isLoadingFromCloud.current = true;
         if (data.schedule) setSchedule(JSON.parse(data.schedule));
         if (data.watchedList) setWatchedList(JSON.parse(data.watchedList));
         if (data.watchLater) setWatchLater(JSON.parse(data.watchLater));
+        // Dar tiempo a que los setState se procesen antes de permitir sync
+        setTimeout(() => { isLoadingFromCloud.current = false; }, 500);
+      } else {
+        isLoadingFromCloud.current = false;
       }
-    } catch (e) { console.error('Load error:', e); }
+    } catch (e) { 
+      console.error('Load error:', e); 
+      isLoadingFromCloud.current = false;
+    }
     setSyncing(false);
   };
 
   // Auto-sync when data changes and user is logged in
   const syncTimer = useRef(null);
-  const loadedFromCloudAt = useRef(0);
-  const hasLoadedOnce = useRef(false);
+  const isLoadingFromCloud = useRef(false);
   useEffect(() => {
-    if (!user) { hasLoadedOnce.current = false; return; }
-    // Ignorar cambios que vienen del load inicial (3 setState en ráfaga)
-    if (Date.now() - loadedFromCloudAt.current < 3000) {
-      hasLoadedOnce.current = true;
-      return;
-    }
-    // No sincronizar hasta que se haya completado al menos un load
-    if (!hasLoadedOnce.current) return;
+    if (!user) return;
+    if (isLoadingFromCloud.current) return; // No sync mientras cargamos del cloud
     if (syncTimer.current) clearTimeout(syncTimer.current);
-    syncTimer.current = setTimeout(() => saveToCloud(user.uid), 2000);
+    syncTimer.current = setTimeout(() => {
+      if (!isLoadingFromCloud.current) saveToCloud(user.uid);
+    }, 2000);
   }, [schedule, watchedList, watchLater, user]);
 
   // ============ AIRING DATA (AniList) ============
