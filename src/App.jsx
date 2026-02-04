@@ -26,10 +26,12 @@ const initFirebase = async () => {
   if (!FIREBASE_ENABLED || firebaseApp) return;
   try {
     const { initializeApp } = await import('firebase/app');
-    const { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signOut, onAuthStateChanged } = await import('firebase/auth');
+    const { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signOut, onAuthStateChanged, browserLocalPersistence, setPersistence } = await import('firebase/auth');
     const { getFirestore, doc, setDoc, getDoc } = await import('firebase/firestore');
     firebaseApp = initializeApp(FIREBASE_CONFIG);
     auth = getAuth(firebaseApp);
+    // Forzar persistencia local (ayuda en iOS)
+    try { await setPersistence(auth, browserLocalPersistence); } catch (e) {}
     db = getFirestore(firebaseApp);
     firebaseAuth = { signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signOut, onAuthStateChanged };
     firebaseDb = { doc, setDoc, getDoc };
