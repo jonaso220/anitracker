@@ -98,31 +98,42 @@ export default function AnimeTracker() {
     if (!FIREBASE_ENABLED) return;
     initFirebase().then(async () => {
       if (!firebaseAuth || !auth) return;
-      // Capturar resultado de redirect (mobile login flow)
+      // En iOS/mobile, capturar resultado de redirect ANTES de escuchar auth state
       try {
-        await firebaseAuth.getRedirectResult(auth);
+        const result = await firebaseAuth.getRedirectResult(auth);
+        if (result?.user) {
+          setUser(result.user);
+          loadFromCloud(result.user.uid);
+        }
       } catch (e) { console.error('Redirect result error:', e); }
       firebaseAuth.onAuthStateChanged(auth, (u) => { setUser(u); if (u) loadFromCloud(u.uid); });
     });
   }, []);
-
-  const isMobile = () => /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
   const loginWithGoogle = async () => {
     if (!FIREBASE_ENABLED) { alert('Firebase no está configurado.'); return; }
     await initFirebase();
     if (!firebaseAuth || !auth) return;
     const provider = new firebaseAuth.GoogleAuthProvider();
-    try {
-      if (isMobile()) {
+
+    // Detectar si estamos en iOS (todos los browsers iOS usan WebKit)
+    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+    if (isIOS) {
+      // iOS: usar redirect directamente (popup es unreliable en WebKit)
+      try {
         await firebaseAuth.signInWithRedirect(auth, provider);
-      } else {
+      } catch (e) { console.error('iOS redirect error:', e); }
+    } else {
+      try {
         await firebaseAuth.signInWithPopup(auth, provider);
+      } catch (e) {
+        if (e.code === 'auth/popup-blocked' || e.code === 'auth/popup-closed-by-user' || e.code === 'auth/cancelled-popup-request') {
+          try { await firebaseAuth.signInWithRedirect(auth, provider); } catch (e2) { console.error('Redirect fallback error:', e2); }
+        } else {
+          console.error('Login error:', e);
+        }
       }
-    } catch (e) {
-      console.error('Login error:', e);
-      // Fallback: si popup falla (ej: bloqueado), intentar redirect
-      try { await firebaseAuth.signInWithRedirect(auth, provider); } catch (e2) { console.error('Redirect fallback error:', e2); }
     }
   };
 
