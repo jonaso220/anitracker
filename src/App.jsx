@@ -26,12 +26,12 @@ const initFirebase = async () => {
   if (!FIREBASE_ENABLED || firebaseApp) return;
   try {
     const { initializeApp } = await import('firebase/app');
-    const { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } = await import('firebase/auth');
+    const { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signOut, onAuthStateChanged } = await import('firebase/auth');
     const { getFirestore, doc, setDoc, getDoc } = await import('firebase/firestore');
     firebaseApp = initializeApp(FIREBASE_CONFIG);
     auth = getAuth(firebaseApp);
     db = getFirestore(firebaseApp);
-    firebaseAuth = { signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged };
+    firebaseAuth = { signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signOut, onAuthStateChanged };
     firebaseDb = { doc, setDoc, getDoc };
   } catch (e) { console.error('Firebase init error:', e); }
 };
@@ -96,18 +96,34 @@ export default function AnimeTracker() {
   // Firebase Auth
   useEffect(() => {
     if (!FIREBASE_ENABLED) return;
-    initFirebase().then(() => {
+    initFirebase().then(async () => {
       if (!firebaseAuth || !auth) return;
+      // Capturar resultado de redirect (mobile login flow)
+      try {
+        await firebaseAuth.getRedirectResult(auth);
+      } catch (e) { console.error('Redirect result error:', e); }
       firebaseAuth.onAuthStateChanged(auth, (u) => { setUser(u); if (u) loadFromCloud(u.uid); });
     });
   }, []);
+
+  const isMobile = () => /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
   const loginWithGoogle = async () => {
     if (!FIREBASE_ENABLED) { alert('Firebase no está configurado.'); return; }
     await initFirebase();
     if (!firebaseAuth || !auth) return;
     const provider = new firebaseAuth.GoogleAuthProvider();
-    try { await firebaseAuth.signInWithPopup(auth, provider); } catch (e) { console.error('Login error:', e); }
+    try {
+      if (isMobile()) {
+        await firebaseAuth.signInWithRedirect(auth, provider);
+      } else {
+        await firebaseAuth.signInWithPopup(auth, provider);
+      }
+    } catch (e) {
+      console.error('Login error:', e);
+      // Fallback: si popup falla (ej: bloqueado), intentar redirect
+      try { await firebaseAuth.signInWithRedirect(auth, provider); } catch (e2) { console.error('Redirect fallback error:', e2); }
+    }
   };
 
   const logout = async () => {
@@ -133,6 +149,7 @@ export default function AnimeTracker() {
   const loadFromCloud = async (uid) => {
     if (!firebaseDb || !db || !uid) return;
     setSyncing(true);
+    loadedFromCloudAt.current = Date.now();
     try {
       const snap = await firebaseDb.getDoc(firebaseDb.doc(db, 'users', uid));
       if (snap.exists()) {
@@ -149,10 +166,16 @@ export default function AnimeTracker() {
   // Auto-sync when data changes and user is logged in
   const syncTimer = useRef(null);
   const loadedFromCloudAt = useRef(0);
+  const hasLoadedOnce = useRef(false);
   useEffect(() => {
-    if (!user) return;
-    // Ignorar cambios que vienen del load (3 setState = 3 triggers en ~100ms)
-    if (Date.now() - loadedFromCloudAt.current < 3000) return;
+    if (!user) { hasLoadedOnce.current = false; return; }
+    // Ignorar cambios que vienen del load inicial (3 setState en ráfaga)
+    if (Date.now() - loadedFromCloudAt.current < 3000) {
+      hasLoadedOnce.current = true;
+      return;
+    }
+    // No sincronizar hasta que se haya completado al menos un load
+    if (!hasLoadedOnce.current) return;
     if (syncTimer.current) clearTimeout(syncTimer.current);
     syncTimer.current = setTimeout(() => saveToCloud(user.uid), 2000);
   }, [schedule, watchedList, watchLater, user]);
