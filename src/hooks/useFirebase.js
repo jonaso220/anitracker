@@ -21,12 +21,12 @@ const initFirebase = async () => {
     const { initializeApp } = await import('firebase/app');
     const { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signOut, onAuthStateChanged, browserLocalPersistence, setPersistence } = await import('firebase/auth');
     const { getFirestore, doc, setDoc, getDoc } = await import('firebase/firestore');
-    
+
     firebaseApp = initializeApp(FIREBASE_CONFIG);
     auth = getAuth(firebaseApp);
     try { await setPersistence(auth, browserLocalPersistence); } catch (e) {}
     db = getFirestore(firebaseApp);
-    
+
     firebaseAuth = { signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signOut, onAuthStateChanged };
     firebaseDb = { doc, setDoc, getDoc };
   } catch (e) { console.error('Firebase init error:', e); }
@@ -37,71 +37,9 @@ export function useFirebase(schedule, watchedList, watchLater, setSchedule, setW
   const [syncing, setSyncing] = useState(false);
   const hasLoadedUser = useRef(null);
   const isLoadingFromCloud = useRef(false);
+  const loadVersion = useRef(0);
   const syncTimer = useRef(null);
-
-  // Inicializar Auth
-  useEffect(() => {
-    if (!FIREBASE_ENABLED) return;
-    initFirebase().then(async () => {
-      if (!firebaseAuth || !auth) return;
-      
-      try {
-        const result = await firebaseAuth.getRedirectResult(auth);
-        if (result?.user) {
-          setUser(result.user);
-          if (hasLoadedUser.current !== result.user.uid) {
-            hasLoadedUser.current = result.user.uid;
-            loadFromCloud(result.user.uid);
-          }
-        }
-      } catch (e) { console.error('Redirect result error:', e); }
-
-      firebaseAuth.onAuthStateChanged(auth, (u) => { 
-        setUser(u); 
-        if (u && hasLoadedUser.current !== u.uid) {
-          hasLoadedUser.current = u.uid;
-          loadFromCloud(u.uid);
-        }
-      });
-    });
-  }, []);
-
-  // Auto-sync
-  useEffect(() => {
-    if (!user) return;
-    if (isLoadingFromCloud.current) return;
-    if (syncTimer.current) clearTimeout(syncTimer.current);
-    
-    syncTimer.current = setTimeout(() => {
-      if (!isLoadingFromCloud.current) saveToCloud(user.uid);
-    }, 2000);
-  }, [schedule, watchedList, watchLater, user]);
-
-  const loginWithGoogle = async () => {
-    if (!FIREBASE_ENABLED) { alert('Firebase no está configurado.'); return; }
-    await initFirebase();
-    if (!firebaseAuth || !auth) return;
-    const provider = new firebaseAuth.GoogleAuthProvider();
-    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-
-    try {
-      if (isIOS) {
-        await firebaseAuth.signInWithRedirect(auth, provider);
-      } else {
-        await firebaseAuth.signInWithPopup(auth, provider);
-      }
-    } catch (e) {
-      if (e.code === 'auth/popup-blocked' || e.code === 'auth/popup-closed-by-user') {
-        try { await firebaseAuth.signInWithRedirect(auth, provider); } catch (e2) {}
-      }
-    }
-  };
-
-  const logout = async () => {
-    if (!firebaseAuth || !auth) return;
-    await firebaseAuth.signOut(auth);
-    setUser(null);
-  };
+  const savedLoadVersion = useRef(0);
 
   const saveToCloud = async (uid) => {
     if (!firebaseDb || !db || !uid) return;
@@ -125,13 +63,87 @@ export function useFirebase(schedule, watchedList, watchLater, setSchedule, setW
       if (snap.exists()) {
         const data = snap.data();
         isLoadingFromCloud.current = true;
+        loadVersion.current++;
         if (data.schedule) setSchedule(JSON.parse(data.schedule));
         if (data.watchedList) setWatchedList(JSON.parse(data.watchedList));
         if (data.watchLater) setWatchLater(JSON.parse(data.watchLater));
-        setTimeout(() => { isLoadingFromCloud.current = false; }, 500);
+        // Use queueMicrotask to flip the flag after React has processed the batched state updates
+        queueMicrotask(() => { isLoadingFromCloud.current = false; });
       }
     } catch (e) { console.error('Load error:', e); }
     setSyncing(false);
+  };
+
+  // Inicializar Auth
+  useEffect(() => {
+    if (!FIREBASE_ENABLED) return;
+    initFirebase().then(async () => {
+      if (!firebaseAuth || !auth) return;
+
+      try {
+        const result = await firebaseAuth.getRedirectResult(auth);
+        if (result?.user) {
+          setUser(result.user);
+          if (hasLoadedUser.current !== result.user.uid) {
+            hasLoadedUser.current = result.user.uid;
+            loadFromCloud(result.user.uid);
+          }
+        }
+      } catch (e) { console.error('Redirect result error:', e); }
+
+      firebaseAuth.onAuthStateChanged(auth, (u) => {
+        setUser(u);
+        if (u && hasLoadedUser.current !== u.uid) {
+          hasLoadedUser.current = u.uid;
+          loadFromCloud(u.uid);
+        }
+      });
+    });
+  }, []);
+
+  // Auto-sync
+  useEffect(() => {
+    if (!user) return;
+    if (isLoadingFromCloud.current) {
+      savedLoadVersion.current = loadVersion.current;
+      return;
+    }
+    // Skip the first render after a cloud load to avoid saving cloud data back
+    if (savedLoadVersion.current > 0 && savedLoadVersion.current === loadVersion.current) {
+      savedLoadVersion.current = 0;
+      return;
+    }
+    if (syncTimer.current) clearTimeout(syncTimer.current);
+
+    syncTimer.current = setTimeout(() => {
+      if (!isLoadingFromCloud.current) saveToCloud(user.uid);
+    }, 2000);
+  }, [schedule, watchedList, watchLater, user]);
+
+  const loginWithGoogle = async () => {
+    if (!FIREBASE_ENABLED) { alert('Firebase no está configurado.'); return; }
+    await initFirebase();
+    if (!firebaseAuth || !auth) return;
+    const provider = new firebaseAuth.GoogleAuthProvider();
+    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+    try {
+      if (isIOS) {
+        await firebaseAuth.signInWithRedirect(auth, provider);
+      } else {
+        await firebaseAuth.signInWithPopup(auth, provider);
+      }
+    } catch (e) {
+      if (e.code === 'auth/popup-blocked' || e.code === 'auth/popup-closed-by-user') {
+        try { await firebaseAuth.signInWithRedirect(auth, provider); } catch (_) {}
+      }
+    }
+  };
+
+  const logout = async () => {
+    if (!firebaseAuth || !auth) return;
+    await firebaseAuth.signOut(auth);
+    setUser(null);
   };
 
   return { user, syncing, loginWithGoogle, logout, FIREBASE_ENABLED };

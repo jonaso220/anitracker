@@ -1,6 +1,14 @@
 import React from 'react';
 import StarRating from './StarRating';
 
+const sanitizeUrl = (url) => {
+  if (!url) return '';
+  try {
+    const parsed = new URL(url);
+    return ['http:', 'https:'].includes(parsed.protocol) ? url : '';
+  } catch { return ''; }
+};
+
 const AnimeCard = ({ 
   anime, 
   day, 
@@ -63,7 +71,7 @@ const AnimeCard = ({
         </div>
         {anime.userRating > 0 && <StarRating rating={anime.userRating} size={12} />}
         {anime.watchLink && (
-          <a href={anime.watchLink} target="_blank" rel="noopener noreferrer" className="watch-link-badge" onClick={e => e.stopPropagation()}>▶ Ver</a>
+          <a href={sanitizeUrl(anime.watchLink)} target="_blank" rel="noopener noreferrer" className="watch-link-badge" onClick={e => e.stopPropagation()}>▶ Ver</a>
         )}
         {isWatched && (
           <div className={`status-badge ${anime.finished ? 'finished' : 'dropped'}`}>

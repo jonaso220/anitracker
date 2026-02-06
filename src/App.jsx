@@ -11,6 +11,14 @@ import { useDragDrop } from './hooks/useDragDrop';
 const daysOfWeek = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 const dayEmojis = ['📅', '🎯', '⚡', '🔥', '🎉', '🌟', '💫'];
 
+const sanitizeUrl = (url) => {
+  if (!url) return '';
+  try {
+    const parsed = new URL(url);
+    return ['http:', 'https:'].includes(parsed.protocol) ? url : '';
+  } catch { return ''; }
+};
+
 const emptySchedule = { 'Lunes': [], 'Martes': [], 'Miércoles': [], 'Jueves': [], 'Viernes': [], 'Sábado': [], 'Domingo': [] };
 
 export default function AnimeTracker() {
@@ -73,12 +81,12 @@ export default function AnimeTracker() {
 
   const markAsFinished = (anime, day) => {
     removeFromSchedule(anime.id, day);
-    setWatchedList(prev => [...prev.filter(a => a.id !== anime.id), { ...anime, finished: true, finishedDate: new Date().toLocaleDateString() }]);
+    setWatchedList(prev => [...prev.filter(a => a.id !== anime.id), { ...anime, finished: true, finishedDate: new Date().toISOString() }]);
   };
 
   const dropAnime = (anime, day) => {
     removeFromSchedule(anime.id, day);
-    setWatchedList(prev => [...prev.filter(a => a.id !== anime.id), { ...anime, finished: false, droppedDate: new Date().toLocaleDateString() }]);
+    setWatchedList(prev => [...prev.filter(a => a.id !== anime.id), { ...anime, finished: false, droppedDate: new Date().toISOString() }]);
   };
 
   const addToWatchLater = (anime) => {
@@ -88,7 +96,7 @@ export default function AnimeTracker() {
   };
 
   const markAsWatchedFromSearch = (anime) => {
-    setWatchedList(prev => [...prev.filter(a => a.id !== anime.id), { ...anime, finished: true, finishedDate: new Date().toLocaleDateString(), currentEp: anime.currentEp || 0, userRating: anime.userRating || 0 }]);
+    setWatchedList(prev => [...prev.filter(a => a.id !== anime.id), { ...anime, finished: true, finishedDate: new Date().toISOString(), currentEp: anime.currentEp || 0, userRating: anime.userRating || 0 }]);
     setShowSearch(false); setSearchQuery(''); setSearchResults([]);
   };
 
@@ -506,7 +514,7 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                     <h4>🔗 Link</h4>
                     {a.watchLink && !showLinkInput ? (
                         <div className="detail-link-row">
-                            <a href={a.watchLink} target="_blank" rel="noopener noreferrer" className="platform-btn watch">▶ Ver ahora</a>
+                            <a href={sanitizeUrl(a.watchLink)} target="_blank" rel="noopener noreferrer" className="platform-btn watch">▶ Ver ahora</a>
                             <button className="detail-action-sm" onClick={() => setShowLinkInput(true)}>✏️ Editar</button>
                         </div>
                     ) : (
