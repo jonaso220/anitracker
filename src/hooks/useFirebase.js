@@ -57,20 +57,27 @@ export function useFirebase(schedule, watchedList, watchLater, setSchedule, setW
 
   const loadFromCloud = async (uid) => {
     if (!firebaseDb || !db || !uid) return;
+    // Set the flag BEFORE the async getDoc to prevent the auto-sync effect
+    // from saving stale/empty local data to cloud while we're loading.
+    isLoadingFromCloud.current = true;
     setSyncing(true);
     try {
       const snap = await firebaseDb.getDoc(firebaseDb.doc(db, 'users', uid));
       if (snap.exists()) {
         const data = snap.data();
-        isLoadingFromCloud.current = true;
         loadVersion.current++;
         if (data.schedule) setSchedule(JSON.parse(data.schedule));
         if (data.watchedList) setWatchedList(JSON.parse(data.watchedList));
         if (data.watchLater) setWatchLater(JSON.parse(data.watchLater));
         // Use queueMicrotask to flip the flag after React has processed the batched state updates
         queueMicrotask(() => { isLoadingFromCloud.current = false; });
+      } else {
+        isLoadingFromCloud.current = false;
       }
-    } catch (e) { console.error('Load error:', e); }
+    } catch (e) {
+      console.error('Load error:', e);
+      isLoadingFromCloud.current = false;
+    }
     setSyncing(false);
   };
 
@@ -105,11 +112,14 @@ export function useFirebase(schedule, watchedList, watchLater, setSchedule, setW
   useEffect(() => {
     if (!user) return;
     if (isLoadingFromCloud.current) {
+      // Always cancel pending timers to prevent stale saves
+      if (syncTimer.current) { clearTimeout(syncTimer.current); syncTimer.current = null; }
       savedLoadVersion.current = loadVersion.current;
       return;
     }
     // Skip the first render after a cloud load to avoid saving cloud data back
     if (savedLoadVersion.current > 0 && savedLoadVersion.current === loadVersion.current) {
+      if (syncTimer.current) { clearTimeout(syncTimer.current); syncTimer.current = null; }
       savedLoadVersion.current = 0;
       return;
     }
