@@ -6,6 +6,7 @@ export function useAnimeData(schedule) {
   const [isSearching, setIsSearching] = useState(false);
   const [airingData, setAiringData] = useState({});
   const searchTimeout = useRef(null);
+  const searchIdRef = useRef(0);
   const airingCheckRef = useRef(null);
 
   const daysOfWeek = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
@@ -117,6 +118,10 @@ export function useAnimeData(schedule) {
         console.error('[AniTracker] Airing check failed:', err);
       }
     }, 1000);
+
+    return () => {
+      if (airingCheckRef.current) clearTimeout(airingCheckRef.current);
+    };
   }, [schedule]); // Se ejecuta cuando cambia el horario
 
   // --- 2. Lógica de Búsqueda (Jikan, Kitsu, AniList, TVMaze, Wiki) ---
@@ -128,6 +133,7 @@ export function useAnimeData(schedule) {
 
   const performSearch = async (query) => {
     if (query.length < 2) { setSearchResults([]); return; }
+    const currentSearchId = ++searchIdRef.current;
     setIsSearching(true);
     try {
       // AniList GraphQL query
@@ -380,9 +386,11 @@ export function useAnimeData(schedule) {
         return scoreRelevance(b) - scoreRelevance(a);
       });
 
-      setSearchResults(results);
-    } catch (err) { console.error('[AniTracker] Error:', err); setSearchResults([]); }
-    setIsSearching(false);
+      if (currentSearchId === searchIdRef.current) {
+        setSearchResults(results);
+      }
+    } catch (err) { console.error('[AniTracker] Error:', err); if (currentSearchId === searchIdRef.current) setSearchResults([]); }
+    if (currentSearchId === searchIdRef.current) setIsSearching(false);
   };
 
   const handleSearch = (query) => {

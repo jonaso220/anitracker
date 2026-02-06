@@ -138,34 +138,62 @@ export function useDragDrop(schedule, setSchedule, daysOfWeek) {
     }
 
     // Detección manual de elementos bajo el dedo
+    const ghostEl = touchRef.current.ghost;
+    if (ghostEl) ghostEl.style.pointerEvents = 'none';
     const element = document.elementFromPoint(touch.clientX, touch.clientY);
+    if (ghostEl) ghostEl.style.pointerEvents = '';
     const dayRow = element?.closest('.day-row');
-    
+
     if (dayRow) {
-        // Encontrar qué día es basándose en el DOM o props pasadas si es posible
-        // Aquí asumimos que dayRow tiene un atributo o podemos inferirlo. 
-        // Para simplificar, pasamos 'day' desde el componente, pero en touch move global es difícil.
-        // Mejor estrategia: detectar el dropTarget basándonos en coordenadas de las filas (App debe pasar refs).
+        const dayLabel = dayRow.querySelector('.day-name');
+        const detectedDay = dayLabel ? dayLabel.textContent.trim() : null;
+        if (detectedDay && daysOfWeek.includes(detectedDay)) {
+          dropTargetRef.current = detectedDay;
+          setDropTarget(detectedDay);
+
+          // Calcular índice de inserción basado en las tarjetas de la fila
+          const cards = dayRow.querySelectorAll('.anime-card');
+          let idx = cards.length;
+          for (let i = 0; i < cards.length; i++) {
+            const rect = cards[i].getBoundingClientRect();
+            if (touch.clientX < rect.left + rect.width / 2) { idx = i; break; }
+          }
+          dropIndexRef.current = idx;
+          setDropIndex(idx);
+        }
+    } else {
+        dropTargetRef.current = null;
+        setDropTarget(null);
     }
-    // NOTA: La lógica completa de detección de fila por coordenadas está en tu App.jsx original
-    // Para simplificar el hook, podemos devolver touchRef para que App.jsx lo use o 
-    // pasar las refs de las filas a este hook. 
   };
 
   const handleTouchEnd = () => {
     if (touchRef.current.timer) clearTimeout(touchRef.current.timer);
     if (touchRef.current.ghost) touchRef.current.ghost.remove();
-    
-    const target = dropTargetRef.current; // App debe actualizar esto
+
+    const target = dropTargetRef.current;
     const idx = dropIndexRef.current;
-    
+
     if (touchRef.current.active && touchRef.current.anime && target) {
       insertAnimeAtPosition(touchRef.current.anime, touchRef.current.fromDay, target, idx);
     }
-    
-    // Reset
-    touchRef.current = { timer: null, active: false, anime: null, fromDay: null, startY: 0, ghost: null };
+
+    const wasMoved = touchRef.current.moved;
+    const wasActive = touchRef.current.active;
+
+    // Keep flags readable for the click handler that fires after touchend
+    touchRef.current.ghost = null;
+    touchRef.current.timer = null;
+    touchRef.current.anime = null;
+    touchRef.current.moved = wasMoved;
+    touchRef.current.active = wasActive;
+
     handleDragEnd();
+
+    // Delay full reset so onClick can still check moved/active flags
+    setTimeout(() => {
+      touchRef.current = { timer: null, active: false, anime: null, fromDay: null, startY: 0, startX: 0, ghost: null, moved: false };
+    }, 0);
   };
 
   return {
