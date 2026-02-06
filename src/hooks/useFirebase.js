@@ -125,14 +125,12 @@ export function useFirebase(schedule, watchedList, watchLater, setSchedule, setW
     await initFirebase();
     if (!firebaseAuth || !auth) return;
     const provider = new firebaseAuth.GoogleAuthProvider();
-    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
 
     try {
-      if (isIOS) {
-        await firebaseAuth.signInWithRedirect(auth, provider);
-      } else {
-        await firebaseAuth.signInWithPopup(auth, provider);
-      }
+      // Always try popup first — signInWithRedirect is broken on iOS browsers
+      // (Chrome/Safari) due to WebKit storage partitioning (ITP) which causes
+      // getRedirectResult to return null after a successful login.
+      await firebaseAuth.signInWithPopup(auth, provider);
     } catch (e) {
       if (e.code === 'auth/popup-blocked' || e.code === 'auth/popup-closed-by-user') {
         try { await firebaseAuth.signInWithRedirect(auth, provider); } catch (_) {}
