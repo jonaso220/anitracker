@@ -283,7 +283,7 @@ export default function AnimeTracker() {
         {activeTab === 'schedule' && (
           <div className="schedule-rows">
             {Object.keys(airingData).length > 0 && (
-              <AiringSection schedule={schedule} airingData={airingData} onDetail={(a) => setShowAnimeDetail({ ...a, _day: a._day, _isWatchLater: false, _isWatched: false })} />
+              <AiringSection schedule={schedule} airingData={airingData} onDetail={(a) => setShowAnimeDetail({ ...a, _day: a._day, _isWatchLater: false, _isWatched: false, _isSeason: false })} />
             )}
             {daysOfWeek.map((day, i) => (
               <div key={day} ref={el => { dayRowRefs.current[day] = el; }}
@@ -302,7 +302,7 @@ export default function AnimeTracker() {
                         anime={a} day={day} cardIndex={idx} cardDay={day} airingData={airingData} isDraggable={true}
                         onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragOver={handleDragOverCard}
                         onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}
-                        onClick={() => { if (touchRef.current.moved || touchRef.current.active) return; setShowAnimeDetail({ ...a, _day: day, _isWatchLater: false, _isWatched: false }); }}
+                        onClick={() => { if (touchRef.current.moved || touchRef.current.active) return; setShowAnimeDetail({ ...a, _day: day, _isWatchLater: false, _isWatched: false, _isSeason: false }); }}
                       />
                       {dropTarget === day && dropIndex === idx + 1 && idx === schedule[day].length - 1 && isDragging && <div className="drop-indicator"></div>}
                     </React.Fragment>
@@ -321,7 +321,7 @@ export default function AnimeTracker() {
               {(() => {
                 const filtered = filterByLocalSearch(watchLater);
                 return filtered.length > 0 ? filtered.map(a => (
-                  <AnimeCard key={a.id} anime={a} isWatchLater airingData={airingData} onClick={() => setShowAnimeDetail({ ...a, _isWatchLater: true })} />
+                  <AnimeCard key={a.id} anime={a} isWatchLater airingData={airingData} onClick={() => setShowAnimeDetail({ ...a, _isWatchLater: true, _isWatched: false, _isSeason: false })} />
                 )) : <div className="empty-state"><span>📺</span><p>{localSearch ? 'Sin resultados' : 'No hay animes guardados'}</p></div>;
               })()}
             </div>
@@ -349,7 +349,7 @@ export default function AnimeTracker() {
               {(() => {
                 const filtered = getFilteredWatched();
                 return filtered.length > 0 ? filtered.map(a => (
-                  <AnimeCard key={a.id} anime={a} isWatched airingData={airingData} onClick={() => setShowAnimeDetail({ ...a, _isWatched: true })} />
+                  <AnimeCard key={a.id} anime={a} isWatched airingData={airingData} onClick={() => setShowAnimeDetail({ ...a, _isWatched: true, _isWatchLater: false, _isSeason: false })} />
                 )) : <div className="empty-state"><span>🎬</span><p>No hay resultados</p></div>;
               })()}
             </div>
