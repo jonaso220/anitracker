@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import StarRating from '../StarRating';
 import { sanitizeUrl, pruneTranslationCache } from '../../constants';
 
-const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, updateEpisode, updateUserRating, updateAnimeLink, updateAnimeNotes, markAsFinished, dropAnime, setShowMoveDayPicker, setShowDayPicker, resumeAnime }) => {
+const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, updateEpisode, updateUserRating, updateAnimeLink, updateAnimeNotes, markAsFinished, dropAnime, deleteAnime, setShowMoveDayPicker, setShowDayPicker, resumeAnime }) => {
     // Compute initial synopsis synchronously (Spanish detection + cache check)
     const getInitialSynopsis = () => {
         const syn = showAnimeDetail?.synopsis;
@@ -140,6 +140,9 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                     </>}
                     {(a._isWatchLater || a._isSeason) && <button className="detail-action-btn schedule" onClick={() => closeAndDo(() => setShowDayPicker(a))}>📅 Añadir a semana</button>}
                     {a._isWatched && !a.finished && <button className="detail-action-btn resume" onClick={() => closeAndDo(() => resumeAnime(a))}>▶ Retomar</button>}
+                    {(isSchedule || a._isWatchLater || a._isWatched) && (
+                        <button className="detail-action-btn delete" onClick={() => closeAndDo(() => deleteAnime(a))}>🗑 Eliminar</button>
+                    )}
                 </div>
             </div>
         </div>

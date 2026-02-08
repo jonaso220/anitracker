@@ -119,6 +119,16 @@ export default function AnimeTracker() {
     showToast(`"${anime.title}" retomado`, () => { setWatchedList(prevWatched); });
   };
 
+  const deleteAnime = (anime) => {
+    const prevSchedule = JSON.parse(JSON.stringify(schedule));
+    const prevWatched = [...watchedList];
+    const prevLater = [...watchLater];
+    if (anime._day) removeFromSchedule(anime.id, anime._day);
+    if (anime._isWatchLater) setWatchLater(prev => prev.filter(a => a.id !== anime.id));
+    if (anime._isWatched) setWatchedList(prev => prev.filter(a => a.id !== anime.id));
+    showToast(`"${anime.title}" eliminado`, () => { setSchedule(prevSchedule); setWatchedList(prevWatched); setWatchLater(prevLater); });
+  };
+
   const moveAnimeToDay = (anime, fromDay, toDay) => {
     setSchedule(prev => {
       const next = { ...prev };
@@ -366,7 +376,7 @@ export default function AnimeTracker() {
 
       {showAnimeDetail && <AnimeDetailModal key={showAnimeDetail.id} showAnimeDetail={showAnimeDetail} setShowAnimeDetail={setShowAnimeDetail}
         airingData={airingData} updateEpisode={updateEpisode} updateUserRating={updateUserRating} updateAnimeLink={updateAnimeLink}
-        updateAnimeNotes={updateAnimeNotes} markAsFinished={markAsFinished} dropAnime={dropAnime}
+        updateAnimeNotes={updateAnimeNotes} markAsFinished={markAsFinished} dropAnime={dropAnime} deleteAnime={deleteAnime}
         setShowMoveDayPicker={setShowMoveDayPicker} setShowDayPicker={setShowDayPicker} resumeAnime={resumeAnime} />}
 
       {showDayPicker && <DayPickerModal showDayPicker={showDayPicker} setShowDayPicker={setShowDayPicker}

@@ -546,6 +546,7 @@
 .detail-action-btn.move { background: linear-gradient(135deg, rgba(236,72,153,0.3), rgba(236,72,153,0.15)); color: #f472b6; }
 .detail-action-btn.schedule { background: linear-gradient(135deg, rgba(168,85,247,0.3), rgba(168,85,247,0.15)); color: #c4b5fd; }
 .detail-action-btn.resume { background: linear-gradient(135deg, rgba(99,102,241,0.3), rgba(99,102,241,0.15)); color: #818cf8; }
+.detail-action-btn.delete { background: linear-gradient(135deg, rgba(239,68,68,0.12), rgba(239,68,68,0.05)); color: #f87171; border: 1px dashed rgba(239,68,68,0.3); }
 .detail-action-btn:hover { transform: translateY(-2px); filter: brightness(1.2); box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
 
 .platform-btn { padding: 0.6rem 1rem; border-radius: 10px; color: #fff; text-decoration: none; font-weight: 500; transition: all 0.2s; font-size: 0.85rem; display: inline-block; }
