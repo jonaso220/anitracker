@@ -294,8 +294,19 @@ export function useAnimeData(schedule) {
 
       if (!hasGoodMatch && query.length >= 4) {
         try {
-          const wikiRes = await fetch(`https://es.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query + ' anime')}&srlimit=3&format=json&origin=*`).then(r => r.json());
-          const wikiResults = wikiRes?.query?.search || [];
+          // Search Wikipedia in Spanish for the query (try multiple terms for broader coverage)
+          const wikiSearches = await Promise.allSettled([
+            fetch(`https://es.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query + ' serie')}&srlimit=3&format=json&origin=*`).then(r => r.json()),
+            fetch(`https://es.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query + ' película')}&srlimit=2&format=json&origin=*`).then(r => r.json()),
+            fetch(`https://es.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query + ' anime')}&srlimit=2&format=json&origin=*`).then(r => r.json())
+          ]);
+          const seen = new Set();
+          const wikiResults = [];
+          wikiSearches.forEach(s => {
+            if (s.status === 'fulfilled') (s.value?.query?.search || []).forEach(r => {
+              if (!seen.has(r.title)) { seen.add(r.title); wikiResults.push(r); }
+            });
+          });
 
           for (const result of wikiResults) {
             try {
@@ -305,13 +316,19 @@ export function useAnimeData(schedule) {
               const langlinks = page?.langlinks || [];
               const enTitle = langlinks.find(l => l.lang === 'en')?.['*'] || '';
               const jaTitle = langlinks.find(l => l.lang === 'ja')?.['*'] || '';
-              const searchTitle = enTitle || jaTitle;
+              const wikiPageTitle = result.title;
+              const searchTitle = enTitle || jaTitle || wikiPageTitle;
 
               if (searchTitle && searchTitle.length > 2) {
-                const [bridgeRes, bridgeTvRes] = await Promise.allSettled([
+                const bridgeQueries = [
                   fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(searchTitle)}&limit=3&sfw=true`).then(r => r.json()),
                   fetch(`https://api.tvmaze.com/search/shows?q=${encodeURIComponent(searchTitle)}`).then(r => r.json())
-                ]);
+                ];
+                // Also search TVMaze with the Wikipedia page title (often the localized name)
+                if (wikiPageTitle !== searchTitle) {
+                  bridgeQueries.push(fetch(`https://api.tvmaze.com/search/shows?q=${encodeURIComponent(wikiPageTitle)}`).then(r => r.json()));
+                }
+                const [bridgeRes, bridgeTvRes, bridgeTvAltRes] = await Promise.allSettled(bridgeQueries);
                 let foundSomething = false;
 
                 if (bridgeRes.status === 'fulfilled' && bridgeRes.value?.data) {
@@ -336,14 +353,18 @@ export function useAnimeData(schedule) {
                   });
                 }
 
-                if (bridgeTvRes.status === 'fulfilled' && Array.isArray(bridgeTvRes.value)) {
-                  bridgeTvRes.value.slice(0, 3).forEach(r => {
+                // Process TVMaze results from both bridge queries
+                const tvBridgeResults = [];
+                if (bridgeTvRes.status === 'fulfilled' && Array.isArray(bridgeTvRes.value)) tvBridgeResults.push(...bridgeTvRes.value);
+                if (bridgeTvAltRes && bridgeTvAltRes.status === 'fulfilled' && Array.isArray(bridgeTvAltRes.value)) tvBridgeResults.push(...bridgeTvAltRes.value);
+
+                const statusMap2 = { Running: 'En emisión', Ended: 'Finalizado', 'To Be Determined': 'Por determinar', 'In Development': 'En desarrollo' };
+                tvBridgeResults.slice(0, 5).forEach(r => {
                     const s = r.show;
                     if (!s) return;
                     const isDup = [...combined.values()].some(e => (e.title || '').toLowerCase() === (s.name || '').toLowerCase());
-                    if (isDup || combined.has(`tvmaze-${s.id}`)) return;
+                    if (isDup || combined.has(`tvmaze-${s.id}`) || combined.has(`tvmaze-bridge-${s.id}`)) return;
                     const synopsis = (s.summary || 'Sin sinopsis disponible.').replace(/<[^>]*>/g, '').trim();
-                    const statusMap2 = { Running: 'En emisión', Ended: 'Finalizado', 'To Be Determined': 'Por determinar', 'In Development': 'En desarrollo' };
                     combined.set(`tvmaze-bridge-${s.id}`, {
                       id: s.id + 400000, source: 'TVMaze',
                       title: s.name, titleOriginal: s.name,
@@ -359,8 +380,7 @@ export function useAnimeData(schedule) {
                       watchLink: '', currentEp: 0, userRating: 0
                     });
                     foundSomething = true;
-                  });
-                }
+                });
                 if (foundSomething) break;
               }
             } catch (e) {}
