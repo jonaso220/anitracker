@@ -70,8 +70,10 @@ export default function AnimeTracker() {
   const undoToast = () => { if (toast?.undoFn) toast.undoFn(); dismissToast(); };
 
   // --- Acciones ---
+  const clean = ({ _day, _isWatchLater, _isWatched, _isSeason, ...rest }) => rest;
+
   const addToSchedule = (anime, day) => {
-    const a = { ...anime, currentEp: anime.currentEp || 0, userRating: anime.userRating || 0, notes: anime.notes || '' };
+    const a = { ...clean(anime), currentEp: anime.currentEp || 0, userRating: anime.userRating || 0, notes: anime.notes || '' };
     setSchedule(prev => ({ ...prev, [day]: [...prev[day].filter(x => x.id !== a.id), a] }));
     setShowDayPicker(null); setShowSearch(false); setSearchQuery(''); setSearchResults([]);
   };
@@ -84,7 +86,7 @@ export default function AnimeTracker() {
     const prevSchedule = JSON.parse(JSON.stringify(schedule));
     const prevWatched = [...watchedList];
     removeFromSchedule(anime.id, day);
-    setWatchedList(prev => [...prev.filter(a => a.id !== anime.id), { ...anime, finished: true, finishedDate: new Date().toISOString() }]);
+    setWatchedList(prev => [...prev.filter(a => a.id !== anime.id), { ...clean(anime), finished: true, finishedDate: new Date().toISOString() }]);
     showToast(`"${anime.title}" marcado como finalizado`, () => { setSchedule(prevSchedule); setWatchedList(prevWatched); });
   };
 
@@ -92,18 +94,18 @@ export default function AnimeTracker() {
     const prevSchedule = JSON.parse(JSON.stringify(schedule));
     const prevWatched = [...watchedList];
     removeFromSchedule(anime.id, day);
-    setWatchedList(prev => [...prev.filter(a => a.id !== anime.id), { ...anime, finished: false, droppedDate: new Date().toISOString() }]);
+    setWatchedList(prev => [...prev.filter(a => a.id !== anime.id), { ...clean(anime), finished: false, droppedDate: new Date().toISOString() }]);
     showToast(`"${anime.title}" dropeado`, () => { setSchedule(prevSchedule); setWatchedList(prevWatched); });
   };
 
   const addToWatchLater = (anime) => {
-    const a = { ...anime, currentEp: anime.currentEp || 0, userRating: anime.userRating || 0, notes: anime.notes || '' };
+    const a = { ...clean(anime), currentEp: anime.currentEp || 0, userRating: anime.userRating || 0, notes: anime.notes || '' };
     setWatchLater(prev => [...prev.filter(x => x.id !== a.id), a]);
     setShowSearch(false); setSearchQuery(''); setSearchResults([]);
   };
 
   const markAsWatched = (anime) => {
-    setWatchedList(prev => [...prev.filter(a => a.id !== anime.id), { ...anime, finished: true, finishedDate: new Date().toISOString(), currentEp: anime.currentEp || 0, userRating: anime.userRating || 0, notes: anime.notes || '' }]);
+    setWatchedList(prev => [...prev.filter(a => a.id !== anime.id), { ...clean(anime), finished: true, finishedDate: new Date().toISOString(), currentEp: anime.currentEp || 0, userRating: anime.userRating || 0, notes: anime.notes || '' }]);
   };
 
   const markAsWatchedFromSearch = (anime) => {
@@ -113,7 +115,7 @@ export default function AnimeTracker() {
 
   const moveFromWatchLaterToSchedule = (anime, day) => {
     setWatchLater(prev => prev.filter(a => a.id !== anime.id));
-    setSchedule(prev => ({ ...prev, [day]: [...prev[day].filter(a => a.id !== anime.id), anime] }));
+    setSchedule(prev => ({ ...prev, [day]: [...prev[day].filter(a => a.id !== anime.id), clean(anime)] }));
   };
 
   const resumeAnime = (anime) => {
