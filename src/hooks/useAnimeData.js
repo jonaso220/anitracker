@@ -150,7 +150,7 @@ export function useAnimeData(schedule) {
         }
       }`;
 
-      const [jikanRes, kitsuRes, anilistRes, tvmazeRes] = await Promise.allSettled([
+      const [jikanRes, kitsuRes, anilistRes, tvmazeRes, itunesRes] = await Promise.allSettled([
         fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(query)}&limit=10&sfw=true`).then(r => r.json()),
         fetch(`https://kitsu.app/api/edge/anime?filter[text]=${encodeURIComponent(query)}&page[limit]=10`).then(r => r.json()),
         fetch('https://graphql.anilist.co', {
@@ -161,7 +161,8 @@ export function useAnimeData(schedule) {
         fetch(`https://api.tvmaze.com/search/shows?q=${encodeURIComponent(query)}`).then(r => {
           if (!r.ok) throw new Error(`TVMaze HTTP ${r.status}`);
           return r.json();
-        })
+        }),
+        fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=movie&entity=movie,tvSeason&limit=10&country=US`).then(r => r.json())
       ]);
       const combined = new Map();
 
@@ -281,6 +282,38 @@ export function useAnimeData(schedule) {
             type: s.type || 'Serie',
             malUrl: s.url || `https://www.tvmaze.com/shows/${s.id}`,
             watchLink: '', currentEp: 0, userRating: 0
+          });
+        });
+      }
+
+      // Procesar iTunes (películas y series)
+      if (itunesRes.status === 'fulfilled' && itunesRes.value?.results) {
+        itunesRes.value.results.forEach(item => {
+          const title = item.trackName || item.collectionName || '';
+          if (!title) return;
+          const isDup = [...combined.values()].some(e =>
+            (e.title || '').toLowerCase() === title.toLowerCase() ||
+            (e.titleEn || '').toLowerCase() === title.toLowerCase()
+          );
+          if (isDup) return;
+          const isMovie = item.kind === 'feature-movie';
+          const year = item.releaseDate ? item.releaseDate.split('-')[0] : '';
+          const genre = item.primaryGenreName || '';
+          const synopsis = item.longDescription || item.shortDescription || 'Sin sinopsis disponible.';
+          const artUrl = (item.artworkUrl100 || '').replace('100x100', '600x600');
+          combined.set(`itunes-${item.trackId || item.collectionId}`, {
+            id: (item.trackId || item.collectionId || Math.random() * 100000 | 0) + 500000, source: 'iTunes',
+            title: title, titleOriginal: title,
+            titleJp: '', titleEn: title,
+            altTitles: [],
+            image: artUrl,
+            genres: genre ? [genre] : [],
+            synopsis: synopsis,
+            rating: 0, episodes: null,
+            status: '', year: year,
+            type: isMovie ? 'Película' : 'Serie',
+            malUrl: item.trackViewUrl || item.collectionViewUrl || '',
+            watchLink: '', currentEp: 0, userRating: 0, notes: ''
           });
         });
       }

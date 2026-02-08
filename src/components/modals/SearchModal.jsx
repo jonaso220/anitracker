@@ -31,7 +31,7 @@ const SearchModal = ({ setShowSearch, searchQuery, handleSearch, searchResults, 
               </div>
             </div>
           )) : searchQuery.length > 1 ? <div className="no-results"><span>😢</span><p>Sin resultados para "{searchQuery}"</p></div>
-          : <div className="search-placeholder"><span>🎌</span><p>Buscá cualquier anime o serie</p><p className="search-hint">MyAnimeList · Kitsu · AniList · TVMaze</p></div>}
+          : <div className="search-placeholder"><span>🎌</span><p>Buscá anime, series o películas</p><p className="search-hint">MAL · Kitsu · AniList · TVMaze · iTunes</p></div>}
         </div>
       </div>
     </div>
