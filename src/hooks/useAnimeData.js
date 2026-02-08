@@ -421,6 +421,85 @@ export function useAnimeData(schedule) {
         } catch (e) { console.log('Wikipedia bridge failed:', e); }
       }
 
+      // Ronda 3 (English Wikipedia fallback) - if still no good match
+      const hasGoodMatchNow = [...combined.values()].some(v => {
+        const titles = [v.title, v.titleOriginal, v.titleJp, v.titleEn, ...(v.altTitles || [])].filter(Boolean);
+        return titles.some(t => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes(queryLower) || queryLower.includes(t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')));
+      });
+      if (!hasGoodMatchNow && query.length >= 4) {
+        try {
+          const enWikiSearches = await Promise.allSettled([
+            fetch(`https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query + ' TV series')}&srlimit=3&format=json&origin=*`).then(r => r.json()),
+            fetch(`https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query + ' film')}&srlimit=2&format=json&origin=*`).then(r => r.json())
+          ]);
+          const enSeen = new Set();
+          const enWikiResults = [];
+          enWikiSearches.forEach(s => {
+            if (s.status === 'fulfilled') (s.value?.query?.search || []).forEach(r => {
+              if (!enSeen.has(r.title)) { enSeen.add(r.title); enWikiResults.push(r); }
+            });
+          });
+          for (const result of enWikiResults) {
+            try {
+              const enTitle = result.title;
+              const [tvRes, itunesRes2] = await Promise.allSettled([
+                fetch(`https://api.tvmaze.com/search/shows?q=${encodeURIComponent(enTitle)}`).then(r => r.json()),
+                fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(enTitle)}&media=movie&entity=movie,tvSeason&limit=3&country=US`).then(r => r.json())
+              ]);
+              let foundSomething = false;
+              const statusMap3 = { Running: 'En emisión', Ended: 'Finalizado', 'To Be Determined': 'Por determinar', 'In Development': 'En desarrollo' };
+              if (tvRes.status === 'fulfilled' && Array.isArray(tvRes.value)) {
+                tvRes.value.slice(0, 3).forEach(r => {
+                  const s = r.show;
+                  if (!s || combined.has(`tvmaze-${s.id}`) || combined.has(`tvmaze-bridge-${s.id}`)) return;
+                  const isDup = [...combined.values()].some(e => (e.title || '').toLowerCase() === (s.name || '').toLowerCase());
+                  if (isDup) return;
+                  const synopsis = (s.summary || 'Sin sinopsis disponible.').replace(/<[^>]*>/g, '').trim();
+                  combined.set(`tvmaze-en-${s.id}`, {
+                    id: s.id + 400000, source: 'TVMaze',
+                    title: s.name, titleOriginal: s.name,
+                    titleJp: '', titleEn: s.name,
+                    altTitles: [query].filter(Boolean),
+                    image: s.image?.original || s.image?.medium || '',
+                    genres: s.genres || [], synopsis: synopsis,
+                    rating: s.rating?.average || 0, episodes: null,
+                    status: statusMap3[s.status] || s.status || '',
+                    year: s.premiered ? s.premiered.split('-')[0] : '',
+                    type: s.type || 'Serie',
+                    malUrl: s.url || `https://www.tvmaze.com/shows/${s.id}`,
+                    watchLink: '', currentEp: 0, userRating: 0, notes: ''
+                  });
+                  foundSomething = true;
+                });
+              }
+              if (itunesRes2.status === 'fulfilled' && itunesRes2.value?.results) {
+                itunesRes2.value.results.slice(0, 3).forEach(item => {
+                  const title = item.trackName || item.collectionName || '';
+                  if (!title) return;
+                  const isDup = [...combined.values()].some(e => (e.title || '').toLowerCase() === title.toLowerCase());
+                  if (isDup) return;
+                  const artUrl = (item.artworkUrl100 || '').replace('100x100', '600x600');
+                  combined.set(`itunes-en-${item.trackId || item.collectionId}`, {
+                    id: (item.trackId || item.collectionId || Math.random() * 100000 | 0) + 500000, source: 'iTunes',
+                    title: title, titleOriginal: title,
+                    titleJp: '', titleEn: title,
+                    altTitles: [query].filter(Boolean),
+                    image: artUrl, genres: item.primaryGenreName ? [item.primaryGenreName] : [],
+                    synopsis: item.longDescription || item.shortDescription || 'Sin sinopsis disponible.',
+                    rating: 0, episodes: null, status: '', year: item.releaseDate ? item.releaseDate.split('-')[0] : '',
+                    type: item.kind === 'feature-movie' ? 'Película' : 'Serie',
+                    malUrl: item.trackViewUrl || item.collectionViewUrl || '',
+                    watchLink: '', currentEp: 0, userRating: 0, notes: ''
+                  });
+                  foundSomething = true;
+                });
+              }
+              if (foundSomething) break;
+            } catch (e) {}
+          }
+        } catch (e) { console.log('English Wikipedia bridge failed:', e); }
+      }
+
       // Ordenar resultados
       const results = [...combined.values()];
       const qNorm = query.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
