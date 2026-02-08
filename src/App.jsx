@@ -102,8 +102,12 @@ export default function AnimeTracker() {
     setShowSearch(false); setSearchQuery(''); setSearchResults([]);
   };
 
-  const markAsWatchedFromSearch = (anime) => {
+  const markAsWatched = (anime) => {
     setWatchedList(prev => [...prev.filter(a => a.id !== anime.id), { ...anime, finished: true, finishedDate: new Date().toISOString(), currentEp: anime.currentEp || 0, userRating: anime.userRating || 0, notes: anime.notes || '' }]);
+  };
+
+  const markAsWatchedFromSearch = (anime) => {
+    markAsWatched(anime);
     setShowSearch(false); setSearchQuery(''); setSearchResults([]);
   };
 
@@ -353,7 +357,7 @@ export default function AnimeTracker() {
         {activeTab === 'season' && (
           <SeasonSection seasonAnime={seasonAnime} seasonLoading={seasonLoading} schedule={schedule} watchedList={watchedList} watchLater={watchLater}
             selectedSeason={selectedSeason} onChangeSeason={changeSeason}
-            setShowDayPicker={setShowDayPicker} addToWatchLater={addToWatchLater}
+            setShowDayPicker={setShowDayPicker} addToWatchLater={addToWatchLater} markAsWatched={markAsWatched}
             onDetail={(a) => setShowAnimeDetail({ ...a, _isWatchLater: false, _isWatched: false, _isSeason: true })} />
         )}
 

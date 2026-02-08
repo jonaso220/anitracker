@@ -5,7 +5,7 @@ const SEASONS = ['WINTER', 'SPRING', 'SUMMER', 'FALL'];
 const SEASON_LABELS = { WINTER: 'Invierno', SPRING: 'Primavera', SUMMER: 'Verano', FALL: 'Otoño' };
 const SEASON_ICONS = { WINTER: '❄️', SPRING: '🌸', SUMMER: '☀️', FALL: '🍂' };
 
-const SeasonSection = ({ seasonAnime, seasonLoading, schedule, watchedList, watchLater, selectedSeason, onChangeSeason, setShowDayPicker, addToWatchLater, onDetail }) => {
+const SeasonSection = ({ seasonAnime, seasonLoading, schedule, watchedList, watchLater, selectedSeason, onChangeSeason, setShowDayPicker, addToWatchLater, markAsWatched, onDetail }) => {
     const now = new Date();
     const curMonth = now.getMonth() + 1;
     const curSeason = curMonth <= 3 ? 'WINTER' : curMonth <= 6 ? 'SPRING' : curMonth <= 9 ? 'SUMMER' : 'FALL';
@@ -70,8 +70,9 @@ const SeasonSection = ({ seasonAnime, seasonLoading, schedule, watchedList, watc
                                     <div className="season-added-badge">✓ En tu lista</div>
                                 ) : (
                                     <div className="season-card-actions">
-                                        <button className="add-btn schedule-btn" onClick={() => setShowDayPicker(anime)}>📅</button>
-                                        <button className="add-btn later-btn" onClick={() => addToWatchLater(anime)}>🕐</button>
+                                        <button className="add-btn schedule-btn" onClick={() => setShowDayPicker(anime)} title="Añadir a semana">📅</button>
+                                        <button className="add-btn later-btn" onClick={() => addToWatchLater(anime)} title="Ver después">🕐</button>
+                                        <button className="add-btn watched-btn" onClick={() => markAsWatched(anime)} title="Marcar como visto">✓</button>
                                     </div>
                                 )}
                             </div>
