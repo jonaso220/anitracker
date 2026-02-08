@@ -383,6 +383,7 @@ export default function AnimeTracker() {
       {showAnimeDetail && <AnimeDetailModal key={showAnimeDetail.id} showAnimeDetail={showAnimeDetail} setShowAnimeDetail={setShowAnimeDetail}
         airingData={airingData} updateEpisode={updateEpisode} updateUserRating={updateUserRating} updateAnimeLink={updateAnimeLink}
         updateAnimeNotes={updateAnimeNotes} markAsFinished={markAsFinished} dropAnime={dropAnime} deleteAnime={deleteAnime}
+        addToWatchLater={addToWatchLater} markAsWatched={markAsWatched}
         setShowMoveDayPicker={setShowMoveDayPicker} setShowDayPicker={setShowDayPicker} resumeAnime={resumeAnime} />}
 
       {showDayPicker && <DayPickerModal showDayPicker={showDayPicker} setShowDayPicker={setShowDayPicker}

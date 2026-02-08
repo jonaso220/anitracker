@@ -1,4 +1,4 @@
-const CACHE_NAME = 'anitracker-v1';
+const CACHE_NAME = 'anitracker-v2';
 const STATIC_ASSETS = ['/', '/index.html', '/manifest.json', '/favicon.ico', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png'];
 
 self.addEventListener('install', (e) => {
@@ -11,24 +11,21 @@ self.addEventListener('activate', (e) => {
 
 self.addEventListener('fetch', (e) => {
   const { request } = e;
-  // Skip non-GET and Chrome extension requests
   if (request.method !== 'GET' || request.url.startsWith('chrome-extension')) return;
 
-  // Network-first for API calls, cache-first for static assets
+  // Let API calls go to network directly
   if (request.url.includes('/api/') || request.url.includes('graphql') || request.url.includes('jikan') || request.url.includes('kitsu') || request.url.includes('tvmaze') || request.url.includes('mymemory') || request.url.includes('wikipedia') || request.url.includes('firestore') || request.url.includes('googleapis')) {
-    return; // Let API calls go to network directly
+    return;
   }
 
+  // Network-first: try network, fall back to cache
   e.respondWith(
-    caches.match(request).then(cached => {
-      const fetchPromise = fetch(request).then(response => {
-        if (response && response.status === 200 && response.type === 'basic') {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(request, clone));
-        }
-        return response;
-      }).catch(() => cached);
-      return cached || fetchPromise;
-    })
+    fetch(request).then(response => {
+      if (response && response.status === 200 && response.type === 'basic') {
+        const clone = response.clone();
+        caches.open(CACHE_NAME).then(cache => cache.put(request, clone));
+      }
+      return response;
+    }).catch(() => caches.match(request))
   );
 });
