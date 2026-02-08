@@ -720,6 +720,32 @@
 }
 .genre-bar-count { font-size: 0.8rem; font-weight: 700; min-width: 24px; opacity: 0.6; }
 
+/* ============ SEASON SELECTOR ============ */
+.season-selector {
+  display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+  margin-bottom: 1rem; padding: 0.5rem; border-radius: 12px;
+}
+.dark .season-selector { background: rgba(255,255,255,0.05); }
+.light .season-selector { background: rgba(0,0,0,0.04); }
+.season-nav-btn {
+  background: none; border: 1px solid rgba(168,85,247,0.3); color: inherit;
+  width: 36px; height: 36px; border-radius: 50%; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; font-size: 0.85rem;
+  transition: all 0.2s;
+}
+.season-nav-btn:hover { background: rgba(168,85,247,0.15); border-color: rgba(168,85,247,0.5); }
+.season-nav-btn:active { transform: scale(0.92); }
+.season-current-label {
+  display: flex; flex-direction: column; align-items: center; min-width: 140px;
+}
+.season-name { font-size: 1rem; font-weight: 700; }
+.season-today-btn {
+  background: rgba(168,85,247,0.15); border: 1px solid rgba(168,85,247,0.3);
+  color: #a855f7; padding: 0.3rem 0.7rem; border-radius: 8px;
+  font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.2s;
+}
+.season-today-btn:hover { background: rgba(168,85,247,0.25); }
+
 /* ============ SEASON GRID ============ */
 .season-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 1rem; }
 .season-card {

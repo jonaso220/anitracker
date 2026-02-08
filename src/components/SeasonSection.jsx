@@ -1,11 +1,28 @@
 import React from 'react';
 import { daysOfWeek } from '../constants';
 
-const SeasonSection = ({ seasonAnime, seasonLoading, schedule, watchedList, watchLater, setShowDayPicker, addToWatchLater, onDetail }) => {
+const SEASONS = ['WINTER', 'SPRING', 'SUMMER', 'FALL'];
+const SEASON_LABELS = { WINTER: 'Invierno', SPRING: 'Primavera', SUMMER: 'Verano', FALL: 'Otoño' };
+const SEASON_ICONS = { WINTER: '❄️', SPRING: '🌸', SUMMER: '☀️', FALL: '🍂' };
+
+const SeasonSection = ({ seasonAnime, seasonLoading, schedule, watchedList, watchLater, selectedSeason, onChangeSeason, setShowDayPicker, addToWatchLater, onDetail }) => {
     const now = new Date();
-    const month = now.getMonth() + 1;
-    const year = now.getFullYear();
-    const seasonNames = { 1: 'Invierno', 2: 'Invierno', 3: 'Invierno', 4: 'Primavera', 5: 'Primavera', 6: 'Primavera', 7: 'Verano', 8: 'Verano', 9: 'Verano', 10: 'Otoño', 11: 'Otoño', 12: 'Otoño' };
+    const curMonth = now.getMonth() + 1;
+    const curSeason = curMonth <= 3 ? 'WINTER' : curMonth <= 6 ? 'SPRING' : curMonth <= 9 ? 'SUMMER' : 'FALL';
+    const curYear = now.getFullYear();
+    const isCurrent = selectedSeason.season === curSeason && selectedSeason.year === curYear;
+
+    const goPrev = () => {
+        const idx = SEASONS.indexOf(selectedSeason.season);
+        if (idx === 0) onChangeSeason(SEASONS[3], selectedSeason.year - 1);
+        else onChangeSeason(SEASONS[idx - 1], selectedSeason.year);
+    };
+    const goNext = () => {
+        const idx = SEASONS.indexOf(selectedSeason.season);
+        if (idx === 3) onChangeSeason(SEASONS[0], selectedSeason.year + 1);
+        else onChangeSeason(SEASONS[idx + 1], selectedSeason.year);
+    };
+    const goCurrentSeason = () => onChangeSeason(curSeason, curYear);
 
     const allUserIds = new Set([
         ...daysOfWeek.flatMap(d => (schedule[d] || []).map(a => a.id)),
@@ -16,8 +33,18 @@ const SeasonSection = ({ seasonAnime, seasonLoading, schedule, watchedList, watc
     return (
         <>
             <div className="section-header">
-                <h2>🌸 Temporada {seasonNames[month]} {year}</h2>
+                <h2>{SEASON_ICONS[selectedSeason.season]} Temporada</h2>
                 <span className="count">{seasonAnime.length}</span>
+            </div>
+            <div className="season-selector">
+                <button className="season-nav-btn" onClick={goPrev} title="Temporada anterior">◀</button>
+                <div className="season-current-label">
+                    <span className="season-name">{SEASON_LABELS[selectedSeason.season]} {selectedSeason.year}</span>
+                </div>
+                <button className="season-nav-btn" onClick={goNext} title="Temporada siguiente">▶</button>
+                {!isCurrent && (
+                    <button className="season-today-btn" onClick={goCurrentSeason} title="Ir a temporada actual">Actual</button>
+                )}
             </div>
             {seasonLoading ? (
                 <div className="search-placeholder"><div className="spinner"></div><p>Cargando temporada...</p></div>
@@ -51,7 +78,7 @@ const SeasonSection = ({ seasonAnime, seasonLoading, schedule, watchedList, watc
                         </div>
                     ))}
                 </div>
-            ) : <div className="empty-state"><span>🌸</span><p>No se pudo cargar la temporada</p></div>}
+            ) : <div className="empty-state"><span>🌸</span><p>No se encontraron animes para esta temporada</p></div>}
         </>
     );
 };

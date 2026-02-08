@@ -29,6 +29,10 @@ export default function AnimeTracker() {
   const [localSearch, setLocalSearch] = useState('');
   const [seasonAnime, setSeasonAnime] = useState([]);
   const [seasonLoading, setSeasonLoading] = useState(false);
+  const [selectedSeason, setSelectedSeason] = useState(() => {
+    const m = new Date().getMonth() + 1;
+    return { season: m <= 3 ? 'WINTER' : m <= 6 ? 'SPRING' : m <= 9 ? 'SUMMER' : 'FALL', year: new Date().getFullYear() };
+  });
   const toastTimer = useRef(null);
 
   const [darkMode, setDarkMode] = useState(() => {
@@ -174,17 +178,14 @@ export default function AnimeTracker() {
     return list;
   };
 
-  // --- Temporada actual ---
-  const seasonFetchedRef = useRef(false);
-  const fetchSeason = () => {
-    if (seasonFetchedRef.current) return;
-    seasonFetchedRef.current = true;
+  // --- Temporada ---
+  const seasonCacheRef = useRef({});
+  const fetchSeason = (s, y) => {
+    const key = `${s}-${y}`;
+    if (seasonCacheRef.current[key]) { setSeasonAnime(seasonCacheRef.current[key]); return; }
     setSeasonLoading(true);
-    const now = new Date();
-    const month = now.getMonth() + 1;
-    const year = now.getFullYear();
-    const season = month <= 3 ? 'WINTER' : month <= 6 ? 'SPRING' : month <= 9 ? 'SUMMER' : 'FALL';
-    const query = `query { Page(page: 1, perPage: 30) { media(season: ${season}, seasonYear: ${year}, type: ANIME, sort: POPULARITY_DESC, isAdult: false) {
+    setSeasonAnime([]);
+    const query = `query { Page(page: 1, perPage: 30) { media(season: ${s}, seasonYear: ${y}, type: ANIME, sort: POPULARITY_DESC, isAdult: false) {
       id idMal title { romaji english native } coverImage { large } genres averageScore episodes format status seasonYear description(asHtml: false) siteUrl
     } } }`;
     const formatMap = { TV: 'TV', TV_SHORT: 'TV Short', MOVIE: 'Película', SPECIAL: 'Special', OVA: 'OVA', ONA: 'ONA', MUSIC: 'Music' };
@@ -192,16 +193,19 @@ export default function AnimeTracker() {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query })
     }).then(r => r.json()).then(data => {
-      setSeasonAnime((data?.data?.Page?.media || []).map(m => ({
+      const results = (data?.data?.Page?.media || []).map(m => ({
         id: m.idMal || (m.id + 300000), title: m.title?.english || m.title?.romaji || '', titleJp: m.title?.native || '',
         image: m.coverImage?.large || '', genres: m.genres || [],
         synopsis: (m.description || '').replace(/<[^>]*>/g, '').trim() || 'Sin sinopsis.',
         rating: m.averageScore ? (m.averageScore / 10).toFixed(1) : 0, episodes: m.episodes || null,
-        type: formatMap[m.format] || m.format || '', year: m.seasonYear || year, status: m.status || '',
+        type: formatMap[m.format] || m.format || '', year: m.seasonYear || y, status: m.status || '',
         source: 'AniList', malUrl: m.siteUrl || '', watchLink: '', currentEp: 0, userRating: 0, notes: ''
-      })));
-    }).catch(() => { seasonFetchedRef.current = false; }).finally(() => setSeasonLoading(false));
+      }));
+      seasonCacheRef.current[key] = results;
+      setSeasonAnime(results);
+    }).catch(() => {}).finally(() => setSeasonLoading(false));
   };
+  const changeSeason = (s, y) => { setSelectedSeason({ season: s, year: y }); fetchSeason(s, y); };
 
   // --- Estadísticas ---
   const stats = useMemo(() => {
@@ -255,7 +259,7 @@ export default function AnimeTracker() {
         <button className={`nav-tab ${activeTab === 'schedule' ? 'active' : ''}`} onClick={() => { setActiveTab('schedule'); setLocalSearch(''); }}>📅 Semana</button>
         <button className={`nav-tab ${activeTab === 'watchLater' ? 'active' : ''}`} onClick={() => { setActiveTab('watchLater'); setLocalSearch(''); }}>🕐 Después ({watchLater.length})</button>
         <button className={`nav-tab ${activeTab === 'watched' ? 'active' : ''}`} onClick={() => { setActiveTab('watched'); setLocalSearch(''); }}>✓ Vistas ({watchedList.length})</button>
-        <button className={`nav-tab ${activeTab === 'season' ? 'active' : ''}`} onClick={() => { setActiveTab('season'); setLocalSearch(''); fetchSeason(); }}>🌸 Temporada</button>
+        <button className={`nav-tab ${activeTab === 'season' ? 'active' : ''}`} onClick={() => { setActiveTab('season'); setLocalSearch(''); fetchSeason(selectedSeason.season, selectedSeason.year); }}>🌸 Temporada</button>
         <button className={`nav-tab ${activeTab === 'stats' ? 'active' : ''}`} onClick={() => { setActiveTab('stats'); setLocalSearch(''); }}>📊 Stats</button>
       </nav>
 
@@ -338,6 +342,7 @@ export default function AnimeTracker() {
 
         {activeTab === 'season' && (
           <SeasonSection seasonAnime={seasonAnime} seasonLoading={seasonLoading} schedule={schedule} watchedList={watchedList} watchLater={watchLater}
+            selectedSeason={selectedSeason} onChangeSeason={changeSeason}
             setShowDayPicker={setShowDayPicker} addToWatchLater={addToWatchLater}
             onDetail={(a) => setShowAnimeDetail({ ...a, _isWatchLater: false, _isWatched: false, _isSeason: true })} />
         )}
