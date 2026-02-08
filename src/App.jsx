@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import './App.css';
 
 // Componentes y Hooks
@@ -30,11 +30,11 @@ export default function AnimeTracker() {
   const [showMoveDayPicker, setShowMoveDayPicker] = useState(null);
   const [watchedFilter, setWatchedFilter] = useState('all');
   const [watchedSort, setWatchedSort] = useState('date');
-  
+
   const [darkMode, setDarkMode] = useState(() => {
     try { return localStorage.getItem('anitracker-theme') !== 'light'; } catch { return true; }
   });
-  
+
   const [schedule, setSchedule] = useState(() => {
     try { const s = localStorage.getItem('animeSchedule'); return s ? JSON.parse(s) : { ...emptySchedule }; } catch { return { ...emptySchedule }; }
   });
@@ -45,32 +45,54 @@ export default function AnimeTracker() {
     try { const s = localStorage.getItem('watchLater'); return s ? JSON.parse(s) : []; } catch { return []; }
   });
 
+  // --- Nuevos estados ---
+  const [toast, setToast] = useState(null);
+  const [localSearch, setLocalSearch] = useState('');
+  const [seasonAnime, setSeasonAnime] = useState([]);
+  const [seasonLoading, setSeasonLoading] = useState(false);
+  const toastTimer = useRef(null);
+
   // Persistencia en localStorage
   useEffect(() => { localStorage.setItem('animeSchedule', JSON.stringify(schedule)); }, [schedule]);
   useEffect(() => { localStorage.setItem('watchedAnimes', JSON.stringify(watchedList)); }, [watchedList]);
   useEffect(() => { localStorage.setItem('watchLater', JSON.stringify(watchLater)); }, [watchLater]);
   useEffect(() => { localStorage.setItem('anitracker-theme', darkMode ? 'dark' : 'light'); }, [darkMode]);
 
-  // --- HOOKS PERSONALIZADOS (Lógica importada) ---
+  // --- HOOKS PERSONALIZADOS ---
   const { user, syncing, loginWithGoogle, logout, FIREBASE_ENABLED } = useFirebase(
     schedule, watchedList, watchLater, setSchedule, setWatchedList, setWatchLater
   );
 
-  const { 
-    searchQuery, setSearchQuery, searchResults, setSearchResults, isSearching, airingData, handleSearch 
+  const {
+    searchQuery, setSearchQuery, searchResults, setSearchResults, isSearching, airingData, handleSearch
   } = useAnimeData(schedule);
 
   const {
-    isDragging, dropTarget, dropIndex, handleDragStart, handleDragEnd, 
+    isDragging, dropTarget, dropIndex, handleDragStart, handleDragEnd,
     handleDragOverRow, handleDragOverCard, handleDrop,
     handleTouchStart, handleTouchMove, handleTouchEnd, touchRef, dragState
   } = useDragDrop(schedule, setSchedule, daysOfWeek);
 
-  const dayRowRefs = useRef({}); // Refs para las filas de días
+  const dayRowRefs = useRef({});
 
-  // --- Acciones de la UI (Helpers) ---
+  // --- Toast system ---
+  const showToast = (message, undoFn) => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 5000);
+    setToast({ message, undoFn });
+  };
+  const dismissToast = () => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast(null);
+  };
+  const undoToast = () => {
+    if (toast?.undoFn) toast.undoFn();
+    dismissToast();
+  };
+
+  // --- Acciones de la UI ---
   const addToSchedule = (anime, day) => {
-    const a = { ...anime, currentEp: anime.currentEp || 0, userRating: anime.userRating || 0 };
+    const a = { ...anime, currentEp: anime.currentEp || 0, userRating: anime.userRating || 0, notes: anime.notes || '' };
     setSchedule(prev => ({ ...prev, [day]: [...prev[day].filter(x => x.id !== a.id), a] }));
     setShowDayPicker(null); setShowSearch(false); setSearchQuery(''); setSearchResults([]);
   };
@@ -80,23 +102,35 @@ export default function AnimeTracker() {
   };
 
   const markAsFinished = (anime, day) => {
+    const prevSchedule = JSON.parse(JSON.stringify(schedule));
+    const prevWatched = [...watchedList];
     removeFromSchedule(anime.id, day);
     setWatchedList(prev => [...prev.filter(a => a.id !== anime.id), { ...anime, finished: true, finishedDate: new Date().toISOString() }]);
+    showToast(`"${anime.title}" marcado como finalizado`, () => {
+      setSchedule(prevSchedule);
+      setWatchedList(prevWatched);
+    });
   };
 
   const dropAnime = (anime, day) => {
+    const prevSchedule = JSON.parse(JSON.stringify(schedule));
+    const prevWatched = [...watchedList];
     removeFromSchedule(anime.id, day);
     setWatchedList(prev => [...prev.filter(a => a.id !== anime.id), { ...anime, finished: false, droppedDate: new Date().toISOString() }]);
+    showToast(`"${anime.title}" dropeado`, () => {
+      setSchedule(prevSchedule);
+      setWatchedList(prevWatched);
+    });
   };
 
   const addToWatchLater = (anime) => {
-    const a = { ...anime, currentEp: anime.currentEp || 0, userRating: anime.userRating || 0 };
+    const a = { ...anime, currentEp: anime.currentEp || 0, userRating: anime.userRating || 0, notes: anime.notes || '' };
     setWatchLater(prev => [...prev.filter(x => x.id !== a.id), a]);
     setShowSearch(false); setSearchQuery(''); setSearchResults([]);
   };
 
   const markAsWatchedFromSearch = (anime) => {
-    setWatchedList(prev => [...prev.filter(a => a.id !== anime.id), { ...anime, finished: true, finishedDate: new Date().toISOString(), currentEp: anime.currentEp || 0, userRating: anime.userRating || 0 }]);
+    setWatchedList(prev => [...prev.filter(a => a.id !== anime.id), { ...anime, finished: true, finishedDate: new Date().toISOString(), currentEp: anime.currentEp || 0, userRating: anime.userRating || 0, notes: anime.notes || '' }]);
     setShowSearch(false); setSearchQuery(''); setSearchResults([]);
   };
 
@@ -106,8 +140,12 @@ export default function AnimeTracker() {
   };
 
   const resumeAnime = (anime) => {
+    const prevWatched = [...watchedList];
     setWatchedList(prev => prev.filter(a => a.id !== anime.id));
     setShowDayPicker(anime);
+    showToast(`"${anime.title}" retomado`, () => {
+      setWatchedList(prevWatched);
+    });
   };
 
   const moveAnimeToDay = (anime, fromDay, toDay) => {
@@ -141,17 +179,90 @@ export default function AnimeTracker() {
     setWatchedList(prev => update(prev));
   };
 
-  // Filtrado de lista vista
+  const updateAnimeNotes = (animeId, notes) => {
+    const update = (list) => list.map(a => a.id === animeId ? { ...a, notes } : a);
+    setSchedule(prev => { const n = { ...prev }; daysOfWeek.forEach(d => { n[d] = update(n[d]); }); return n; });
+    setWatchLater(prev => update(prev));
+    setWatchedList(prev => update(prev));
+  };
+
+  // --- Búsqueda local ---
+  const filterByLocalSearch = (list) => {
+    if (!localSearch.trim()) return list;
+    const q = localSearch.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    return list.filter(a => {
+      const titles = [a.title, a.titleJp, a.titleEn, a.titleOriginal].filter(Boolean);
+      return titles.some(t => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes(q));
+    });
+  };
+
+  // --- Filtrado de lista vista ---
   const getFilteredWatched = () => {
     let list = [...watchedList];
     if (watchedFilter === 'finished') list = list.filter(a => a.finished);
     else if (watchedFilter === 'dropped') list = list.filter(a => !a.finished);
-    
+
+    list = filterByLocalSearch(list);
+
     if (watchedSort === 'date') list.sort((a, b) => new Date(b.finishedDate || b.droppedDate || 0) - new Date(a.finishedDate || a.droppedDate || 0));
     else if (watchedSort === 'rating') list.sort((a, b) => (b.userRating || 0) - (a.userRating || 0));
     else if (watchedSort === 'title') list.sort((a, b) => a.title.localeCompare(b.title));
     return list;
   };
+
+  // --- Temporada actual ---
+  const seasonFetchedRef = useRef(false);
+  const fetchSeason = () => {
+    if (seasonFetchedRef.current) return;
+    seasonFetchedRef.current = true;
+    setSeasonLoading(true);
+    const now = new Date();
+    const month = now.getMonth() + 1;
+    const year = now.getFullYear();
+    const season = month <= 3 ? 'WINTER' : month <= 6 ? 'SPRING' : month <= 9 ? 'SUMMER' : 'FALL';
+    const query = `query { Page(page: 1, perPage: 30) { media(season: ${season}, seasonYear: ${year}, type: ANIME, sort: POPULARITY_DESC, isAdult: false) {
+      id idMal title { romaji english native } coverImage { large } genres averageScore episodes format status seasonYear description(asHtml: false) siteUrl
+    } } }`;
+    const formatMap = { TV: 'TV', TV_SHORT: 'TV Short', MOVIE: 'Película', SPECIAL: 'Special', OVA: 'OVA', ONA: 'ONA', MUSIC: 'Music' };
+    fetch('https://graphql.anilist.co', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query })
+    }).then(r => r.json()).then(data => {
+      setSeasonAnime((data?.data?.Page?.media || []).map(m => ({
+        id: m.idMal || (m.id + 300000), title: m.title?.english || m.title?.romaji || '', titleJp: m.title?.native || '',
+        image: m.coverImage?.large || '', genres: m.genres || [],
+        synopsis: (m.description || '').replace(/<[^>]*>/g, '').trim() || 'Sin sinopsis.',
+        rating: m.averageScore ? (m.averageScore / 10).toFixed(1) : 0, episodes: m.episodes || null,
+        type: formatMap[m.format] || m.format || '', year: m.seasonYear || year, status: m.status || '',
+        source: 'AniList', malUrl: m.siteUrl || '', watchLink: '', currentEp: 0, userRating: 0, notes: ''
+      })));
+    }).catch(() => { seasonFetchedRef.current = false; }).finally(() => setSeasonLoading(false));
+  };
+
+  // --- Estadísticas ---
+  const stats = useMemo(() => {
+    const allSchedule = daysOfWeek.flatMap(d => schedule[d] || []);
+    const totalSchedule = allSchedule.length;
+    const totalWatched = watchedList.length;
+    const totalWatchLater = watchLater.length;
+    const finished = watchedList.filter(a => a.finished).length;
+    const dropped = watchedList.filter(a => !a.finished).length;
+
+    const allAnime = [...allSchedule, ...watchedList, ...watchLater];
+    const totalEps = allAnime.reduce((sum, a) => sum + (a.currentEp || 0), 0);
+
+    const rated = allAnime.filter(a => a.userRating > 0);
+    const avgRating = rated.length > 0 ? (rated.reduce((s, a) => s + a.userRating, 0) / rated.length).toFixed(1) : '—';
+
+    const genreCount = {};
+    allAnime.forEach(a => (a.genres || []).forEach(g => { genreCount[g] = (genreCount[g] || 0) + 1; }));
+    const topGenres = Object.entries(genreCount).sort((a, b) => b[1] - a[1]).slice(0, 8);
+
+    const sourceCount = {};
+    allAnime.forEach(a => { if (a.source) sourceCount[a.source] = (sourceCount[a.source] || 0) + 1; });
+
+    return { totalSchedule, totalWatched, totalWatchLater, finished, dropped, totalEps, avgRating, topGenres, allTotal: allAnime.length, sourceCount };
+  }, [schedule, watchedList, watchLater]);
 
   // --- RENDER ---
   return (
@@ -184,30 +295,24 @@ export default function AnimeTracker() {
       </header>
 
       <nav className="nav-tabs">
-        <button className={`nav-tab ${activeTab === 'schedule' ? 'active' : ''}`} onClick={() => setActiveTab('schedule')}>📅 Mi Semana</button>
-        <button className={`nav-tab ${activeTab === 'watchLater' ? 'active' : ''}`} onClick={() => setActiveTab('watchLater')}>🕐 Ver más tarde ({watchLater.length})</button>
-        <button className={`nav-tab ${activeTab === 'watched' ? 'active' : ''}`} onClick={() => setActiveTab('watched')}>✓ Vistas ({watchedList.length})</button>
+        <button className={`nav-tab ${activeTab === 'schedule' ? 'active' : ''}`} onClick={() => { setActiveTab('schedule'); setLocalSearch(''); }}>📅 Semana</button>
+        <button className={`nav-tab ${activeTab === 'watchLater' ? 'active' : ''}`} onClick={() => { setActiveTab('watchLater'); setLocalSearch(''); }}>🕐 Después ({watchLater.length})</button>
+        <button className={`nav-tab ${activeTab === 'watched' ? 'active' : ''}`} onClick={() => { setActiveTab('watched'); setLocalSearch(''); }}>✓ Vistas ({watchedList.length})</button>
+        <button className={`nav-tab ${activeTab === 'season' ? 'active' : ''}`} onClick={() => { setActiveTab('season'); setLocalSearch(''); fetchSeason(); }}>🌸 Temporada</button>
+        <button className={`nav-tab ${activeTab === 'stats' ? 'active' : ''}`} onClick={() => { setActiveTab('stats'); setLocalSearch(''); }}>📊 Stats</button>
       </nav>
 
       <main className="main-content">
         {activeTab === 'schedule' && (
           <div className="schedule-rows">
-            {/* Sección Airing */}
             {Object.keys(airingData).length > 0 && (
-              <AiringSection 
-                 schedule={schedule} 
-                 airingData={airingData} 
-                 onDetail={(a) => setShowAnimeDetail({ ...a, _day: a._day, _isWatchLater: false, _isWatched: false })} 
-              />
+              <AiringSection schedule={schedule} airingData={airingData} onDetail={(a) => setShowAnimeDetail({ ...a, _day: a._day, _isWatchLater: false, _isWatched: false })} />
             )}
-
-            {/* Días */}
             {daysOfWeek.map((day, i) => (
               <div key={day}
                 ref={el => { dayRowRefs.current[day] = el; }}
                 className={`day-row fade-in ${dropTarget === day ? 'drop-target' : ''} ${isDragging && dragState.fromDay === day ? 'drag-source' : ''}`}
                 onDragOver={(e) => handleDragOverRow(e, day)}
-                onDragLeave={() => { /* Op. */ }}
                 onDrop={(e) => handleDrop(e, day)}
               >
                 <div className="day-label">
@@ -221,23 +326,11 @@ export default function AnimeTracker() {
                       {dropTarget === day && dropIndex === idx && isDragging && dragState.anime?.id !== a.id && (
                         <div className="drop-indicator"></div>
                       )}
-                      <AnimeCard 
-                        anime={a} 
-                        day={day} 
-                        cardIndex={idx} 
-                        cardDay={day}
-                        airingData={airingData}
-                        isDraggable={true}
-                        onDragStart={handleDragStart}
-                        onDragEnd={handleDragEnd}
-                        onDragOver={handleDragOverCard}
-                        onTouchStart={handleTouchStart}
-                        onTouchMove={handleTouchMove}
-                        onTouchEnd={handleTouchEnd}
-                        onClick={(e) => {
-                          if (touchRef.current.moved || touchRef.current.active) return;
-                          setShowAnimeDetail({ ...a, _day: day, _isWatchLater: false, _isWatched: false });
-                        }}
+                      <AnimeCard
+                        anime={a} day={day} cardIndex={idx} cardDay={day} airingData={airingData} isDraggable={true}
+                        onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragOver={handleDragOverCard}
+                        onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}
+                        onClick={() => { if (touchRef.current.moved || touchRef.current.active) return; setShowAnimeDetail({ ...a, _day: day, _isWatchLater: false, _isWatched: false }); }}
                       />
                       {dropTarget === day && dropIndex === idx + 1 && idx === schedule[day].length - 1 && isDragging && (
                         <div className="drop-indicator"></div>
@@ -253,10 +346,18 @@ export default function AnimeTracker() {
         {activeTab === 'watchLater' && (
           <>
             <div className="section-header"><h2>🕐 Ver más tarde</h2><span className="count">{watchLater.length}</span></div>
+            {watchLater.length > 3 && (
+              <div className="local-search">
+                <input type="text" placeholder="🔍 Filtrar por nombre..." value={localSearch} onChange={e => setLocalSearch(e.target.value)} />
+              </div>
+            )}
             <div className="anime-grid">
-              {watchLater.length > 0 ? watchLater.map(a => (
-                <AnimeCard key={a.id} anime={a} isWatchLater airingData={airingData} onClick={() => setShowAnimeDetail({ ...a, _isWatchLater: true })} />
-              )) : <div className="empty-state"><span>📺</span><p>No hay animes guardados</p></div>}
+              {(() => {
+                const filtered = filterByLocalSearch(watchLater);
+                return filtered.length > 0 ? filtered.map(a => (
+                  <AnimeCard key={a.id} anime={a} isWatchLater airingData={airingData} onClick={() => setShowAnimeDetail({ ...a, _isWatchLater: true })} />
+                )) : <div className="empty-state"><span>📺</span><p>{localSearch ? 'Sin resultados' : 'No hay animes guardados'}</p></div>;
+              })()}
             </div>
           </>
         )}
@@ -277,6 +378,11 @@ export default function AnimeTracker() {
                   </button>
               ))}
             </div>
+            {watchedList.length > 3 && (
+              <div className="local-search">
+                <input type="text" placeholder="🔍 Filtrar por nombre..." value={localSearch} onChange={e => setLocalSearch(e.target.value)} />
+              </div>
+            )}
             <div className="anime-grid">
               {(() => {
                 const filtered = getFilteredWatched();
@@ -287,30 +393,54 @@ export default function AnimeTracker() {
             </div>
           </>
         )}
+
+        {activeTab === 'season' && (
+          <SeasonSection
+            seasonAnime={seasonAnime} seasonLoading={seasonLoading}
+            schedule={schedule} watchedList={watchedList} watchLater={watchLater}
+            setShowDayPicker={setShowDayPicker} addToWatchLater={addToWatchLater}
+            onDetail={(a) => setShowAnimeDetail({ ...a, _isWatchLater: false, _isWatched: false, _isSeason: true })}
+          />
+        )}
+
+        {activeTab === 'stats' && <StatsPanel stats={stats} />}
       </main>
 
-      {/* MODALES - Definidos abajo para no saturar el render */}
-      {showSearch && <SearchModal 
-        showSearch={showSearch} setShowSearch={setShowSearch} searchQuery={searchQuery} 
-        handleSearch={handleSearch} searchResults={searchResults} isSearching={isSearching} 
+      {/* Toast */}
+      {toast && (
+        <div className="toast fade-in">
+          <span className="toast-message">{toast.message}</span>
+          <div className="toast-actions">
+            {toast.undoFn && <button className="toast-undo" onClick={undoToast}>Deshacer</button>}
+            <button className="toast-close" onClick={dismissToast}>✕</button>
+          </div>
+        </div>
+      )}
+
+      {/* MODALES */}
+      {showSearch && <SearchModal
+        setShowSearch={setShowSearch} searchQuery={searchQuery}
+        handleSearch={handleSearch} searchResults={searchResults} isSearching={isSearching}
         setSearchResults={setSearchResults} setSearchQuery={setSearchQuery} setShowDayPicker={setShowDayPicker}
         addToWatchLater={addToWatchLater} markAsWatchedFromSearch={markAsWatchedFromSearch}
       />}
 
-      {showAnimeDetail && <AnimeDetailModal 
+      {showAnimeDetail && <AnimeDetailModal
+        key={showAnimeDetail.id}
         showAnimeDetail={showAnimeDetail} setShowAnimeDetail={setShowAnimeDetail} airingData={airingData}
         updateEpisode={updateEpisode} updateUserRating={updateUserRating} updateAnimeLink={updateAnimeLink}
+        updateAnimeNotes={updateAnimeNotes}
         markAsFinished={markAsFinished} dropAnime={dropAnime} setShowMoveDayPicker={setShowMoveDayPicker}
         setShowDayPicker={setShowDayPicker} resumeAnime={resumeAnime}
       />}
 
-      {showDayPicker && <DayPickerModal 
-        showDayPicker={showDayPicker} setShowDayPicker={setShowDayPicker} 
-        watchLater={watchLater} addToSchedule={addToSchedule} 
-        moveFromWatchLaterToSchedule={moveFromWatchLaterToSchedule} 
+      {showDayPicker && <DayPickerModal
+        showDayPicker={showDayPicker} setShowDayPicker={setShowDayPicker}
+        watchLater={watchLater} addToSchedule={addToSchedule}
+        moveFromWatchLaterToSchedule={moveFromWatchLaterToSchedule}
       />}
 
-      {showMoveDayPicker && <MoveDayPickerModal 
+      {showMoveDayPicker && <MoveDayPickerModal
         showMoveDayPicker={showMoveDayPicker} setShowMoveDayPicker={setShowMoveDayPicker}
         moveAnimeToDay={moveAnimeToDay}
       />}
@@ -318,11 +448,9 @@ export default function AnimeTracker() {
   );
 }
 
-// --- SUB-COMPONENTES (Modales y Secciones) ---
-// Se mantienen aquí para facilitar el Copy-Paste, pero idealmente deberían ir en /components/modals/
+// --- SUB-COMPONENTES ---
 
 const AiringSection = ({ schedule, airingData, onDetail }) => {
-    const daysOfWeek = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
     const allAnime = daysOfWeek.flatMap(d => (schedule[d] || []).map(a => ({ ...a, _day: d })));
     const airingAnime = allAnime.filter(a => airingData[a.id]).map(a => ({
         ...a, airing: airingData[a.id]
@@ -367,7 +495,7 @@ const AiringSection = ({ schedule, airingData, onDetail }) => {
     );
 };
 
-const SearchModal = ({ showSearch, setShowSearch, searchQuery, handleSearch, searchResults, isSearching, setSearchResults, setSearchQuery, setShowDayPicker, addToWatchLater, markAsWatchedFromSearch }) => (
+const SearchModal = ({ setShowSearch, searchQuery, handleSearch, searchResults, isSearching, setSearchResults, setSearchQuery, setShowDayPicker, addToWatchLater, markAsWatchedFromSearch }) => (
     <div className="modal-overlay" onClick={() => { setShowSearch(false); setSearchResults([]); setSearchQuery(''); }}>
       <div className="search-modal" onClick={e => e.stopPropagation()}>
         <div className="search-header">
@@ -404,56 +532,53 @@ const SearchModal = ({ showSearch, setShowSearch, searchQuery, handleSearch, sea
     </div>
 );
 
-const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, updateEpisode, updateUserRating, updateAnimeLink, markAsFinished, dropAnime, setShowMoveDayPicker, setShowDayPicker, resumeAnime }) => {
+const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, updateEpisode, updateUserRating, updateAnimeLink, updateAnimeNotes, markAsFinished, dropAnime, setShowMoveDayPicker, setShowDayPicker, resumeAnime }) => {
+    // Compute initial synopsis synchronously (Spanish detection + cache check)
+    const getInitialSynopsis = () => {
+        const syn = showAnimeDetail?.synopsis;
+        if (!syn || syn.length < 10) return { text: null, needsFetch: false };
+        const esPattern = /\b(que|los|las|una|del|por|con|para|como|pero|más|también|esta|este|sobre|tiene|hace|puede|entre|desde|hasta|cuando|donde|porque|aunque|mientras|después|antes|durante|hacia|según|mediante|ser|está|son|han|fue|muy|sin|hay|todo|cada|otro|ella|ellos|quien|cual|esto|eso|sus|nos|al|lo)\b/gi;
+        const enPattern = /\b(the|and|but|with|for|that|this|from|are|was|were|been|have|has|had|will|would|could|should|their|they|them|which|when|where|who|what|into|about|after|before|between|through|during|being|each|other|than|then|some|only|also|very|just|over|such|more)\b/gi;
+        const esMatches = (syn.match(esPattern) || []).length;
+        const enMatches = (syn.match(enPattern) || []).length;
+        const wordCount = syn.split(/\s+/).length;
+        if (esMatches > enMatches && esMatches / wordCount > 0.06) return { text: syn, needsFetch: false };
+        try { const cached = localStorage.getItem(`anitracker-tr-${showAnimeDetail.id}`); if (cached) return { text: cached, needsFetch: false }; } catch { /* empty */ }
+        return { text: null, needsFetch: true };
+    };
+    const initialSynopsis = getInitialSynopsis();
+
     const [localRating, setLocalRating] = useState(showAnimeDetail?.userRating || 0);
     const [localLink, setLocalLink] = useState(showAnimeDetail?.watchLink || '');
+    const [localNotes, setLocalNotes] = useState(showAnimeDetail?.notes || '');
     const [showLinkInput, setShowLinkInput] = useState(false);
-    const [translatedSynopsis, setTranslatedSynopsis] = useState(null);
-    const [isTranslating, setIsTranslating] = useState(false);
+    const [translatedSynopsis, setTranslatedSynopsis] = useState(initialSynopsis.text);
+    const [isTranslating, setIsTranslating] = useState(initialSynopsis.needsFetch);
 
+    // Only fetch translation if needed (not already Spanish or cached)
     useEffect(() => {
+        if (!initialSynopsis.needsFetch) return;
         let cancelled = false;
-        if (showAnimeDetail) {
-            setLocalRating(showAnimeDetail.userRating || 0);
-            setLocalLink(showAnimeDetail.watchLink || '');
-            setShowLinkInput(false);
-            setTranslatedSynopsis(null);
-            setIsTranslating(false);
-
-            const syn = showAnimeDetail.synopsis;
-            if (!syn || syn.length < 10) return;
-
-            const esPattern = /\b(que|los|las|una|del|por|con|para|como|pero|más|también|esta|este|sobre|tiene|hace|puede|entre|desde|hasta|cuando|donde|porque|aunque|mientras|después|antes|durante|hacia|según|mediante|ser|está|son|han|fue|muy|sin|hay|todo|cada|otro|ella|ellos|quien|cual|esto|eso|sus|nos|al|lo)\b/gi;
-            const enPattern = /\b(the|and|but|with|for|that|this|from|are|was|were|been|have|has|had|will|would|could|should|their|they|them|which|when|where|who|what|into|about|after|before|between|through|during|being|each|other|than|then|some|only|also|very|just|over|such|more)\b/gi;
-            const esMatches = (syn.match(esPattern) || []).length;
-            const enMatches = (syn.match(enPattern) || []).length;
-            const wordCount = syn.split(/\s+/).length;
-
-            if (esMatches > enMatches && esMatches / wordCount > 0.06) { setTranslatedSynopsis(syn); return; }
-
-            const cacheKey = `anitracker-tr-${showAnimeDetail.id}`;
-            try { if(localStorage.getItem(cacheKey)) { setTranslatedSynopsis(localStorage.getItem(cacheKey)); return; } } catch {}
-
-            setIsTranslating(true);
-            fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(syn.slice(0, 1500))}&langpair=en|es`)
-                .then(r => r.json()).then(data => {
-                    if (cancelled) return;
-                    if (data.responseStatus === 200 && data.responseData?.translatedText) {
-                        const tr = data.responseData.translatedText;
-                        if (tr !== tr.toUpperCase() || tr.length < 50) {
-                            setTranslatedSynopsis(tr);
-                            try { localStorage.setItem(cacheKey, tr); } catch {}
-                        } else setTranslatedSynopsis(syn);
+        const syn = showAnimeDetail?.synopsis;
+        const cacheKey = `anitracker-tr-${showAnimeDetail?.id}`;
+        fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent((syn || '').slice(0, 1500))}&langpair=en|es`)
+            .then(r => r.json()).then(data => {
+                if (cancelled) return;
+                if (data.responseStatus === 200 && data.responseData?.translatedText) {
+                    const tr = data.responseData.translatedText;
+                    if (tr !== tr.toUpperCase() || tr.length < 50) {
+                        setTranslatedSynopsis(tr);
+                        try { localStorage.setItem(cacheKey, tr); } catch { /* empty */ }
                     } else setTranslatedSynopsis(syn);
-                }).catch(() => !cancelled && setTranslatedSynopsis(syn))
-                .finally(() => !cancelled && setIsTranslating(false));
-        }
+                } else setTranslatedSynopsis(syn);
+            }).catch(() => { if (!cancelled) setTranslatedSynopsis(syn); })
+            .finally(() => { if (!cancelled) setIsTranslating(false); });
         return () => { cancelled = true; };
-    }, [showAnimeDetail?.id]);
+    }, [showAnimeDetail?.id, showAnimeDetail?.synopsis, initialSynopsis.needsFetch]);
 
     if (!showAnimeDetail) return null;
     const a = showAnimeDetail;
-    const isSchedule = !a._isWatchLater && !a._isWatched;
+    const isSchedule = !a._isWatchLater && !a._isWatched && !a._isSeason;
     const closeAndDo = (fn) => { setShowAnimeDetail(null); fn(); };
     const airing = airingData[a.id];
 
@@ -525,19 +650,139 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                     )}
                 </div>
 
+                <div className="detail-section">
+                    <h4>📝 Notas</h4>
+                    <textarea
+                        className="notes-input"
+                        placeholder="Escribí notas sobre este anime..."
+                        value={localNotes}
+                        onChange={e => setLocalNotes(e.target.value)}
+                        onBlur={() => updateAnimeNotes(a.id, localNotes)}
+                        rows={3}
+                    />
+                </div>
+
                 <div className="detail-actions">
                     {isSchedule && <>
                         <button className="detail-action-btn finish" onClick={() => closeAndDo(() => markAsFinished(a, a._day))}>✓ Finalizar</button>
                         <button className="detail-action-btn drop" onClick={() => closeAndDo(() => dropAnime(a, a._day))}>✗ Dropear</button>
                         <button className="detail-action-btn move" onClick={() => closeAndDo(() => setShowMoveDayPicker({ anime: a, fromDay: a._day }))}>↔ Mover día</button>
                     </>}
-                    {a._isWatchLater && <button className="detail-action-btn schedule" onClick={() => closeAndDo(() => setShowDayPicker(a))}>📅 Añadir a semana</button>}
+                    {(a._isWatchLater || a._isSeason) && <button className="detail-action-btn schedule" onClick={() => closeAndDo(() => setShowDayPicker(a))}>📅 Añadir a semana</button>}
                     {a._isWatched && !a.finished && <button className="detail-action-btn resume" onClick={() => closeAndDo(() => resumeAnime(a))}>▶ Retomar</button>}
                 </div>
             </div>
         </div>
     );
 };
+
+const SeasonSection = ({ seasonAnime, seasonLoading, schedule, watchedList, watchLater, setShowDayPicker, addToWatchLater, onDetail }) => {
+    const now = new Date();
+    const month = now.getMonth() + 1;
+    const year = now.getFullYear();
+    const seasonNames = { 1: 'Invierno', 2: 'Invierno', 3: 'Invierno', 4: 'Primavera', 5: 'Primavera', 6: 'Primavera', 7: 'Verano', 8: 'Verano', 9: 'Verano', 10: 'Otoño', 11: 'Otoño', 12: 'Otoño' };
+
+    // Check which anime are already in user's lists
+    const allUserIds = new Set([
+        ...daysOfWeek.flatMap(d => (schedule[d] || []).map(a => a.id)),
+        ...watchedList.map(a => a.id),
+        ...watchLater.map(a => a.id)
+    ]);
+
+    return (
+        <>
+            <div className="section-header">
+                <h2>🌸 Temporada {seasonNames[month]} {year}</h2>
+                <span className="count">{seasonAnime.length}</span>
+            </div>
+            {seasonLoading ? (
+                <div className="search-placeholder"><div className="spinner"></div><p>Cargando temporada...</p></div>
+            ) : seasonAnime.length > 0 ? (
+                <div className="season-grid">
+                    {seasonAnime.map(anime => (
+                        <div key={anime.id} className={`season-card fade-in ${allUserIds.has(anime.id) ? 'already-added' : ''}`}>
+                            <div className="season-card-image" onClick={() => onDetail(anime)}>
+                                <img src={anime.image} alt={anime.title} loading="lazy" onError={e => { e.target.style.display = 'none'; e.target.nextSibling && (e.target.nextSibling.style.display = 'flex'); }} />
+                                <div className="img-fallback" style={{ display: 'none' }}>{anime.title?.charAt(0) || '?'}</div>
+                                {anime.rating > 0 && <div className="anime-card-score">⭐ {Number(anime.rating).toFixed(1)}</div>}
+                            </div>
+                            <div className="season-card-content">
+                                <h3 onClick={() => onDetail(anime)}>{anime.title}</h3>
+                                <div className="anime-genres">
+                                    {(anime.genres || []).slice(0, 2).map((g, i) => <span key={i} className="genre-tag">{g}</span>)}
+                                </div>
+                                <div className="season-card-meta">
+                                    {anime.type && <span className="meta-tag type">{anime.type}</span>}
+                                    {anime.episodes && <span className="meta-tag eps">{anime.episodes} eps</span>}
+                                </div>
+                                {allUserIds.has(anime.id) ? (
+                                    <div className="season-added-badge">✓ En tu lista</div>
+                                ) : (
+                                    <div className="season-card-actions">
+                                        <button className="add-btn schedule-btn" onClick={() => setShowDayPicker(anime)}>📅</button>
+                                        <button className="add-btn later-btn" onClick={() => addToWatchLater(anime)}>🕐</button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            ) : <div className="empty-state"><span>🌸</span><p>No se pudo cargar la temporada</p></div>}
+        </>
+    );
+};
+
+const StatsPanel = ({ stats }) => (
+    <div className="stats-panel fade-in">
+        <div className="section-header"><h2>📊 Estadísticas</h2></div>
+        <div className="stats-grid">
+            <div className="stat-card">
+                <span className="stat-number">{stats.allTotal}</span>
+                <span className="stat-label">Total animes</span>
+            </div>
+            <div className="stat-card">
+                <span className="stat-number">{stats.totalSchedule}</span>
+                <span className="stat-label">En semana</span>
+            </div>
+            <div className="stat-card">
+                <span className="stat-number">{stats.finished}</span>
+                <span className="stat-label">Completados</span>
+            </div>
+            <div className="stat-card">
+                <span className="stat-number">{stats.dropped}</span>
+                <span className="stat-label">Dropeados</span>
+            </div>
+            <div className="stat-card">
+                <span className="stat-number">{stats.totalWatchLater}</span>
+                <span className="stat-label">Ver después</span>
+            </div>
+            <div className="stat-card">
+                <span className="stat-number">{stats.totalEps}</span>
+                <span className="stat-label">Episodios vistos</span>
+            </div>
+            <div className="stat-card wide">
+                <span className="stat-number">{stats.avgRating}</span>
+                <span className="stat-label">Valoración promedio</span>
+            </div>
+        </div>
+        {stats.topGenres.length > 0 && (
+            <div className="stats-section">
+                <h3>Géneros favoritos</h3>
+                <div className="genre-bars">
+                    {stats.topGenres.map(([genre, count]) => (
+                        <div key={genre} className="genre-bar-row">
+                            <span className="genre-bar-label">{genre}</span>
+                            <div className="genre-bar-track">
+                                <div className="genre-bar-fill" style={{ width: `${(count / stats.topGenres[0][1]) * 100}%` }}></div>
+                            </div>
+                            <span className="genre-bar-count">{count}</span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        )}
+    </div>
+);
 
 const DayPickerModal = ({ showDayPicker, setShowDayPicker, watchLater, addToSchedule, moveFromWatchLaterToSchedule }) => (
     <div className="modal-overlay" onClick={() => setShowDayPicker(null)}>

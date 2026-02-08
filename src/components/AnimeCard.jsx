@@ -9,16 +9,15 @@ const sanitizeUrl = (url) => {
   } catch { return ''; }
 };
 
-const AnimeCard = ({ 
-  anime, 
-  day, 
-  isWatchLater = false, 
-  isWatched = false, 
-  cardIndex, 
+const AnimeCard = ({
+  anime,
+  day,
+  isWatchLater = false,
+  isWatched = false,
+  cardIndex,
   cardDay,
-  airingData = {}, // Nuevo prop para evitar dependencia global
+  airingData = {},
   onClick,
-  // Props de drag & drop
   isDraggable,
   onDragStart,
   onDragEnd,
@@ -33,12 +32,18 @@ const AnimeCard = ({
     airing.isToday ? 'airing-today' :
     airing.isTomorrow ? 'airing-tomorrow' : null
   ) : null;
-  
+
   const airingText = airing ? (
     airing.hasAired ? `🆕 Ep. ${airing.episode} disponible` :
     airing.isToday ? `🔴 Ep. ${airing.episode} hoy` :
     airing.isTomorrow ? `📢 Ep. ${airing.episode} mañana` : null
   ) : null;
+
+  const handleImgError = (e) => {
+    e.target.style.display = 'none';
+    const fallback = e.target.nextSibling;
+    if (fallback) fallback.style.display = 'flex';
+  };
 
   return (
     <div
@@ -53,7 +58,8 @@ const AnimeCard = ({
       onTouchEnd={isDraggable ? onTouchEnd : undefined}
     >
       <div className="anime-card-image">
-        <img src={anime.image} alt={anime.title} loading="lazy" draggable="false" />
+        <img src={anime.image} alt={anime.title} loading="lazy" draggable="false" onError={handleImgError} />
+        <div className="img-fallback" style={{ display: 'none' }}>{anime.title?.charAt(0) || '?'}</div>
         {anime.rating > 0 && (
           <div className="anime-card-score">⭐ {Number(anime.rating).toFixed ? Number(anime.rating).toFixed(1) : anime.rating}</div>
         )}
@@ -73,6 +79,7 @@ const AnimeCard = ({
         {anime.watchLink && (
           <a href={sanitizeUrl(anime.watchLink)} target="_blank" rel="noopener noreferrer" className="watch-link-badge" onClick={e => e.stopPropagation()}>▶ Ver</a>
         )}
+        {anime.notes && <div className="card-notes-badge">📝</div>}
         {isWatched && (
           <div className={`status-badge ${anime.finished ? 'finished' : 'dropped'}`}>
             {anime.finished ? '✓ Completado' : '⏸ Sin terminar'}
