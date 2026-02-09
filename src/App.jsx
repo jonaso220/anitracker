@@ -202,7 +202,7 @@ export default function AnimeTracker() {
     setSeasonLoading(true);
     setSeasonAnime([]);
     const query = `query { Page(page: 1, perPage: 30) { media(season: ${s}, seasonYear: ${y}, type: ANIME, sort: POPULARITY_DESC, isAdult: false) {
-      id idMal title { romaji english native } coverImage { large } genres averageScore episodes format status seasonYear description(asHtml: false) siteUrl
+      id idMal title { romaji english native } coverImage { large medium } genres averageScore episodes format status seasonYear description(asHtml: false) siteUrl
     } } }`;
     const formatMap = { TV: 'TV', TV_SHORT: 'TV Short', MOVIE: 'Película', SPECIAL: 'Special', OVA: 'OVA', ONA: 'ONA', MUSIC: 'Music' };
     fetch('https://graphql.anilist.co', {
@@ -211,7 +211,8 @@ export default function AnimeTracker() {
     }).then(r => r.json()).then(data => {
       const results = (data?.data?.Page?.media || []).map(m => ({
         id: m.idMal || (m.id + 300000), title: m.title?.english || m.title?.romaji || '', titleJp: m.title?.native || '',
-        image: m.coverImage?.large || '', genres: m.genres || [],
+        image: m.coverImage?.large || '', imageSm: m.coverImage?.medium || m.coverImage?.large || '',
+        genres: m.genres || [],
         synopsis: (m.description || '').replace(/<[^>]*>/g, '').trim() || 'Sin sinopsis.',
         rating: m.averageScore ? (m.averageScore / 10).toFixed(1) : 0, episodes: m.episodes || null,
         type: formatMap[m.format] || m.format || '', year: m.seasonYear || y, status: m.status || '',

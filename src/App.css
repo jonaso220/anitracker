@@ -464,6 +464,44 @@
 .search-placeholder, .no-results { text-align: center; padding: 3rem; opacity: 0.4; }
 .search-placeholder span, .no-results span { font-size: 3rem; display: block; margin-bottom: 1rem; }
 
+/* ============ SKELETON SCREENS ============ */
+@keyframes shimmer {
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, rgba(168,85,247,0.06) 25%, rgba(168,85,247,0.12) 50%, rgba(168,85,247,0.06) 75%);
+  background-size: 800px 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 8px;
+}
+.light .skeleton {
+  background: linear-gradient(90deg, rgba(0,0,0,0.06) 25%, rgba(0,0,0,0.1) 50%, rgba(0,0,0,0.06) 75%);
+  background-size: 800px 100%;
+}
+.skeleton-card {
+  border-radius: 12px; overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.05);
+}
+.light .skeleton-card { border-color: rgba(0,0,0,0.08); }
+.skeleton-card-image { aspect-ratio: 3/4; }
+.skeleton-card-body { padding: 0.6rem; display: flex; flex-direction: column; gap: 0.4rem; }
+.skeleton-line { height: 0.7rem; border-radius: 4px; }
+.skeleton-line.w75 { width: 75%; }
+.skeleton-line.w50 { width: 50%; }
+.skeleton-line.w30 { width: 30%; }
+
+/* Search skeleton */
+.skeleton-search-item {
+  display: flex; gap: 1rem; padding: 1rem;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.05);
+}
+.light .skeleton-search-item { border-color: rgba(0,0,0,0.08); }
+.skeleton-search-img { width: 70px; height: 100px; flex-shrink: 0; border-radius: 8px; }
+.skeleton-search-body { flex: 1; display: flex; flex-direction: column; gap: 0.5rem; padding-top: 0.25rem; }
+.skeleton-line-lg { height: 1rem; border-radius: 4px; }
+
 /* ============ DETAIL MODAL ============ */
 .detail-modal .close-btn { position: absolute; top: 1rem; right: 1rem; }
 .close-btn {
