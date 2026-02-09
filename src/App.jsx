@@ -9,6 +9,7 @@ import SearchModal from './components/modals/SearchModal';
 import AnimeDetailModal from './components/modals/AnimeDetailModal';
 import DayPickerModal from './components/modals/DayPickerModal';
 import MoveDayPickerModal from './components/modals/MoveDayPickerModal';
+import ImportModal from './components/modals/ImportModal';
 import { useFirebase } from './hooks/useFirebase';
 import { useAnimeData } from './hooks/useAnimeData';
 import { useDragDrop } from './hooks/useDragDrop';
@@ -23,6 +24,7 @@ export default function AnimeTracker() {
   const [showAnimeDetail, setShowAnimeDetail] = useState(null);
   const [showDayPicker, setShowDayPicker] = useState(null);
   const [showMoveDayPicker, setShowMoveDayPicker] = useState(null);
+  const [showImport, setShowImport] = useState(false);
   const [watchedFilter, setWatchedFilter] = useState('all');
   const [watchedSort, setWatchedSort] = useState('date');
   const [toast, setToast] = useState(null);
@@ -56,7 +58,7 @@ export default function AnimeTracker() {
 
   // --- Hooks ---
   const { user, syncing, loginWithGoogle, logout, FIREBASE_ENABLED } = useFirebase(schedule, watchedList, watchLater, setSchedule, setWatchedList, setWatchLater);
-  const { searchQuery, setSearchQuery, searchResults, setSearchResults, isSearching, airingData, handleSearch } = useAnimeData(schedule);
+  const { searchQuery, setSearchQuery, searchResults, setSearchResults, isSearching, searchPartial, airingData, handleSearch } = useAnimeData(schedule);
   const { isDragging, dropTarget, dropIndex, handleDragStart, handleDragEnd, handleDragOverRow, handleDragOverCard, handleDrop, handleTouchStart, handleTouchMove, handleTouchEnd, touchRef, dragState } = useDragDrop(schedule, setSchedule, daysOfWeek);
   const dayRowRefs = useRef({});
 
@@ -133,6 +135,43 @@ export default function AnimeTracker() {
     if (anime._isWatchLater) setWatchLater(prev => prev.filter(a => a.id !== anime.id));
     if (anime._isWatched) setWatchedList(prev => prev.filter(a => a.id !== anime.id));
     showToast(`"${anime.title}" eliminado`, () => { setSchedule(prevSchedule); setWatchedList(prevWatched); setWatchLater(prevLater); });
+  };
+
+  const handleImport = (data) => {
+    let count = 0;
+    if (data.schedule?.length) {
+      setSchedule(prev => {
+        const next = { ...prev };
+        const days = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+        data.schedule.forEach((a, i) => {
+          const day = days[i % 7];
+          const exists = next[day].some(x => x.id === a.id);
+          if (!exists) { next[day] = [...next[day], { ...a, _importStatus: undefined, _finished: undefined, _dropped: undefined }]; count++; }
+        });
+        return next;
+      });
+    }
+    if (data.watchLater?.length) {
+      setWatchLater(prev => {
+        const existing = new Set(prev.map(a => a.id));
+        const newItems = data.watchLater.filter(a => !existing.has(a.id)).map(a => ({ ...a, _importStatus: undefined, _finished: undefined, _dropped: undefined }));
+        count += newItems.length;
+        return [...prev, ...newItems];
+      });
+    }
+    if (data.watched?.length) {
+      setWatchedList(prev => {
+        const existing = new Set(prev.map(a => a.id));
+        const newItems = data.watched.filter(a => !existing.has(a.id)).map(a => ({
+          ...a, finished: a._finished ?? true, finishedDate: new Date().toISOString(),
+          droppedDate: a._dropped ? new Date().toISOString() : undefined,
+          _importStatus: undefined, _finished: undefined, _dropped: undefined
+        }));
+        count += newItems.length;
+        return [...prev, ...newItems];
+      });
+    }
+    showToast(`Importados ${count} animes desde AniList`);
   };
 
   const moveAnimeToDay = (anime, fromDay, toDay) => {
@@ -252,6 +291,7 @@ export default function AnimeTracker() {
           <div className="header-left">
             <h1 className="logo">AniTracker</h1>
             <button className="search-btn" onClick={() => setShowSearch(true)}>🔍 Buscar...</button>
+            <button className="import-btn" onClick={() => setShowImport(true)}>📥 Importar</button>
           </div>
           <div className="header-right">
             <button className="theme-toggle" onClick={() => setDarkMode(!darkMode)}>
@@ -378,7 +418,7 @@ export default function AnimeTracker() {
       )}
 
       {showSearch && <SearchModal setShowSearch={setShowSearch} searchQuery={searchQuery} handleSearch={handleSearch}
-        searchResults={searchResults} isSearching={isSearching} setSearchResults={setSearchResults} setSearchQuery={setSearchQuery}
+        searchResults={searchResults} isSearching={isSearching} searchPartial={searchPartial} setSearchResults={setSearchResults} setSearchQuery={setSearchQuery}
         setShowDayPicker={setShowDayPicker} addToWatchLater={addToWatchLater} markAsWatchedFromSearch={markAsWatchedFromSearch} />}
 
       {showAnimeDetail && <AnimeDetailModal key={showAnimeDetail.id} showAnimeDetail={showAnimeDetail} setShowAnimeDetail={setShowAnimeDetail}
@@ -392,6 +432,8 @@ export default function AnimeTracker() {
 
       {showMoveDayPicker && <MoveDayPickerModal showMoveDayPicker={showMoveDayPicker} setShowMoveDayPicker={setShowMoveDayPicker}
         moveAnimeToDay={moveAnimeToDay} />}
+
+      {showImport && <ImportModal onClose={() => setShowImport(false)} onImport={handleImport} />}
     </div>
   );
 }

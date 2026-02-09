@@ -24,6 +24,9 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
     const [showLinkInput, setShowLinkInput] = useState(false);
     const [translatedSynopsis, setTranslatedSynopsis] = useState(initialSynopsis.text);
     const [isTranslating, setIsTranslating] = useState(initialSynopsis.needsFetch);
+    const [bingeMode, setBingeMode] = useState(false);
+    const [bingeCount, setBingeCount] = useState(0);
+    const [bingeStart] = useState(Date.now());
 
     // Only fetch translation if needed (not already Spanish or cached)
     useEffect(() => {
@@ -89,12 +92,36 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
 
                 {isSchedule && (
                     <div className="detail-section">
-                        <h4>📺 Episodio actual</h4>
+                        <div className="detail-section-header">
+                            <h4>📺 Episodio actual</h4>
+                            <button className={`binge-toggle ${bingeMode ? 'active' : ''}`} onClick={() => setBingeMode(!bingeMode)}>
+                                {bingeMode ? '🔥 Maratón' : '🔥 Maratón'}
+                            </button>
+                        </div>
                         <div className="episode-controls">
                             <button className="ep-control-btn" onClick={() => { updateEpisode(a.id, -1); setShowAnimeDetail(p => ({ ...p, currentEp: Math.max(0, (p.currentEp || 0) - 1) })); }}>−</button>
                             <span className="ep-number">{a.currentEp || 0}</span>
                             <button className="ep-control-btn" onClick={() => { updateEpisode(a.id, 1); setShowAnimeDetail(p => ({ ...p, currentEp: (p.currentEp || 0) + 1 })); }}>+</button>
                         </div>
+                        {bingeMode && (
+                            <div className="binge-panel fade-in">
+                                <div className="binge-quick-btns">
+                                    {[1, 3, 5].map(n => (
+                                        <button key={n} className="binge-quick-btn" onClick={() => {
+                                            updateEpisode(a.id, n);
+                                            setBingeCount(prev => prev + n);
+                                            setShowAnimeDetail(p => ({ ...p, currentEp: (p.currentEp || 0) + n }));
+                                        }}>+{n} ep{n > 1 ? 's' : ''}</button>
+                                    ))}
+                                </div>
+                                {bingeCount > 0 && (
+                                    <div className="binge-stats">
+                                        <span className="binge-stat">🔥 {bingeCount} ep{bingeCount > 1 ? 's' : ''} esta sesión</span>
+                                        <span className="binge-stat">⏱ {Math.round((Date.now() - bingeStart) / 60000)} min</span>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                 )}
 
