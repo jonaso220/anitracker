@@ -8,10 +8,19 @@ const SearchModal = ({ setShowSearch, searchQuery, handleSearch, searchResults, 
           <button className="close-btn" onClick={() => { setShowSearch(false); setSearchResults([]); setSearchQuery(''); }}>×</button>
         </div>
         <div className="search-results">
-          {isSearching ? <div className="search-placeholder"><div className="spinner"></div><p>Buscando...</p></div>
+          {isSearching ? <div className="skeleton-search-list">{Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="skeleton-search-item">
+              <div className="skeleton skeleton-search-img"></div>
+              <div className="skeleton-search-body">
+                <div className="skeleton skeleton-line-lg w75"></div>
+                <div className="skeleton skeleton-line w50"></div>
+                <div className="skeleton skeleton-line w30"></div>
+              </div>
+            </div>
+          ))}</div>
           : searchResults.length > 0 ? searchResults.map(anime => (
             <div key={anime.id} className="search-result-item fade-in">
-              <img src={anime.image} alt={anime.title} />
+              <img src={anime.imageSm || anime.image} alt={anime.title} />
               <div className="search-result-info">
                 <div className="search-result-title-row"><h4>{anime.title}</h4><span className="source-badge">{anime.source}</span></div>
                 {anime.altTitles?.length > 0 && <p className="alt-titles">También: {anime.altTitles.slice(0, 3).join(' · ')}</p>}

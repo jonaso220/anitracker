@@ -141,7 +141,7 @@ export function useAnimeData(schedule) {
         Page(page: 1, perPage: 12) {
           media(search: $search, type: ANIME, sort: SEARCH_MATCH) {
             id idMal title { romaji english native userPreferred }
-            coverImage { large } bannerImage
+            coverImage { large medium } bannerImage
             genres averageScore episodes status seasonYear format
             description(asHtml: false)
             siteUrl
@@ -177,6 +177,7 @@ export function useAnimeData(schedule) {
             titleJp: a.title_japanese || '', titleEn,
             altTitles: allTitles.filter((t, i, arr) => arr.indexOf(t) === i && t !== (titleEn || a.title)),
             image: a.images?.jpg?.large_image_url || a.images?.jpg?.image_url || '',
+            imageSm: a.images?.jpg?.image_url || a.images?.jpg?.small_image_url || '',
             genres: a.genres?.map(g => g.name) || [],
             synopsis: a.synopsis || 'Sin sinopsis disponible.',
             rating: a.score || 0, episodes: parseEpisodes(a.episodes),
@@ -200,7 +201,8 @@ export function useAnimeData(schedule) {
             title: titleEn || at.canonicalTitle, titleOriginal: at.canonicalTitle || '',
             titleJp: titleJp, titleEn,
             altTitles: allTitles.filter((t, i, arr) => arr.indexOf(t) === i && t !== (titleEn || at.canonicalTitle)),
-            image: at.posterImage?.large || at.posterImage?.medium || '', genres: [],
+            image: at.posterImage?.large || at.posterImage?.medium || '',
+            imageSm: at.posterImage?.small || at.posterImage?.medium || '', genres: [],
             synopsis: at.synopsis || 'Sin sinopsis disponible.',
             rating: at.averageRating ? (parseFloat(at.averageRating) / 10).toFixed(1) : 0,
             episodes: parseEpisodes(at.episodeCount), status: at.status || '',
@@ -236,6 +238,7 @@ export function useAnimeData(schedule) {
             titleJp: titleNative, titleEn,
             altTitles: allTitles.filter((t, i, arr) => arr.indexOf(t) === i && t !== (titleEn || titleRomaji)),
             image: a.coverImage?.large || '',
+            imageSm: a.coverImage?.medium || a.coverImage?.large || '',
             genres: a.genres || [],
             synopsis: cleanSynopsis,
             rating: a.averageScore ? (a.averageScore / 10).toFixed(1) : 0,
@@ -273,6 +276,7 @@ export function useAnimeData(schedule) {
             titleJp: '', titleEn: title,
             altTitles: [],
             image: s.image?.original || s.image?.medium || '',
+            imageSm: s.image?.medium || '',
             genres: genres,
             synopsis: synopsis,
             rating: s.rating?.average || 0,
@@ -301,12 +305,14 @@ export function useAnimeData(schedule) {
           const genre = item.primaryGenreName || '';
           const synopsis = item.longDescription || item.shortDescription || 'Sin sinopsis disponible.';
           const artUrl = (item.artworkUrl100 || '').replace('100x100', '600x600');
+          const artUrlSm = item.artworkUrl100 || '';
           combined.set(`itunes-${item.trackId || item.collectionId}`, {
             id: (item.trackId || item.collectionId || Math.random() * 100000 | 0) + 500000, source: 'iTunes',
             title: title, titleOriginal: title,
             titleJp: '', titleEn: title,
             altTitles: [],
             image: artUrl,
+            imageSm: artUrlSm,
             genres: genre ? [genre] : [],
             synopsis: synopsis,
             rating: 0, episodes: null,
@@ -375,6 +381,7 @@ export function useAnimeData(schedule) {
                       titleJp: a.title_japanese || '', titleEn,
                       altTitles: [...allTitles, result.title].filter((t, i, arr) => Boolean(t) && arr.indexOf(t) === i && t !== (titleEn || a.title)),
                       image: a.images?.jpg?.large_image_url || a.images?.jpg?.image_url || '',
+            imageSm: a.images?.jpg?.image_url || a.images?.jpg?.small_image_url || '',
                       genres: a.genres?.map(g => g.name) || [],
                       synopsis: a.synopsis || 'Sin sinopsis disponible.',
                       rating: a.score || 0, episodes: parseEpisodes(a.episodes),
@@ -404,6 +411,7 @@ export function useAnimeData(schedule) {
                       titleJp: '', titleEn: s.name,
                       altTitles: [result.title].filter(Boolean),
                       image: s.image?.original || s.image?.medium || '',
+                      imageSm: s.image?.medium || '',
                       genres: s.genres || [], synopsis: synopsis,
                       rating: s.rating?.average || 0, episodes: null,
                       status: statusMap2[s.status] || s.status || '',
@@ -461,6 +469,7 @@ export function useAnimeData(schedule) {
                     titleJp: '', titleEn: s.name,
                     altTitles: [query].filter(Boolean),
                     image: s.image?.original || s.image?.medium || '',
+                    imageSm: s.image?.medium || '',
                     genres: s.genres || [], synopsis: synopsis,
                     rating: s.rating?.average || 0, episodes: null,
                     status: statusMap3[s.status] || s.status || '',
@@ -484,7 +493,8 @@ export function useAnimeData(schedule) {
                     title: title, titleOriginal: title,
                     titleJp: '', titleEn: title,
                     altTitles: [query].filter(Boolean),
-                    image: artUrl, genres: item.primaryGenreName ? [item.primaryGenreName] : [],
+                    image: artUrl, imageSm: item.artworkUrl100 || '',
+                    genres: item.primaryGenreName ? [item.primaryGenreName] : [],
                     synopsis: item.longDescription || item.shortDescription || 'Sin sinopsis disponible.',
                     rating: 0, episodes: null, status: '', year: item.releaseDate ? item.releaseDate.split('-')[0] : '',
                     type: item.kind === 'feature-movie' ? 'Película' : 'Serie',
