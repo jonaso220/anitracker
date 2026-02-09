@@ -1,6 +1,15 @@
 import React from 'react';
 
-const SearchModal = ({ setShowSearch, searchQuery, handleSearch, searchResults, isSearching, setSearchResults, setSearchQuery, setShowDayPicker, addToWatchLater, markAsWatchedFromSearch }) => (
+const Highlight = ({ text, query }) => {
+    if (!query || query.length < 2 || !text) return <>{text}</>;
+    const qNorm = query.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const tNorm = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const idx = tNorm.indexOf(qNorm);
+    if (idx === -1) return <>{text}</>;
+    return <>{text.slice(0, idx)}<mark className="search-highlight">{text.slice(idx, idx + query.length)}</mark>{text.slice(idx + query.length)}</>;
+};
+
+const SearchModal = ({ setShowSearch, searchQuery, handleSearch, searchResults, isSearching, searchPartial = [], setSearchResults, setSearchQuery, setShowDayPicker, addToWatchLater, markAsWatchedFromSearch }) => (
     <div className="modal-overlay" onClick={() => { setShowSearch(false); setSearchResults([]); setSearchQuery(''); }}>
       <div className="search-modal" onClick={e => e.stopPropagation()}>
         <div className="search-header">
@@ -18,12 +27,18 @@ const SearchModal = ({ setShowSearch, searchQuery, handleSearch, searchResults, 
               </div>
             </div>
           ))}</div>
-          : searchResults.length > 0 ? searchResults.map(anime => (
+          : searchResults.length > 0 ? <>
+            {searchPartial.length > 0 && (
+              <div className="search-partial-notice">
+                Algunos resultados pueden faltar ({searchPartial.join(', ')} no respondió)
+              </div>
+            )}
+            {searchResults.map(anime => (
             <div key={anime.id} className="search-result-item fade-in">
               <img src={anime.imageSm || anime.image} alt={anime.title} />
               <div className="search-result-info">
-                <div className="search-result-title-row"><h4>{anime.title}</h4><span className="source-badge">{anime.source}</span></div>
-                {anime.altTitles?.length > 0 && <p className="alt-titles">También: {anime.altTitles.slice(0, 3).join(' · ')}</p>}
+                <div className="search-result-title-row"><h4><Highlight text={anime.title} query={searchQuery} /></h4><span className="source-badge">{anime.source}</span></div>
+                {anime.altTitles?.length > 0 && <p className="alt-titles">También: {anime.altTitles.slice(0, 3).map((t, i) => <React.Fragment key={i}>{i > 0 && ' · '}<Highlight text={t} query={searchQuery} /></React.Fragment>)}</p>}
                 <div className="search-result-meta">
                   {anime.type && <span className="meta-tag type">{anime.type}</span>}
                   {anime.year && <span className="meta-tag year">{anime.year}</span>}
@@ -39,7 +54,8 @@ const SearchModal = ({ setShowSearch, searchQuery, handleSearch, searchResults, 
                 <button className="add-btn watched-btn" onClick={() => markAsWatchedFromSearch(anime)}>✓ Ya la vi</button>
               </div>
             </div>
-          )) : searchQuery.length > 1 ? <div className="no-results"><span>😢</span><p>Sin resultados para "{searchQuery}"</p></div>
+          ))}</>
+          : searchQuery.length > 1 ? <div className="no-results"><span>😢</span><p>Sin resultados para "{searchQuery}"</p></div>
           : <div className="search-placeholder"><span>🎌</span><p>Buscá anime, series o películas</p><p className="search-hint">MAL · Kitsu · AniList · TVMaze · iTunes</p></div>}
         </div>
       </div>

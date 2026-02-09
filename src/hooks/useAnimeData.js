@@ -4,6 +4,7 @@ export function useAnimeData(schedule) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [searchPartial, setSearchPartial] = useState([]);
   const [airingData, setAiringData] = useState({});
   const searchTimeout = useRef(null);
   const searchIdRef = useRef(0);
@@ -165,6 +166,9 @@ export function useAnimeData(schedule) {
         fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=movie&entity=movie,tvSeason&limit=10&country=US`).then(r => r.json())
       ]);
       const combined = new Map();
+      const apiNames = ['MAL', 'Kitsu', 'AniList', 'TVMaze', 'iTunes'];
+      const failedApis = [jikanRes, kitsuRes, anilistRes, tvmazeRes, itunesRes]
+        .map((r, i) => r.status === 'rejected' ? apiNames[i] : null).filter(Boolean);
 
       // Procesar Jikan (MAL)
       if (jikanRes.status === 'fulfilled' && jikanRes.value?.data) {
@@ -530,8 +534,9 @@ export function useAnimeData(schedule) {
 
       if (currentSearchId === searchIdRef.current) {
         setSearchResults(results);
+        setSearchPartial(failedApis);
       }
-    } catch (err) { console.error('[AniTracker] Error:', err); if (currentSearchId === searchIdRef.current) setSearchResults([]); }
+    } catch (err) { console.error('[AniTracker] Error:', err); if (currentSearchId === searchIdRef.current) { setSearchResults([]); setSearchPartial([]); } }
     if (currentSearchId === searchIdRef.current) setIsSearching(false);
   };
 
@@ -547,6 +552,7 @@ export function useAnimeData(schedule) {
     searchResults,
     setSearchResults,
     isSearching,
+    searchPartial,
     airingData,
     handleSearch,
     performSearch
