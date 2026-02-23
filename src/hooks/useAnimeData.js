@@ -20,7 +20,7 @@ export function useAnimeData(schedule) {
     // También animes de AniList (id entre 300000-400000, restar offset)
     const anilistIds = allAnime.filter(a => a.id >= 300000 && a.id < 400000).map(a => a.id - 300000);
 
-    if (malIds.length === 0 && anilistIds.length === 0) return;
+    if (malIds.length === 0 && anilistIds.length === 0) { setAiringData({}); return; }
 
     // Evitar spam: solo consultar cada 15 min, pero invalidar si hay IDs nuevos
     const cacheKey = 'anitracker-airing-cache';
@@ -126,6 +126,12 @@ export function useAnimeData(schedule) {
   }, [schedule]); // Se ejecuta cuando cambia el horario
 
   // --- 2. Lógica de Búsqueda (Jikan, Kitsu, AniList, TVMaze, Wiki) ---
+  const hashString = (str) => {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) { hash = ((hash << 5) - hash) + str.charCodeAt(i); hash |= 0; }
+    return Math.abs(hash) % 100000;
+  };
+
   const parseEpisodes = (val) => {
     if (val === null || val === undefined || val === '?' || val === '') return null;
     const n = parseInt(val);
@@ -166,6 +172,9 @@ export function useAnimeData(schedule) {
         fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=movie&entity=movie,tvSeason&limit=10&country=US`).then(r => r.json())
       ]);
       const combined = new Map();
+      const usedNumericIds = new Set();
+      const addToCombined = (key, entry) => { combined.set(key, entry); usedNumericIds.add(entry.id); };
+      const hasNumericId = (id) => usedNumericIds.has(id);
       const apiNames = ['MAL', 'Kitsu', 'AniList', 'TVMaze', 'iTunes'];
       const failedApis = [jikanRes, kitsuRes, anilistRes, tvmazeRes, itunesRes]
         .map((r, i) => r.status === 'rejected' ? apiNames[i] : null).filter(Boolean);
@@ -175,7 +184,7 @@ export function useAnimeData(schedule) {
         jikanRes.value.data.forEach(a => {
           const titleEn = a.title_english || '';
           const allTitles = [a.title, titleEn, a.title_japanese, ...(a.title_synonyms || [])].filter(Boolean);
-          combined.set(`mal-${a.mal_id}`, {
+          addToCombined(`mal-${a.mal_id}`, {
             id: a.mal_id, source: 'MAL',
             title: titleEn || a.title, titleOriginal: a.title,
             titleJp: a.title_japanese || '', titleEn,
@@ -200,7 +209,7 @@ export function useAnimeData(schedule) {
           const titleJp = at.titles?.ja_jp || '';
           const allTitles = [titleEn, titleJp, at.canonicalTitle, ...(at.abbreviatedTitles || [])].filter(Boolean);
           const isDup = [...combined.values()].some(e => (e.title || '').toLowerCase() === (titleEn || at.canonicalTitle || '').toLowerCase() || (e.titleJp && titleJp && e.titleJp === titleJp));
-          if (!isDup) combined.set(`kitsu-${a.id}`, {
+          if (!isDup) addToCombined(`kitsu-${a.id}`, {
             id: parseInt(a.id) + 100000, source: 'Kitsu',
             title: titleEn || at.canonicalTitle, titleOriginal: at.canonicalTitle || '',
             titleJp: titleJp, titleEn,
@@ -208,7 +217,7 @@ export function useAnimeData(schedule) {
             image: at.posterImage?.large || at.posterImage?.medium || '',
             imageSm: at.posterImage?.small || at.posterImage?.medium || '', genres: [],
             synopsis: at.synopsis || 'Sin sinopsis disponible.',
-            rating: at.averageRating ? (parseFloat(at.averageRating) / 10).toFixed(1) : 0,
+            rating: at.averageRating ? Number((parseFloat(at.averageRating) / 10).toFixed(1)) : 0,
             episodes: parseEpisodes(at.episodeCount), status: at.status || '',
             year: at.startDate ? at.startDate.split('-')[0] : '', type: at.showType || '',
             malUrl: `https://kitsu.app/anime/${a.id}`, watchLink: '', currentEp: 0, userRating: 0
@@ -236,7 +245,7 @@ export function useAnimeData(schedule) {
           const formatMap = { TV: 'TV', TV_SHORT: 'TV Short', MOVIE: 'Película', SPECIAL: 'Special', OVA: 'OVA', ONA: 'ONA', MUSIC: 'Music' };
           const statusMap = { FINISHED: 'Finished', RELEASING: 'En emisión', NOT_YET_RELEASED: 'No estrenado', CANCELLED: 'Cancelado', HIATUS: 'En pausa' };
 
-          combined.set(`anilist-${a.id}`, {
+          addToCombined(`anilist-${a.id}`, {
             id: a.id + 300000, source: 'AniList',
             title: titleEn || titleRomaji, titleOriginal: titleRomaji,
             titleJp: titleNative, titleEn,
@@ -245,7 +254,7 @@ export function useAnimeData(schedule) {
             imageSm: a.coverImage?.medium || a.coverImage?.large || '',
             genres: a.genres || [],
             synopsis: cleanSynopsis,
-            rating: a.averageScore ? (a.averageScore / 10).toFixed(1) : 0,
+            rating: a.averageScore ? Number((a.averageScore / 10).toFixed(1)) : 0,
             episodes: parseEpisodes(a.episodes),
             status: statusMap[a.status] || a.status || '',
             year: a.seasonYear || '',
@@ -274,7 +283,7 @@ export function useAnimeData(schedule) {
           const statusMap = { Running: 'En emisión', Ended: 'Finalizado', 'To Be Determined': 'Por determinar', 'In Development': 'En desarrollo' };
           const synopsis = (s.summary || 'Sin sinopsis disponible.').replace(/<[^>]*>/g, '').trim();
 
-          combined.set(`tvmaze-${s.id}`, {
+          addToCombined(`tvmaze-${s.id}`, {
             id: s.id + 400000, source: 'TVMaze',
             title: title, titleOriginal: title,
             titleJp: '', titleEn: title,
@@ -310,8 +319,10 @@ export function useAnimeData(schedule) {
           const synopsis = item.longDescription || item.shortDescription || 'Sin sinopsis disponible.';
           const artUrl = (item.artworkUrl100 || '').replace('100x100', '600x600');
           const artUrlSm = item.artworkUrl100 || '';
-          combined.set(`itunes-${item.trackId || item.collectionId}`, {
-            id: (item.trackId || item.collectionId || Math.random() * 100000 | 0) + 500000, source: 'iTunes',
+          const itunesId = (item.trackId || item.collectionId || hashString(title)) + 500000;
+          if (hasNumericId(itunesId)) return;
+          addToCombined(`itunes-${item.trackId || item.collectionId || hashString(title)}`, {
+            id: itunesId, source: 'iTunes',
             title: title, titleOriginal: title,
             titleJp: '', titleEn: title,
             altTitles: [],
@@ -376,10 +387,10 @@ export function useAnimeData(schedule) {
 
                 if (bridgeRes.status === 'fulfilled' && bridgeRes.value?.data) {
                   bridgeRes.value.data.forEach(a => {
-                    if (combined.has(`mal-${a.mal_id}`) || combined.has(`mal-bridge-${a.mal_id}`)) return;
+                    if (combined.has(`mal-${a.mal_id}`) || combined.has(`mal-bridge-${a.mal_id}`) || hasNumericId(a.mal_id)) return;
                     const titleEn = a.title_english || '';
                     const allTitles = [a.title, titleEn, a.title_japanese, ...(a.title_synonyms || [])].filter(Boolean);
-                    combined.set(`mal-bridge-${a.mal_id}`, {
+                    addToCombined(`mal-bridge-${a.mal_id}`, {
                       id: a.mal_id, source: 'MAL',
                       title: titleEn || a.title, titleOriginal: a.title,
                       titleJp: a.title_japanese || '', titleEn,
@@ -407,9 +418,9 @@ export function useAnimeData(schedule) {
                     const s = r.show;
                     if (!s) return;
                     const isDup = [...combined.values()].some(e => (e.title || '').toLowerCase() === (s.name || '').toLowerCase());
-                    if (isDup || combined.has(`tvmaze-${s.id}`) || combined.has(`tvmaze-bridge-${s.id}`)) return;
+                    if (isDup || combined.has(`tvmaze-${s.id}`) || combined.has(`tvmaze-bridge-${s.id}`) || hasNumericId(s.id + 400000)) return;
                     const synopsis = (s.summary || 'Sin sinopsis disponible.').replace(/<[^>]*>/g, '').trim();
-                    combined.set(`tvmaze-bridge-${s.id}`, {
+                    addToCombined(`tvmaze-bridge-${s.id}`, {
                       id: s.id + 400000, source: 'TVMaze',
                       title: s.name, titleOriginal: s.name,
                       titleJp: '', titleEn: s.name,
@@ -463,11 +474,11 @@ export function useAnimeData(schedule) {
               if (tvRes.status === 'fulfilled' && Array.isArray(tvRes.value)) {
                 tvRes.value.slice(0, 3).forEach(r => {
                   const s = r.show;
-                  if (!s || combined.has(`tvmaze-${s.id}`) || combined.has(`tvmaze-bridge-${s.id}`)) return;
+                  if (!s || combined.has(`tvmaze-${s.id}`) || combined.has(`tvmaze-bridge-${s.id}`) || hasNumericId(s.id + 400000)) return;
                   const isDup = [...combined.values()].some(e => (e.title || '').toLowerCase() === (s.name || '').toLowerCase());
                   if (isDup) return;
                   const synopsis = (s.summary || 'Sin sinopsis disponible.').replace(/<[^>]*>/g, '').trim();
-                  combined.set(`tvmaze-en-${s.id}`, {
+                  addToCombined(`tvmaze-en-${s.id}`, {
                     id: s.id + 400000, source: 'TVMaze',
                     title: s.name, titleOriginal: s.name,
                     titleJp: '', titleEn: s.name,
@@ -492,8 +503,10 @@ export function useAnimeData(schedule) {
                   const isDup = [...combined.values()].some(e => (e.title || '').toLowerCase() === title.toLowerCase());
                   if (isDup) return;
                   const artUrl = (item.artworkUrl100 || '').replace('100x100', '600x600');
-                  combined.set(`itunes-en-${item.trackId || item.collectionId}`, {
-                    id: (item.trackId || item.collectionId || Math.random() * 100000 | 0) + 500000, source: 'iTunes',
+                  const itunesEnId = (item.trackId || item.collectionId || hashString(title)) + 500000;
+                  if (hasNumericId(itunesEnId)) return;
+                  addToCombined(`itunes-en-${item.trackId || item.collectionId || hashString(title)}`, {
+                    id: itunesEnId, source: 'iTunes',
                     title: title, titleOriginal: title,
                     titleJp: '', titleEn: title,
                     altTitles: [query].filter(Boolean),

@@ -86,7 +86,7 @@ export default function AnimeTracker() {
 
   const markAsFinished = (anime, day) => {
     const prevSchedule = JSON.parse(JSON.stringify(schedule));
-    const prevWatched = [...watchedList];
+    const prevWatched = JSON.parse(JSON.stringify(watchedList));
     removeFromSchedule(anime.id, day);
     setWatchedList(prev => [...prev.filter(a => a.id !== anime.id), { ...clean(anime), finished: true, finishedDate: new Date().toISOString() }]);
     showToast(`"${anime.title}" marcado como finalizado`, () => { setSchedule(prevSchedule); setWatchedList(prevWatched); });
@@ -94,7 +94,7 @@ export default function AnimeTracker() {
 
   const dropAnime = (anime, day) => {
     const prevSchedule = JSON.parse(JSON.stringify(schedule));
-    const prevWatched = [...watchedList];
+    const prevWatched = JSON.parse(JSON.stringify(watchedList));
     removeFromSchedule(anime.id, day);
     setWatchedList(prev => [...prev.filter(a => a.id !== anime.id), { ...clean(anime), finished: false, droppedDate: new Date().toISOString() }]);
     showToast(`"${anime.title}" dropeado`, () => { setSchedule(prevSchedule); setWatchedList(prevWatched); });
@@ -116,12 +116,13 @@ export default function AnimeTracker() {
   };
 
   const moveFromWatchLaterToSchedule = (anime, day) => {
-    setWatchLater(prev => prev.filter(a => a.id !== anime.id));
-    setSchedule(prev => ({ ...prev, [day]: [...prev[day].filter(a => a.id !== anime.id), clean(anime)] }));
+    const a = { ...clean(anime), currentEp: anime.currentEp || 0, userRating: anime.userRating || 0, notes: anime.notes || '' };
+    setWatchLater(prev => prev.filter(x => x.id !== anime.id));
+    setSchedule(prev => ({ ...prev, [day]: [...prev[day].filter(x => x.id !== a.id), a] }));
   };
 
   const resumeAnime = (anime) => {
-    const prevWatched = [...watchedList];
+    const prevWatched = JSON.parse(JSON.stringify(watchedList));
     setWatchedList(prev => prev.filter(a => a.id !== anime.id));
     setShowDayPicker(anime);
     showToast(`"${anime.title}" retomado`, () => { setWatchedList(prevWatched); });
@@ -129,8 +130,8 @@ export default function AnimeTracker() {
 
   const deleteAnime = (anime) => {
     const prevSchedule = JSON.parse(JSON.stringify(schedule));
-    const prevWatched = [...watchedList];
-    const prevLater = [...watchLater];
+    const prevWatched = JSON.parse(JSON.stringify(watchedList));
+    const prevLater = JSON.parse(JSON.stringify(watchLater));
     if (anime._day) removeFromSchedule(anime.id, anime._day);
     if (anime._isWatchLater) setWatchLater(prev => prev.filter(a => a.id !== anime.id));
     if (anime._isWatched) setWatchedList(prev => prev.filter(a => a.id !== anime.id));
@@ -138,28 +139,35 @@ export default function AnimeTracker() {
   };
 
   const handleImport = (data) => {
+    // Pre-calcular count usando estados actuales para evitar race condition con setState
     let count = 0;
+    const allScheduleIds = new Set(daysOfWeek.flatMap(d => (schedule[d] || []).map(a => a.id)));
+    const watchLaterIds = new Set(watchLater.map(a => a.id));
+    const watchedIds = new Set(watchedList.map(a => a.id));
+
     if (data.schedule?.length) {
+      data.schedule.forEach(a => { if (!allScheduleIds.has(a.id)) count++; });
       setSchedule(prev => {
         const next = { ...prev };
         const days = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
         data.schedule.forEach((a, i) => {
           const day = days[i % 7];
           const exists = next[day].some(x => x.id === a.id);
-          if (!exists) { next[day] = [...next[day], { ...a, _importStatus: undefined, _finished: undefined, _dropped: undefined }]; count++; }
+          if (!exists) { next[day] = [...next[day], { ...a, _importStatus: undefined, _finished: undefined, _dropped: undefined }]; }
         });
         return next;
       });
     }
     if (data.watchLater?.length) {
+      count += data.watchLater.filter(a => !watchLaterIds.has(a.id)).length;
       setWatchLater(prev => {
         const existing = new Set(prev.map(a => a.id));
         const newItems = data.watchLater.filter(a => !existing.has(a.id)).map(a => ({ ...a, _importStatus: undefined, _finished: undefined, _dropped: undefined }));
-        count += newItems.length;
         return [...prev, ...newItems];
       });
     }
     if (data.watched?.length) {
+      count += data.watched.filter(a => !watchedIds.has(a.id)).length;
       setWatchedList(prev => {
         const existing = new Set(prev.map(a => a.id));
         const newItems = data.watched.filter(a => !existing.has(a.id)).map(a => ({
@@ -167,7 +175,6 @@ export default function AnimeTracker() {
           droppedDate: a._dropped ? new Date().toISOString() : undefined,
           _importStatus: undefined, _finished: undefined, _dropped: undefined
         }));
-        count += newItems.length;
         return [...prev, ...newItems];
       });
     }
@@ -253,7 +260,7 @@ export default function AnimeTracker() {
         image: m.coverImage?.large || '', imageSm: m.coverImage?.medium || m.coverImage?.large || '',
         genres: m.genres || [],
         synopsis: (m.description || '').replace(/<[^>]*>/g, '').trim() || 'Sin sinopsis.',
-        rating: m.averageScore ? (m.averageScore / 10).toFixed(1) : 0, episodes: m.episodes || null,
+        rating: m.averageScore ? Number((m.averageScore / 10).toFixed(1)) : 0, episodes: m.episodes || null,
         type: formatMap[m.format] || m.format || '', year: m.seasonYear || y, status: m.status || '',
         source: 'AniList', malUrl: m.siteUrl || '', watchLink: '', currentEp: 0, userRating: 0, notes: ''
       }));

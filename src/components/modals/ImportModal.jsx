@@ -68,7 +68,7 @@ const ImportModal = ({ onClose, onImport }) => {
             imageSm: m.coverImage?.medium || m.coverImage?.large || '',
             genres: m.genres || [],
             synopsis: (m.description || '').replace(/<[^>]*>/g, '').trim() || 'Sin sinopsis.',
-            rating: m.averageScore ? (m.averageScore / 10).toFixed(1) : 0,
+            rating: m.averageScore ? Number((m.averageScore / 10).toFixed(1)) : 0,
             episodes: m.episodes || null,
             type: formatMap[m.format] || m.format || '',
             year: m.seasonYear || '',

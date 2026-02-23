@@ -272,9 +272,9 @@
 @keyframes airingPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.8; } }
 .anime-card.has-airing { border-color: rgba(168,85,247,0.4); }
 
-.anime-card-content { padding: 0.6rem; }
-.anime-card-content h3 { font-size: 0.8rem; font-weight: 600; margin-bottom: 0.35rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.anime-genres { display: flex; flex-wrap: wrap; gap: 0.25rem; }
+.anime-card-content { padding: 0.6rem; height: 7.6rem; overflow: hidden; display: flex; flex-direction: column; }
+.anime-card-content h3 { font-size: 0.8rem; font-weight: 600; margin-bottom: 0.35rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; }
+.anime-genres { display: flex; flex-wrap: wrap; gap: 0.25rem; flex-shrink: 0; }
 .genre-tag { font-size: 0.6rem; padding: 0.15rem 0.4rem; background: rgba(168,85,247,0.2); border-radius: 20px; color: #c4b5fd; }
 .light .genre-tag { background: rgba(168,85,247,0.1); color: #7c3aed; }
 
@@ -295,7 +295,7 @@
 .status-badge.dropped { background: rgba(251,191,36,0.2); color: #fcd34d; }
 
 /* Card Progress Bar */
-.card-progress { margin-top: 0.4rem; }
+.card-progress { margin-top: auto; }
 .card-progress-bar {
   height: 4px; border-radius: 2px; overflow: hidden;
   background: rgba(128,128,128,0.15);

@@ -3,10 +3,27 @@ import React from 'react';
 const Highlight = ({ text, query }) => {
     if (!query || query.length < 2 || !text) return <>{text}</>;
     const qNorm = query.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    const tNorm = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    const idx = tNorm.indexOf(qNorm);
-    if (idx === -1) return <>{text}</>;
-    return <>{text.slice(0, idx)}<mark className="search-highlight">{text.slice(idx, idx + query.length)}</mark>{text.slice(idx + query.length)}</>;
+    // Construir mapa de posiciones: para cada char en la versión stripped, guardar su índice original
+    const lower = text.toLowerCase();
+    const nfd = lower.normalize('NFD');
+    const origIdx = []; // origIdx[i] = índice en text original del i-ésimo char stripped
+    let stripped = '';
+    for (let i = 0, origPos = 0; i < nfd.length; i++) {
+        if (!/[\u0300-\u036f]/.test(nfd[i])) {
+            stripped += nfd[i];
+            origIdx.push(origPos);
+        }
+        // Avanzar origPos al siguiente char NFC cuando terminamos un cluster NFD
+        const nextIsBase = i + 1 >= nfd.length || !/[\u0300-\u036f]/.test(nfd[i + 1]);
+        if (nextIsBase && !/[\u0300-\u036f]/.test(nfd[i])) origPos++;
+        if (/[\u0300-\u036f]/.test(nfd[i]) && nextIsBase) origPos++;
+    }
+    const matchStart = stripped.indexOf(qNorm);
+    if (matchStart === -1) return <>{text}</>;
+    const matchEnd = matchStart + qNorm.length;
+    const start = origIdx[matchStart];
+    const end = matchEnd < origIdx.length ? origIdx[matchEnd] : text.length;
+    return <>{text.slice(0, start)}<mark className="search-highlight">{text.slice(start, end)}</mark>{text.slice(end)}</>;
 };
 
 const SearchModal = ({ setShowSearch, searchQuery, handleSearch, searchResults, isSearching, searchPartial = [], setSearchResults, setSearchQuery, setShowDayPicker, addToWatchLater, markAsWatchedFromSearch }) => (

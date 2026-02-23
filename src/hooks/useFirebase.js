@@ -1,13 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 
-// Configuración de Firebase (Tu config)
+// Configuración de Firebase (leída desde variables de entorno)
 const FIREBASE_CONFIG = {
-  apiKey: "AIzaSyB3AcPFUO8DMBGUdM1emaOEzGtwrZ4BQ0Y",
-  authDomain: "animetracker-47abf.firebaseapp.com",
-  projectId: "animetracker-47abf",
-  storageBucket: "animetracker-47abf.firebasestorage.app",
-  messagingSenderId: "757726364049",
-  appId: "1:757726364049:web:045a512ed19c25924f5a30"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || ""
 };
 
 const FIREBASE_ENABLED = FIREBASE_CONFIG.apiKey !== "";
@@ -41,14 +41,22 @@ export function useFirebase(schedule, watchedList, watchLater, setSchedule, setW
   const syncTimer = useRef(null);
   const savedLoadVersion = useRef(0);
 
+  // Refs para que saveToCloud siempre lea los valores más recientes
+  const scheduleRef = useRef(schedule);
+  const watchedListRef = useRef(watchedList);
+  const watchLaterRef = useRef(watchLater);
+  scheduleRef.current = schedule;
+  watchedListRef.current = watchedList;
+  watchLaterRef.current = watchLater;
+
   const saveToCloud = async (uid) => {
     if (!firebaseDb || !db || !uid) return;
     setSyncing(true);
     try {
       await firebaseDb.setDoc(firebaseDb.doc(db, 'users', uid), {
-        schedule: JSON.stringify(schedule),
-        watchedList: JSON.stringify(watchedList),
-        watchLater: JSON.stringify(watchLater),
+        schedule: JSON.stringify(scheduleRef.current),
+        watchedList: JSON.stringify(watchedListRef.current),
+        watchLater: JSON.stringify(watchLaterRef.current),
         updatedAt: new Date().toISOString()
       });
     } catch (e) { console.error('Save error:', e); }

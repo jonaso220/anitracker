@@ -18,6 +18,7 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
     };
     const initialSynopsis = getInitialSynopsis();
 
+    const [localEp, setLocalEp] = useState(showAnimeDetail?.currentEp || 0);
     const [localRating, setLocalRating] = useState(showAnimeDetail?.userRating || 0);
     const [localLink, setLocalLink] = useState(showAnimeDetail?.watchLink || '');
     const [localNotes, setLocalNotes] = useState(showAnimeDetail?.notes || '');
@@ -99,9 +100,9 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                             </button>
                         </div>
                         <div className="episode-controls">
-                            <button className="ep-control-btn" onClick={() => { updateEpisode(a.id, -1); setShowAnimeDetail(p => ({ ...p, currentEp: Math.max(0, (p.currentEp || 0) - 1) })); }}>−</button>
-                            <span className="ep-number">{a.currentEp || 0}</span>
-                            <button className="ep-control-btn" onClick={() => { updateEpisode(a.id, 1); setShowAnimeDetail(p => ({ ...p, currentEp: (p.currentEp || 0) + 1 })); }}>+</button>
+                            <button className="ep-control-btn" onClick={() => { updateEpisode(a.id, -1); setLocalEp(p => Math.max(0, p - 1)); }}>−</button>
+                            <span className="ep-number">{localEp}</span>
+                            <button className="ep-control-btn" onClick={() => { updateEpisode(a.id, 1); setLocalEp(p => p + 1); }}>+</button>
                         </div>
                         {bingeMode && (
                             <div className="binge-panel fade-in">
@@ -110,7 +111,7 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                                         <button key={n} className="binge-quick-btn" onClick={() => {
                                             updateEpisode(a.id, n);
                                             setBingeCount(prev => prev + n);
-                                            setShowAnimeDetail(p => ({ ...p, currentEp: (p.currentEp || 0) + n }));
+                                            setLocalEp(p => p + n);
                                         }}>+{n} ep{n > 1 ? 's' : ''}</button>
                                     ))}
                                 </div>

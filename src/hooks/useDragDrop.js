@@ -72,10 +72,6 @@ export function useDragDrop(schedule, setSchedule, daysOfWeek) {
     }
   };
 
-  const handleDragLeave = (e, day) => {
-    // Lógica opcional para limpiar target si sales del contenedor
-  };
-
   const handleDrop = (e, toDay) => {
     e.preventDefault();
     const { anime, fromDay } = dragRef.current;

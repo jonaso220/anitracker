@@ -14,7 +14,7 @@ self.addEventListener('fetch', (e) => {
   if (request.method !== 'GET' || request.url.startsWith('chrome-extension')) return;
 
   // Let API calls go to network directly
-  if (request.url.includes('/api/') || request.url.includes('graphql') || request.url.includes('jikan') || request.url.includes('kitsu') || request.url.includes('tvmaze') || request.url.includes('mymemory') || request.url.includes('wikipedia') || request.url.includes('firestore') || request.url.includes('googleapis')) {
+  if (request.url.includes('/api/') || request.url.includes('graphql') || request.url.includes('jikan') || request.url.includes('kitsu') || request.url.includes('tvmaze') || request.url.includes('mymemory') || request.url.includes('wikipedia') || request.url.includes('firestore') || request.url.includes('googleapis') || request.url.includes('itunes.apple.com')) {
     return;
   }
 
