@@ -141,15 +141,22 @@ export function useFirebase(schedule, watchedList, watchLater, setSchedule, setW
 
   const loginWithGoogle = async () => {
     if (!FIREBASE_ENABLED) { alert('Firebase no está configurado.'); return; }
-    // initFirebase is already called on mount, but call again just in case
-    await initFirebase();
-    if (!firebaseAuth || !auth) return;
-    const provider = new firebaseAuth.GoogleAuthProvider();
 
-    // On mobile/tablet, use redirect (popups are often blocked by iOS/Android browsers).
-    // On desktop, try popup first and fall back to redirect if blocked.
-    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    if (isMobile) {
+    // If Firebase isn't ready yet, init and wait — but this should rarely happen
+    // since initFirebase runs on mount. The key issue is that any `await` before
+    // signInWithPopup breaks Safari's user-gesture chain, causing silent failure.
+    if (!firebaseAuth || !auth) {
+      await initFirebase();
+      if (!firebaseAuth || !auth) return;
+    }
+
+    const provider = new firebaseAuth.GoogleAuthProvider();
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+
+    // PWA (installed to home screen): use redirect — it works reliably in standalone mode.
+    // Browser (including mobile Safari): use popup — redirect fails in iOS Safari due to
+    // ITP (Intelligent Tracking Prevention) dropping the auth state after navigation.
+    if (isStandalone) {
       try { await firebaseAuth.signInWithRedirect(auth, provider); } catch (_) {}
     } else {
       try {
