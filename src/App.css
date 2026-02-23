@@ -53,6 +53,7 @@
   backdrop-filter: blur(20px);
   border-bottom: 1px solid;
   padding: 1rem 2rem;
+  padding-top: calc(1rem + env(safe-area-inset-top, 0px));
   transition: all 0.4s ease;
 }
 
@@ -926,8 +927,17 @@
 
 /* ============ MOBILE ============ */
 @media (max-width: 768px) {
-  .header-content { flex-direction: column; }
-  .header-right { justify-content: center; }
+  .header { padding: 0.75rem 1rem; padding-top: calc(0.75rem + env(safe-area-inset-top, 0px)); }
+  .header-content { flex-direction: row; flex-wrap: wrap; justify-content: space-between; gap: 0.5rem; }
+  .header-left { gap: 0.5rem; flex-wrap: wrap; flex: 1; min-width: 0; }
+  .header-left .logo { font-size: 1.3rem; }
+  .header-left .search-btn { padding: 0.45rem 0.8rem; font-size: 0.78rem; }
+  .header-left .import-btn { padding: 0.45rem 0.8rem; font-size: 0.78rem; }
+  .header-right { gap: 0.4rem; flex-wrap: nowrap; }
+  .header-right .theme-toggle { padding: 0.4rem 0.7rem; font-size: 0.75rem; }
+  .header-right .auth-btn { padding: 0.4rem 0.7rem; font-size: 0.75rem; }
+  .header-right .user-info { font-size: 0.75rem; gap: 0.3rem; }
+  .header-right .user-info img { width: 24px; height: 24px; }
   .day-row { flex-direction: column; }
   .day-label { flex-direction: row; width: 100%; min-width: unset; padding: 0.5rem 1rem; gap: 0.6rem; }
   .anime-card { min-width: 130px; width: 130px; }
