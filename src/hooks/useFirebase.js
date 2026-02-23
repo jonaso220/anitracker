@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 
-// Configuración de Firebase (leída desde variables de entorno)
+// Firebase config — these are public Firebase Web SDK keys (safe to commit).
+// Security is enforced via Firebase Security Rules, not by hiding these values.
 const FIREBASE_CONFIG = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || ""
+  apiKey: "AIzaSyB3AcPFUO8DMBGUdM1emaOEzGtwrZ4BQ0Y",
+  authDomain: "animetracker-47abf.firebaseapp.com",
+  projectId: "animetracker-47abf",
+  storageBucket: "animetracker-47abf.firebasestorage.app",
+  messagingSenderId: "757726364049",
+  appId: "1:757726364049:web:045a512ed19c25924f5a30"
 };
 
 const FIREBASE_ENABLED = FIREBASE_CONFIG.apiKey !== "";
