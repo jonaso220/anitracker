@@ -141,18 +141,23 @@ export function useFirebase(schedule, watchedList, watchLater, setSchedule, setW
 
   const loginWithGoogle = async () => {
     if (!FIREBASE_ENABLED) { alert('Firebase no está configurado.'); return; }
+    // initFirebase is already called on mount, but call again just in case
     await initFirebase();
     if (!firebaseAuth || !auth) return;
     const provider = new firebaseAuth.GoogleAuthProvider();
 
-    try {
-      // Always try popup first — signInWithRedirect is broken on iOS browsers
-      // (Chrome/Safari) due to WebKit storage partitioning (ITP) which causes
-      // getRedirectResult to return null after a successful login.
-      await firebaseAuth.signInWithPopup(auth, provider);
-    } catch (e) {
-      if (e.code === 'auth/popup-blocked' || e.code === 'auth/popup-closed-by-user') {
-        try { await firebaseAuth.signInWithRedirect(auth, provider); } catch (_) {}
+    // On mobile/tablet, use redirect (popups are often blocked by iOS/Android browsers).
+    // On desktop, try popup first and fall back to redirect if blocked.
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    if (isMobile) {
+      try { await firebaseAuth.signInWithRedirect(auth, provider); } catch (_) {}
+    } else {
+      try {
+        await firebaseAuth.signInWithPopup(auth, provider);
+      } catch (e) {
+        if (e.code === 'auth/popup-blocked' || e.code === 'auth/popup-closed-by-user') {
+          try { await firebaseAuth.signInWithRedirect(auth, provider); } catch (_) {}
+        }
       }
     }
   };
