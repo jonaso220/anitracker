@@ -1,0 +1,40 @@
+/* ============ STATS PANEL ============ */
+.stats-panel { max-width: 800px; margin: 0 auto; }
+.stats-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 1rem; margin-bottom: 2rem;
+}
+.stat-card {
+  border-radius: 16px; padding: 1.25rem; text-align: center;
+  border: 1px solid; transition: all 0.3s;
+}
+.stat-card.wide { grid-column: 1 / -1; }
+.dark .stat-card { background: rgba(255,255,255,0.03); border-color: rgba(255,255,255,0.06); }
+.light .stat-card { background: rgba(255,255,255,0.7); border-color: rgba(0,0,0,0.08); }
+.stat-card:hover { transform: translateY(-3px); border-color: rgba(168,85,247,0.3); }
+.stat-number {
+  font-size: 2.2rem; font-weight: 800; display: block; margin-bottom: 0.3rem;
+  background: linear-gradient(135deg, #a855f7, #4ecdc4);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+}
+.stat-label { font-size: 0.85rem; opacity: 0.6; font-weight: 500; }
+
+.stats-section { margin-bottom: 2rem; }
+.stats-section h3 {
+  font-size: 1.1rem; font-weight: 700; margin-bottom: 1rem;
+  background: linear-gradient(135deg, #a855f7, #4ecdc4);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+}
+.genre-bars { display: flex; flex-direction: column; gap: 0.6rem; }
+.genre-bar-row { display: flex; align-items: center; gap: 0.75rem; }
+.genre-bar-label { font-size: 0.85rem; font-weight: 500; min-width: 100px; text-align: right; }
+.genre-bar-track {
+  flex: 1; height: 10px; border-radius: 5px; overflow: hidden;
+}
+.dark .genre-bar-track { background: rgba(255,255,255,0.06); }
+.light .genre-bar-track { background: rgba(0,0,0,0.06); }
+.genre-bar-fill {
+  height: 100%; border-radius: 5px; transition: width 0.8s ease;
+  background: linear-gradient(90deg, #a855f7, #4ecdc4);
+}
+.genre-bar-count { font-size: 0.8rem; font-weight: 700; min-width: 24px; opacity: 0.6; }

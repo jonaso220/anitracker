@@ -1,0 +1,53 @@
+/* ============ SEASON SELECTOR ============ */
+.season-selector {
+  display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+  margin-bottom: 1rem; padding: 0.5rem; border-radius: 12px;
+}
+.dark .season-selector { background: rgba(255,255,255,0.05); }
+.light .season-selector { background: rgba(0,0,0,0.04); }
+.season-nav-btn {
+  background: none; border: 1px solid rgba(168,85,247,0.3); color: inherit;
+  width: 36px; height: 36px; border-radius: 50%; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; font-size: 0.85rem;
+  transition: all 0.2s;
+}
+.season-nav-btn:hover { background: rgba(168,85,247,0.15); border-color: rgba(168,85,247,0.5); }
+.season-nav-btn:active { transform: scale(0.92); }
+.season-current-label {
+  display: flex; flex-direction: column; align-items: center; min-width: 140px;
+}
+.season-name { font-size: 1rem; font-weight: 700; }
+.season-today-btn {
+  background: rgba(168,85,247,0.15); border: 1px solid rgba(168,85,247,0.3);
+  color: #a855f7; padding: 0.3rem 0.7rem; border-radius: 8px;
+  font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.2s;
+}
+.season-today-btn:hover { background: rgba(168,85,247,0.25); }
+
+/* ============ SEASON GRID ============ */
+.season-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 1rem; }
+.season-card {
+  border-radius: 16px; overflow: hidden; border: 1px solid; transition: all 0.3s;
+}
+.dark .season-card { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.08); }
+.light .season-card { background: #fff; border-color: rgba(0,0,0,0.1); box-shadow: 0 2px 10px rgba(0,0,0,0.08); }
+.season-card:hover { transform: translateY(-5px); box-shadow: 0 15px 40px rgba(168,85,247,0.2); border-color: rgba(168,85,247,0.3); }
+.season-card.already-added { opacity: 0.65; }
+.season-card-image { position: relative; aspect-ratio: 3/4; overflow: hidden; cursor: pointer; }
+.season-card-image img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.5s ease; }
+.season-card:hover .season-card-image img { transform: scale(1.1); }
+.season-card-content { padding: 0.6rem; }
+.season-card-content h3 { font-size: 0.8rem; font-weight: 600; margin-bottom: 0.35rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.season-card-meta { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.3rem; }
+.season-card-meta .meta-tag { font-size: 0.65rem; padding: 0.1rem 0.4rem; }
+.season-card-actions { display: flex; gap: 0.3rem; margin-top: 0.4rem; }
+.season-card-actions .add-btn { padding: 0.4rem 0.5rem; font-size: 0.75rem; border-radius: 8px; cursor: pointer; border: none; transition: all 0.2s; }
+.season-card-actions .schedule-btn { background: rgba(168,85,247,0.2); color: #c4b5fd; }
+.season-card-actions .later-btn { background: rgba(59,130,246,0.2); color: #93c5fd; }
+.season-card-actions .watched-btn { background: rgba(34,197,94,0.2); color: #4ade80; }
+.season-card-actions .add-btn:hover { filter: brightness(1.3); transform: scale(1.1); }
+.season-added-badge {
+  margin-top: 0.4rem; padding: 0.25rem 0.5rem; border-radius: 6px;
+  font-size: 0.65rem; font-weight: 600; text-align: center;
+  background: rgba(34,197,94,0.15); color: #4ade80;
+}

@@ -117,4 +117,4 @@ const CustomListsTab = ({ customLists, onCreateList, onDeleteList, onRenameList,
     );
 };
 
-export default CustomListsTab;
+export default React.memo(CustomListsTab);
