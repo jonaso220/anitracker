@@ -95,4 +95,4 @@ const SeasonSection = ({ seasonAnime, seasonLoading, schedule, watchedList, watc
     );
 };
 
-export default SeasonSection;
+export default React.memo(SeasonSection);

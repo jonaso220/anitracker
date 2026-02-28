@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import './App.css';
 
 import AnimeCard from './components/AnimeCard';
@@ -16,6 +16,7 @@ import { useAnimeData } from './hooks/useAnimeData';
 import { useDragDrop } from './hooks/useDragDrop';
 import { useNotifications } from './hooks/useNotifications';
 import { daysOfWeek, dayEmojis } from './constants';
+import { clean, filterByLocalSearch as filterBySearch, getFilteredWatched } from './utils';
 
 const emptySchedule = { 'Lunes': [], 'Martes': [], 'Miércoles': [], 'Jueves': [], 'Viernes': [], 'Sábado': [], 'Domingo': [] };
 
@@ -56,6 +57,8 @@ export default function AnimeTracker() {
   const [customLists, setCustomLists] = useState(() => {
     try { const s = localStorage.getItem('anitracker-custom-lists'); return s ? JSON.parse(s) : []; } catch { return []; }
   });
+  const [watchLaterVisible, setWatchLaterVisible] = useState(30);
+  const [watchedVisible, setWatchedVisible] = useState(30);
 
   // Persistencia
   useEffect(() => { localStorage.setItem('animeSchedule', JSON.stringify(schedule)); }, [schedule]);
@@ -71,81 +74,86 @@ export default function AnimeTracker() {
   const { notifEnabled, notifPermission, toggleNotifications } = useNotifications(airingData);
   const dayRowRefs = useRef({});
 
+  // Refs for stable undo snapshots in useCallback handlers
+  const scheduleRef = useRef(schedule);
+  const watchedListRef = useRef(watchedList);
+  const watchLaterRef = useRef(watchLater);
+  const customListsRef = useRef(customLists);
+  useEffect(() => { scheduleRef.current = schedule; }, [schedule]);
+  useEffect(() => { watchedListRef.current = watchedList; }, [watchedList]);
+  useEffect(() => { watchLaterRef.current = watchLater; }, [watchLater]);
+  useEffect(() => { customListsRef.current = customLists; }, [customLists]);
+
   // --- Toast ---
-  const showToast = (message, undoFn) => {
+  const showToast = useCallback((message, undoFn) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(null), 5000);
     setToast({ message, undoFn });
-  };
-  const dismissToast = () => { if (toastTimer.current) clearTimeout(toastTimer.current); setToast(null); };
+  }, []);
+  const dismissToast = useCallback(() => { if (toastTimer.current) clearTimeout(toastTimer.current); setToast(null); }, []);
   const undoToast = () => { if (toast?.undoFn) toast.undoFn(); dismissToast(); };
 
   // --- Acciones ---
-  const clean = ({ _day, _isWatchLater, _isWatched, _isSeason, ...rest }) => rest;
 
-  const addToSchedule = (anime, day) => {
+  const addToSchedule = useCallback((anime, day) => {
     const a = { ...clean(anime), currentEp: anime.currentEp || 0, userRating: anime.userRating || 0, notes: anime.notes || '' };
     setSchedule(prev => ({ ...prev, [day]: [...prev[day].filter(x => x.id !== a.id), a] }));
     setShowDayPicker(null); setShowSearch(false); setSearchQuery(''); setSearchResults([]);
-  };
+  }, [setSearchQuery, setSearchResults]);
 
-  const removeFromSchedule = (animeId, day) => {
-    setSchedule(prev => ({ ...prev, [day]: prev[day].filter(a => a.id !== animeId) }));
-  };
-
-  const markAsFinished = (anime, day) => {
-    const prevSchedule = JSON.parse(JSON.stringify(schedule));
-    const prevWatched = JSON.parse(JSON.stringify(watchedList));
-    removeFromSchedule(anime.id, day);
+  const markAsFinished = useCallback((anime, day) => {
+    const prevSchedule = JSON.parse(JSON.stringify(scheduleRef.current));
+    const prevWatched = JSON.parse(JSON.stringify(watchedListRef.current));
+    setSchedule(prev => ({ ...prev, [day]: prev[day].filter(a => a.id !== anime.id) }));
     setWatchedList(prev => [...prev.filter(a => a.id !== anime.id), { ...clean(anime), finished: true, finishedDate: new Date().toISOString() }]);
     showToast(`"${anime.title}" marcado como finalizado`, () => { setSchedule(prevSchedule); setWatchedList(prevWatched); });
-  };
+  }, [showToast]);
 
-  const dropAnime = (anime, day) => {
-    const prevSchedule = JSON.parse(JSON.stringify(schedule));
-    const prevWatched = JSON.parse(JSON.stringify(watchedList));
-    removeFromSchedule(anime.id, day);
+  const dropAnime = useCallback((anime, day) => {
+    const prevSchedule = JSON.parse(JSON.stringify(scheduleRef.current));
+    const prevWatched = JSON.parse(JSON.stringify(watchedListRef.current));
+    setSchedule(prev => ({ ...prev, [day]: prev[day].filter(a => a.id !== anime.id) }));
     setWatchedList(prev => [...prev.filter(a => a.id !== anime.id), { ...clean(anime), finished: false, droppedDate: new Date().toISOString() }]);
     showToast(`"${anime.title}" dropeado`, () => { setSchedule(prevSchedule); setWatchedList(prevWatched); });
-  };
+  }, [showToast]);
 
-  const addToWatchLater = (anime) => {
+  const addToWatchLater = useCallback((anime) => {
     const a = { ...clean(anime), currentEp: anime.currentEp || 0, userRating: anime.userRating || 0, notes: anime.notes || '' };
     setWatchLater(prev => [...prev.filter(x => x.id !== a.id), a]);
     setShowSearch(false); setSearchQuery(''); setSearchResults([]);
-  };
+  }, [setSearchQuery, setSearchResults]);
 
-  const markAsWatched = (anime) => {
+  const markAsWatched = useCallback((anime) => {
     setWatchedList(prev => [...prev.filter(a => a.id !== anime.id), { ...clean(anime), finished: true, finishedDate: new Date().toISOString(), currentEp: anime.currentEp || 0, userRating: anime.userRating || 0, notes: anime.notes || '' }]);
-  };
+  }, []);
 
-  const markAsWatchedFromSearch = (anime) => {
+  const markAsWatchedFromSearch = useCallback((anime) => {
     markAsWatched(anime);
     setShowSearch(false); setSearchQuery(''); setSearchResults([]);
-  };
+  }, [markAsWatched, setSearchQuery, setSearchResults]);
 
-  const moveFromWatchLaterToSchedule = (anime, day) => {
+  const moveFromWatchLaterToSchedule = useCallback((anime, day) => {
     const a = { ...clean(anime), currentEp: anime.currentEp || 0, userRating: anime.userRating || 0, notes: anime.notes || '' };
     setWatchLater(prev => prev.filter(x => x.id !== anime.id));
     setSchedule(prev => ({ ...prev, [day]: [...prev[day].filter(x => x.id !== a.id), a] }));
-  };
+  }, []);
 
-  const resumeAnime = (anime) => {
-    const prevWatched = JSON.parse(JSON.stringify(watchedList));
+  const resumeAnime = useCallback((anime) => {
+    const prevWatched = JSON.parse(JSON.stringify(watchedListRef.current));
     setWatchedList(prev => prev.filter(a => a.id !== anime.id));
     setShowDayPicker(anime);
     showToast(`"${anime.title}" retomado`, () => { setWatchedList(prevWatched); });
-  };
+  }, [showToast]);
 
-  const deleteAnime = (anime) => {
-    const prevSchedule = JSON.parse(JSON.stringify(schedule));
-    const prevWatched = JSON.parse(JSON.stringify(watchedList));
-    const prevLater = JSON.parse(JSON.stringify(watchLater));
-    if (anime._day) removeFromSchedule(anime.id, anime._day);
+  const deleteAnime = useCallback((anime) => {
+    const prevSchedule = JSON.parse(JSON.stringify(scheduleRef.current));
+    const prevWatched = JSON.parse(JSON.stringify(watchedListRef.current));
+    const prevLater = JSON.parse(JSON.stringify(watchLaterRef.current));
+    if (anime._day) setSchedule(prev => ({ ...prev, [anime._day]: prev[anime._day].filter(a => a.id !== anime.id) }));
     if (anime._isWatchLater) setWatchLater(prev => prev.filter(a => a.id !== anime.id));
     if (anime._isWatched) setWatchedList(prev => prev.filter(a => a.id !== anime.id));
     showToast(`"${anime.title}" eliminado`, () => { setSchedule(prevSchedule); setWatchedList(prevWatched); setWatchLater(prevLater); });
-  };
+  }, [showToast]);
 
   const handleImport = (data) => {
     // Pre-calcular count usando estados actuales para evitar race condition con setState
@@ -190,7 +198,7 @@ export default function AnimeTracker() {
     showToast(`Importados ${count} animes desde AniList`);
   };
 
-  const moveAnimeToDay = (anime, fromDay, toDay) => {
+  const moveAnimeToDay = useCallback((anime, fromDay, toDay) => {
     setSchedule(prev => {
       const next = { ...prev };
       next[fromDay] = next[fromDay].filter(a => a.id !== anime.id);
@@ -198,30 +206,30 @@ export default function AnimeTracker() {
       return next;
     });
     setShowMoveDayPicker(null);
-  };
+  }, []);
 
   // --- Bulk Operations ---
-  const toggleBulkSelect = (id) => {
+  const toggleBulkSelect = useCallback((id) => {
     setBulkSelected(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  };
+  }, []);
 
-  const bulkSelectAll = (list) => {
+  const bulkSelectAll = useCallback((list) => {
     setBulkSelected(new Set(list.map(a => a.id)));
-  };
+  }, []);
 
-  const bulkDeselectAll = () => {
+  const bulkDeselectAll = useCallback(() => {
     setBulkSelected(new Set());
-  };
+  }, []);
 
-  const exitBulkMode = () => {
+  const exitBulkMode = useCallback(() => {
     setBulkMode(false);
     setBulkSelected(new Set());
-  };
+  }, []);
 
   const bulkDelete = () => {
     if (bulkSelected.size === 0) return;
@@ -295,79 +303,63 @@ export default function AnimeTracker() {
   };
 
   // --- Custom Lists ---
-  const createCustomList = (name, emoji) => {
+  const createCustomList = useCallback((name, emoji) => {
     setCustomLists(prev => [...prev, { id: `list-${Date.now()}`, name, emoji, items: [] }]);
-  };
+  }, []);
 
-  const deleteCustomList = (listId) => {
-    const prev = JSON.parse(JSON.stringify(customLists));
+  const deleteCustomList = useCallback((listId) => {
+    const prev = JSON.parse(JSON.stringify(customListsRef.current));
     setCustomLists(lists => lists.filter(l => l.id !== listId));
     showToast('Lista eliminada', () => setCustomLists(prev));
-  };
+  }, [showToast]);
 
-  const renameCustomList = (listId, newName) => {
+  const renameCustomList = useCallback((listId, newName) => {
     setCustomLists(lists => lists.map(l => l.id === listId ? { ...l, name: newName } : l));
-  };
+  }, []);
 
-  const addToCustomList = (listId, anime) => {
+  const addToCustomList = useCallback((listId, anime) => {
     const a = { ...clean(anime), currentEp: anime.currentEp || 0, userRating: anime.userRating || 0, notes: anime.notes || '' };
     setCustomLists(lists => lists.map(l => l.id === listId ? { ...l, items: [...l.items.filter(x => x.id !== a.id), a] } : l));
-  };
+  }, []);
 
-  const removeFromCustomList = (listId, animeId) => {
-    const prev = JSON.parse(JSON.stringify(customLists));
+  const removeFromCustomList = useCallback((listId, animeId) => {
+    const prev = JSON.parse(JSON.stringify(customListsRef.current));
     setCustomLists(lists => lists.map(l => l.id === listId ? { ...l, items: l.items.filter(x => x.id !== animeId) } : l));
     showToast('Anime removido de la lista', () => setCustomLists(prev));
-  };
+  }, [showToast]);
 
-  const updateEpisode = (animeId, delta) => {
+  const updateEpisode = useCallback((animeId, delta) => {
     const update = (list) => list.map(a => a.id === animeId ? { ...a, currentEp: Math.max(0, (a.currentEp || 0) + delta) } : a);
     setSchedule(prev => { const n = { ...prev }; daysOfWeek.forEach(d => { n[d] = update(n[d]); }); return n; });
     setWatchLater(prev => update(prev));
     setWatchedList(prev => update(prev));
-  };
+  }, []);
 
-  const updateAnimeLink = (animeId, link) => {
+  const updateAnimeLink = useCallback((animeId, link) => {
     const update = (list) => list.map(a => a.id === animeId ? { ...a, watchLink: link } : a);
     setSchedule(prev => { const n = { ...prev }; daysOfWeek.forEach(d => { n[d] = update(n[d]); }); return n; });
     setWatchLater(prev => update(prev));
     setWatchedList(prev => update(prev));
-  };
+  }, []);
 
-  const updateUserRating = (animeId, rating) => {
+  const updateUserRating = useCallback((animeId, rating) => {
     const update = (list) => list.map(a => a.id === animeId ? { ...a, userRating: rating } : a);
     setSchedule(prev => { const n = { ...prev }; daysOfWeek.forEach(d => { n[d] = update(n[d]); }); return n; });
     setWatchLater(prev => update(prev));
     setWatchedList(prev => update(prev));
-  };
+  }, []);
 
-  const updateAnimeNotes = (animeId, notes) => {
+  const updateAnimeNotes = useCallback((animeId, notes) => {
     const update = (list) => list.map(a => a.id === animeId ? { ...a, notes } : a);
     setSchedule(prev => { const n = { ...prev }; daysOfWeek.forEach(d => { n[d] = update(n[d]); }); return n; });
     setWatchLater(prev => update(prev));
     setWatchedList(prev => update(prev));
-  };
+  }, []);
 
   // --- Búsqueda local ---
-  const filterByLocalSearch = (list) => {
-    if (!localSearch.trim()) return list;
-    const q = localSearch.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    return list.filter(a => {
-      const titles = [a.title, a.titleJp, a.titleEn, a.titleOriginal].filter(Boolean);
-      return titles.some(t => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes(q));
-    });
-  };
+  const filterByLocalSearch = (list) => filterBySearch(list, localSearch);
 
-  const getFilteredWatched = () => {
-    let list = [...watchedList];
-    if (watchedFilter === 'finished') list = list.filter(a => a.finished);
-    else if (watchedFilter === 'dropped') list = list.filter(a => !a.finished);
-    list = filterByLocalSearch(list);
-    if (watchedSort === 'date') list.sort((a, b) => new Date(b.finishedDate || b.droppedDate || 0) - new Date(a.finishedDate || a.droppedDate || 0));
-    else if (watchedSort === 'rating') list.sort((a, b) => (b.userRating || 0) - (a.userRating || 0));
-    else if (watchedSort === 'title') list.sort((a, b) => a.title.localeCompare(b.title));
-    return list;
-  };
+  const filteredWatched = useMemo(() => getFilteredWatched(watchedList, watchedFilter, watchedSort, localSearch), [watchedList, watchedFilter, watchedSort, localSearch]);
 
   // --- Temporada ---
   const seasonCacheRef = useRef({});
@@ -455,8 +447,8 @@ export default function AnimeTracker() {
 
       <nav className="nav-tabs">
         <button className={`nav-tab ${activeTab === 'schedule' ? 'active' : ''}`} onClick={() => { setActiveTab('schedule'); setLocalSearch(''); exitBulkMode(); }}>📅 Semana</button>
-        <button className={`nav-tab ${activeTab === 'watchLater' ? 'active' : ''}`} onClick={() => { setActiveTab('watchLater'); setLocalSearch(''); exitBulkMode(); }}>🕐 Después ({watchLater.length})</button>
-        <button className={`nav-tab ${activeTab === 'watched' ? 'active' : ''}`} onClick={() => { setActiveTab('watched'); setLocalSearch(''); exitBulkMode(); }}>✓ Vistas ({watchedList.length})</button>
+        <button className={`nav-tab ${activeTab === 'watchLater' ? 'active' : ''}`} onClick={() => { setActiveTab('watchLater'); setLocalSearch(''); exitBulkMode(); setWatchLaterVisible(30); }}>🕐 Después ({watchLater.length})</button>
+        <button className={`nav-tab ${activeTab === 'watched' ? 'active' : ''}`} onClick={() => { setActiveTab('watched'); setLocalSearch(''); exitBulkMode(); setWatchedVisible(30); }}>✓ Vistas ({watchedList.length})</button>
         <button className={`nav-tab ${activeTab === 'lists' ? 'active' : ''}`} onClick={() => { setActiveTab('lists'); setLocalSearch(''); exitBulkMode(); }}>📋 Listas{customLists.length > 0 ? ` (${customLists.length})` : ''}</button>
         <button className={`nav-tab ${activeTab === 'season' ? 'active' : ''}`} onClick={() => { setActiveTab('season'); setLocalSearch(''); exitBulkMode(); fetchSeason(selectedSeason.season, selectedSeason.year); }}>🌸 Temporada</button>
         <button className={`nav-tab ${activeTab === 'stats' ? 'active' : ''}`} onClick={() => { setActiveTab('stats'); setLocalSearch(''); exitBulkMode(); }}>📊 Stats</button>
@@ -524,19 +516,30 @@ export default function AnimeTracker() {
                 </div>
               </div>
             )}
-            {watchLater.length > 3 && <div className="local-search"><input type="text" placeholder="🔍 Filtrar por nombre..." value={localSearch} onChange={e => setLocalSearch(e.target.value)} /></div>}
-            <div className="anime-grid">
-              {(() => {
-                const filtered = filterByLocalSearch(watchLater);
-                return filtered.length > 0 ? filtered.map(a => (
-                  <div key={a.id} className={`bulk-card-wrapper ${bulkMode ? 'selectable' : ''} ${bulkSelected.has(a.id) ? 'selected' : ''}`}
-                    onClick={bulkMode ? (e) => { e.stopPropagation(); toggleBulkSelect(a.id); } : undefined}>
-                    {bulkMode && <div className={`bulk-checkbox ${bulkSelected.has(a.id) ? 'checked' : ''}`}>{bulkSelected.has(a.id) ? '✓' : ''}</div>}
-                    <AnimeCard anime={a} isWatchLater airingData={airingData} onClick={bulkMode ? undefined : () => setShowAnimeDetail({ ...a, _isWatchLater: true, _isWatched: false, _isSeason: false })} />
+            {watchLater.length > 3 && <div className="local-search"><input type="text" placeholder="🔍 Filtrar por nombre..." value={localSearch} onChange={e => { setLocalSearch(e.target.value); setWatchLaterVisible(30); }} /></div>}
+            {(() => {
+              const filtered = filterByLocalSearch(watchLater);
+              const visible = filtered.slice(0, watchLaterVisible);
+              const remaining = filtered.length - watchLaterVisible;
+              return filtered.length > 0 ? (
+                <>
+                  <div className="anime-grid">
+                    {visible.map(a => (
+                      <div key={a.id} className={`bulk-card-wrapper ${bulkMode ? 'selectable' : ''} ${bulkSelected.has(a.id) ? 'selected' : ''}`}
+                        onClick={bulkMode ? (e) => { e.stopPropagation(); toggleBulkSelect(a.id); } : undefined}>
+                        {bulkMode && <div className={`bulk-checkbox ${bulkSelected.has(a.id) ? 'checked' : ''}`}>{bulkSelected.has(a.id) ? '✓' : ''}</div>}
+                        <AnimeCard anime={a} isWatchLater airingData={airingData} onClick={bulkMode ? undefined : () => setShowAnimeDetail({ ...a, _isWatchLater: true, _isWatched: false, _isSeason: false })} />
+                      </div>
+                    ))}
                   </div>
-                )) : <div className="empty-state"><span>📺</span><p>{localSearch ? 'Sin resultados' : 'No hay animes guardados'}</p></div>;
-              })()}
-            </div>
+                  {remaining > 0 && (
+                    <button className="load-more-btn" onClick={() => setWatchLaterVisible(v => v + 30)}>
+                      Mostrar más ({remaining} restantes)
+                    </button>
+                  )}
+                </>
+              ) : <div className="anime-grid"><div className="empty-state"><span>📺</span><p>{localSearch ? 'Sin resultados' : 'No hay animes guardados'}</p></div></div>;
+            })()}
           </>
         )}
 
@@ -554,10 +557,9 @@ export default function AnimeTracker() {
               <div className="bulk-toolbar fade-in">
                 <div className="bulk-toolbar-left">
                   <button className="bulk-select-all" onClick={() => {
-                    const filtered = getFilteredWatched();
-                    bulkSelected.size === filtered.length ? bulkDeselectAll() : bulkSelectAll(filtered);
+                    bulkSelected.size === filteredWatched.length ? bulkDeselectAll() : bulkSelectAll(filteredWatched);
                   }}>
-                    {bulkSelected.size === getFilteredWatched().length ? '☐ Deseleccionar' : '☑ Seleccionar todo'}
+                    {bulkSelected.size === filteredWatched.length ? '☐ Deseleccionar' : '☑ Seleccionar todo'}
                   </button>
                   <span className="bulk-count">{bulkSelected.size} seleccionado{bulkSelected.size !== 1 ? 's' : ''}</span>
                 </div>
@@ -568,30 +570,40 @@ export default function AnimeTracker() {
             )}
             <div className="filter-bar">
               {['all', 'finished', 'dropped'].map(f => (
-                <button key={f} className={`filter-btn ${watchedFilter === f ? 'active' : ''}`} onClick={() => setWatchedFilter(f)}>
+                <button key={f} className={`filter-btn ${watchedFilter === f ? 'active' : ''}`} onClick={() => { setWatchedFilter(f); setWatchedVisible(30); }}>
                   {f === 'all' ? 'Todas' : f === 'finished' ? '✓ Completadas' : '⏸ Dropeadas'}
                 </button>
               ))}
               <span style={{ opacity: 0.3 }}>|</span>
               {['date', 'rating', 'title'].map(s => (
-                <button key={s} className={`sort-btn ${watchedSort === s ? 'active' : ''}`} onClick={() => setWatchedSort(s)}>
+                <button key={s} className={`sort-btn ${watchedSort === s ? 'active' : ''}`} onClick={() => { setWatchedSort(s); setWatchedVisible(30); }}>
                   {s === 'date' ? 'Fecha' : s === 'rating' ? 'Valoración' : 'A-Z'}
                 </button>
               ))}
             </div>
-            {watchedList.length > 3 && <div className="local-search"><input type="text" placeholder="🔍 Filtrar por nombre..." value={localSearch} onChange={e => setLocalSearch(e.target.value)} /></div>}
-            <div className="anime-grid">
-              {(() => {
-                const filtered = getFilteredWatched();
-                return filtered.length > 0 ? filtered.map(a => (
-                  <div key={a.id} className={`bulk-card-wrapper ${bulkMode ? 'selectable' : ''} ${bulkSelected.has(a.id) ? 'selected' : ''}`}
-                    onClick={bulkMode ? (e) => { e.stopPropagation(); toggleBulkSelect(a.id); } : undefined}>
-                    {bulkMode && <div className={`bulk-checkbox ${bulkSelected.has(a.id) ? 'checked' : ''}`}>{bulkSelected.has(a.id) ? '✓' : ''}</div>}
-                    <AnimeCard anime={a} isWatched airingData={airingData} onClick={bulkMode ? undefined : () => setShowAnimeDetail({ ...a, _isWatched: true, _isWatchLater: false, _isSeason: false })} />
+            {watchedList.length > 3 && <div className="local-search"><input type="text" placeholder="🔍 Filtrar por nombre..." value={localSearch} onChange={e => { setLocalSearch(e.target.value); setWatchedVisible(30); }} /></div>}
+            {(() => {
+              const visible = filteredWatched.slice(0, watchedVisible);
+              const remaining = filteredWatched.length - watchedVisible;
+              return filteredWatched.length > 0 ? (
+                <>
+                  <div className="anime-grid">
+                    {visible.map(a => (
+                      <div key={a.id} className={`bulk-card-wrapper ${bulkMode ? 'selectable' : ''} ${bulkSelected.has(a.id) ? 'selected' : ''}`}
+                        onClick={bulkMode ? (e) => { e.stopPropagation(); toggleBulkSelect(a.id); } : undefined}>
+                        {bulkMode && <div className={`bulk-checkbox ${bulkSelected.has(a.id) ? 'checked' : ''}`}>{bulkSelected.has(a.id) ? '✓' : ''}</div>}
+                        <AnimeCard anime={a} isWatched airingData={airingData} onClick={bulkMode ? undefined : () => setShowAnimeDetail({ ...a, _isWatched: true, _isWatchLater: false, _isSeason: false })} />
+                      </div>
+                    ))}
                   </div>
-                )) : <div className="empty-state"><span>🎬</span><p>No hay resultados</p></div>;
-              })()}
-            </div>
+                  {remaining > 0 && (
+                    <button className="load-more-btn" onClick={() => setWatchedVisible(v => v + 30)}>
+                      Mostrar más ({remaining} restantes)
+                    </button>
+                  )}
+                </>
+              ) : <div className="anime-grid"><div className="empty-state"><span>🎬</span><p>No hay resultados</p></div></div>;
+            })()}
           </>
         )}
 

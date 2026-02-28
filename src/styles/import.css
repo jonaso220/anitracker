@@ -1,0 +1,64 @@
+/* ============ IMPORT MODAL ============ */
+.import-btn {
+  display: flex; align-items: center; gap: 0.4rem;
+  padding: 0.5rem 1rem; border-radius: 50px; border: 1px solid;
+  font-family: inherit; font-size: 0.85rem; cursor: pointer; transition: all 0.3s;
+}
+.dark .import-btn { background: rgba(78,205,196,0.1); border-color: rgba(78,205,196,0.3); color: #4ecdc4; }
+.light .import-btn { background: rgba(78,205,196,0.08); border-color: rgba(78,205,196,0.3); color: #0d9488; }
+.import-btn:hover { transform: translateY(-2px); filter: brightness(1.2); }
+
+.import-modal {
+  width: 100%; max-width: 480px; padding: 2rem; border-radius: 24px;
+  border: 1px solid; position: relative;
+}
+.dark .import-modal { background: linear-gradient(135deg, #1a1a2e, #16213e); border-color: rgba(255,255,255,0.1); }
+.light .import-modal { background: #fff; border-color: rgba(0,0,0,0.1); }
+.import-title {
+  font-size: 1.3rem; font-weight: 700; margin-bottom: 0.5rem;
+  background: linear-gradient(135deg, #a855f7, #4ecdc4);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+}
+.import-desc { font-size: 0.85rem; opacity: 0.6; margin-bottom: 1.25rem; }
+.import-input-row { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+.import-input-row input {
+  flex: 1; padding: 0.7rem 1rem; border: 1px solid; border-radius: 12px;
+  font-family: inherit; font-size: 0.9rem; transition: all 0.3s;
+}
+.dark .import-input-row input { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); color: #fff; }
+.light .import-input-row input { background: rgba(0,0,0,0.03); border-color: rgba(0,0,0,0.1); color: #1a1a2e; }
+.import-input-row input:focus { outline: none; border-color: rgba(168,85,247,0.5); }
+.import-fetch-btn {
+  padding: 0.7rem 1.25rem; border: none; border-radius: 12px;
+  background: linear-gradient(135deg, #a855f7, #4ecdc4); color: #fff;
+  font-family: inherit; font-size: 0.9rem; font-weight: 600;
+  cursor: pointer; transition: all 0.2s; white-space: nowrap;
+}
+.import-fetch-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.import-fetch-btn:hover:not(:disabled) { transform: translateY(-2px); filter: brightness(1.1); }
+.import-error {
+  padding: 0.6rem 0.85rem; border-radius: 10px; margin-bottom: 1rem;
+  font-size: 0.8rem; background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.25); color: #f87171;
+}
+.import-preview h3 {
+  font-size: 1rem; font-weight: 600; margin-bottom: 0.75rem;
+}
+.import-categories { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem; }
+.import-cat {
+  display: flex; align-items: center; gap: 0.6rem;
+  padding: 0.6rem 0.85rem; border-radius: 10px; cursor: pointer;
+  border: 1px solid; transition: all 0.2s;
+}
+.dark .import-cat { background: rgba(255,255,255,0.03); border-color: rgba(255,255,255,0.06); }
+.light .import-cat { background: rgba(0,0,0,0.02); border-color: rgba(0,0,0,0.06); }
+.import-cat.active { border-color: rgba(168,85,247,0.4); }
+.import-cat input { accent-color: #a855f7; }
+.import-cat span { font-size: 0.85rem; font-weight: 500; }
+.import-summary { font-size: 0.8rem; opacity: 0.6; margin-bottom: 1rem; text-align: center; }
+.import-confirm-btn {
+  width: 100%; padding: 0.85rem; border: none; border-radius: 12px;
+  background: linear-gradient(135deg, #22c55e, #16a34a); color: #fff;
+  font-family: inherit; font-size: 0.95rem; font-weight: 600;
+  cursor: pointer; transition: all 0.2s;
+}
+.import-confirm-btn:hover { transform: translateY(-2px); filter: brightness(1.1); box-shadow: 0 4px 15px rgba(34,197,94,0.3); }

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { hashString, parseEpisodes } from '../utils';
 
 export function useAnimeData(schedule) {
   const [searchQuery, setSearchQuery] = useState('');
@@ -126,17 +127,6 @@ export function useAnimeData(schedule) {
   }, [schedule]); // Se ejecuta cuando cambia el horario
 
   // --- 2. Lógica de Búsqueda (Jikan, Kitsu, AniList, TVMaze, Wiki) ---
-  const hashString = (str) => {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) { hash = ((hash << 5) - hash) + str.charCodeAt(i); hash |= 0; }
-    return Math.abs(hash) % 100000;
-  };
-
-  const parseEpisodes = (val) => {
-    if (val === null || val === undefined || val === '?' || val === '') return null;
-    const n = parseInt(val);
-    return isNaN(n) || n <= 0 ? null : n;
-  };
 
   const performSearch = async (query) => {
     if (query.length < 2) { setSearchResults([]); return; }

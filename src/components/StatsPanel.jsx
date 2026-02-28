@@ -52,4 +52,4 @@ const StatsPanel = ({ stats }) => (
     </div>
 );
 
-export default StatsPanel;
+export default React.memo(StatsPanel);

@@ -98,4 +98,4 @@ const AnimeCard = ({
   );
 };
 
-export default AnimeCard;
+export default React.memo(AnimeCard);

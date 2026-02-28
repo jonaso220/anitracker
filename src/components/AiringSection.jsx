@@ -46,4 +46,4 @@ const AiringSection = ({ schedule, airingData, onDetail }) => {
     );
 };
 
-export default AiringSection;
+export default React.memo(AiringSection);
