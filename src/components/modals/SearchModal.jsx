@@ -77,6 +77,7 @@ const SearchModal = ({ setShowSearch, searchQuery, handleSearch, searchResults, 
     return (
     <div className="modal-overlay" onClick={() => { setShowSearch(false); setSearchResults([]); setSearchQuery(''); }}>
       <div className="search-modal" onClick={e => e.stopPropagation()}>
+        <div className="bottom-sheet-handle"></div>
         <div className="search-header">
           <input type="text" placeholder="Buscar anime o serie..." value={searchQuery} onChange={e => handleSearch(e.target.value)} autoFocus />
           <button className={`filter-toggle-btn ${hasActiveFilters ? 'active' : ''}`} onClick={() => setShowFilters(!showFilters)} title="Filtros">

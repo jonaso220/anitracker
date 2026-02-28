@@ -106,6 +106,7 @@ const ImportModal = ({ onClose, onImport }) => {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="import-modal fade-in" onClick={e => e.stopPropagation()}>
+        <div className="bottom-sheet-handle"></div>
         <button className="close-btn" onClick={onClose}>×</button>
         <h2 className="import-title">Importar desde AniList</h2>
         <p className="import-desc">Ingresá tu nombre de usuario de AniList para importar tu lista de anime.</p>
