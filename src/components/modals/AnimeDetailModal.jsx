@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import StarRating from '../StarRating';
 import { sanitizeUrl, pruneTranslationCache } from '../../constants';
 
-const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, updateEpisode, updateUserRating, updateAnimeLink, updateAnimeNotes, markAsFinished, dropAnime, deleteAnime, addToWatchLater, markAsWatched, setShowMoveDayPicker, setShowDayPicker, resumeAnime }) => {
+const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, updateEpisode, updateUserRating, updateAnimeLink, updateAnimeNotes, markAsFinished, dropAnime, deleteAnime, addToWatchLater, markAsWatched, setShowMoveDayPicker, setShowDayPicker, resumeAnime, customLists = [], addToCustomList, removeFromCustomList }) => {
     // Compute initial synopsis synchronously (Spanish detection + cache check)
     const getInitialSynopsis = () => {
         const syn = showAnimeDetail?.synopsis;
@@ -28,6 +28,7 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
     const [bingeMode, setBingeMode] = useState(false);
     const [bingeCount, setBingeCount] = useState(0);
     const [bingeStart] = useState(Date.now());
+    const [showListPicker, setShowListPicker] = useState(false);
 
     // Only fetch translation if needed (not already Spanish or cached)
     useEffect(() => {
@@ -59,6 +60,7 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
     return (
         <div className="modal-overlay" onClick={() => setShowAnimeDetail(null)}>
             <div className="detail-modal fade-in" onClick={e => e.stopPropagation()}>
+                <div className="bottom-sheet-handle"></div>
                 <button className="close-btn" onClick={() => setShowAnimeDetail(null)}>×</button>
                 <div className="detail-header">
                     <img src={a.image} alt={a.title} />
@@ -160,6 +162,44 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                     />
                 </div>
 
+                {customLists.length > 0 && (
+                    <div className="detail-section">
+                        <div className="detail-section-header">
+                            <h4>📋 Listas</h4>
+                            <button className="detail-action-sm" onClick={() => setShowListPicker(!showListPicker)}>
+                                {showListPicker ? 'Ocultar' : 'Añadir a lista'}
+                            </button>
+                        </div>
+                        {(() => {
+                            const inLists = customLists.filter(l => l.items.some(x => x.id === a.id));
+                            return inLists.length > 0 && (
+                                <div className="detail-list-tags">
+                                    {inLists.map(l => (
+                                        <span key={l.id} className="detail-list-tag">
+                                            {l.emoji} {l.name}
+                                            <button className="detail-list-tag-remove" onClick={() => removeFromCustomList(l.id, a.id)}>✕</button>
+                                        </span>
+                                    ))}
+                                </div>
+                            );
+                        })()}
+                        {showListPicker && (
+                            <div className="detail-list-picker fade-in">
+                                {customLists.map(l => {
+                                    const isIn = l.items.some(x => x.id === a.id);
+                                    return (
+                                        <button key={l.id} className={`detail-list-option ${isIn ? 'in-list' : ''}`}
+                                            onClick={() => isIn ? removeFromCustomList(l.id, a.id) : addToCustomList(l.id, a)}>
+                                            <span>{l.emoji} {l.name}</span>
+                                            <span>{isIn ? '✓' : '+'}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                )}
+
                 <div className="detail-actions">
                     {isSchedule && <>
                         <button className="detail-action-btn finish" onClick={() => closeAndDo(() => markAsFinished(a, a._day))}>✓ Finalizar</button>
@@ -170,6 +210,9 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                     {a._isSeason && <button className="detail-action-btn later" onClick={() => closeAndDo(() => addToWatchLater(a))}>🕐 Ver después</button>}
                     {a._isSeason && <button className="detail-action-btn watched" onClick={() => closeAndDo(() => markAsWatched(a))}>✓ Visto</button>}
                     {a._isWatched && !a.finished && <button className="detail-action-btn resume" onClick={() => closeAndDo(() => resumeAnime(a))}>▶ Retomar</button>}
+                    {a._isCustomList && (
+                        <button className="detail-action-btn delete" onClick={() => closeAndDo(() => removeFromCustomList(a._customListId, a.id))}>✕ Quitar de lista</button>
+                    )}
                     {(isSchedule || a._isWatchLater || a._isWatched) && (
                         <button className="detail-action-btn delete" onClick={() => closeAndDo(() => deleteAnime(a))}>🗑 Eliminar</button>
                     )}

@@ -5,6 +5,7 @@ import AnimeCard from './components/AnimeCard';
 import AiringSection from './components/AiringSection';
 import SeasonSection from './components/SeasonSection';
 import StatsPanel from './components/StatsPanel';
+import CustomListsTab from './components/CustomListsTab';
 import SearchModal from './components/modals/SearchModal';
 import AnimeDetailModal from './components/modals/AnimeDetailModal';
 import DayPickerModal from './components/modals/DayPickerModal';
@@ -52,11 +53,15 @@ export default function AnimeTracker() {
   const [watchLater, setWatchLater] = useState(() => {
     try { const s = localStorage.getItem('watchLater'); return s ? JSON.parse(s) : []; } catch { return []; }
   });
+  const [customLists, setCustomLists] = useState(() => {
+    try { const s = localStorage.getItem('anitracker-custom-lists'); return s ? JSON.parse(s) : []; } catch { return []; }
+  });
 
   // Persistencia
   useEffect(() => { localStorage.setItem('animeSchedule', JSON.stringify(schedule)); }, [schedule]);
   useEffect(() => { localStorage.setItem('watchedAnimes', JSON.stringify(watchedList)); }, [watchedList]);
   useEffect(() => { localStorage.setItem('watchLater', JSON.stringify(watchLater)); }, [watchLater]);
+  useEffect(() => { localStorage.setItem('anitracker-custom-lists', JSON.stringify(customLists)); }, [customLists]);
   useEffect(() => { localStorage.setItem('anitracker-theme', darkMode ? 'dark' : 'light'); }, [darkMode]);
 
   // --- Hooks ---
@@ -289,6 +294,32 @@ export default function AnimeTracker() {
     });
   };
 
+  // --- Custom Lists ---
+  const createCustomList = (name, emoji) => {
+    setCustomLists(prev => [...prev, { id: `list-${Date.now()}`, name, emoji, items: [] }]);
+  };
+
+  const deleteCustomList = (listId) => {
+    const prev = JSON.parse(JSON.stringify(customLists));
+    setCustomLists(lists => lists.filter(l => l.id !== listId));
+    showToast('Lista eliminada', () => setCustomLists(prev));
+  };
+
+  const renameCustomList = (listId, newName) => {
+    setCustomLists(lists => lists.map(l => l.id === listId ? { ...l, name: newName } : l));
+  };
+
+  const addToCustomList = (listId, anime) => {
+    const a = { ...clean(anime), currentEp: anime.currentEp || 0, userRating: anime.userRating || 0, notes: anime.notes || '' };
+    setCustomLists(lists => lists.map(l => l.id === listId ? { ...l, items: [...l.items.filter(x => x.id !== a.id), a] } : l));
+  };
+
+  const removeFromCustomList = (listId, animeId) => {
+    const prev = JSON.parse(JSON.stringify(customLists));
+    setCustomLists(lists => lists.map(l => l.id === listId ? { ...l, items: l.items.filter(x => x.id !== animeId) } : l));
+    showToast('Anime removido de la lista', () => setCustomLists(prev));
+  };
+
   const updateEpisode = (animeId, delta) => {
     const update = (list) => list.map(a => a.id === animeId ? { ...a, currentEp: Math.max(0, (a.currentEp || 0) + delta) } : a);
     setSchedule(prev => { const n = { ...prev }; daysOfWeek.forEach(d => { n[d] = update(n[d]); }); return n; });
@@ -426,6 +457,7 @@ export default function AnimeTracker() {
         <button className={`nav-tab ${activeTab === 'schedule' ? 'active' : ''}`} onClick={() => { setActiveTab('schedule'); setLocalSearch(''); exitBulkMode(); }}>📅 Semana</button>
         <button className={`nav-tab ${activeTab === 'watchLater' ? 'active' : ''}`} onClick={() => { setActiveTab('watchLater'); setLocalSearch(''); exitBulkMode(); }}>🕐 Después ({watchLater.length})</button>
         <button className={`nav-tab ${activeTab === 'watched' ? 'active' : ''}`} onClick={() => { setActiveTab('watched'); setLocalSearch(''); exitBulkMode(); }}>✓ Vistas ({watchedList.length})</button>
+        <button className={`nav-tab ${activeTab === 'lists' ? 'active' : ''}`} onClick={() => { setActiveTab('lists'); setLocalSearch(''); exitBulkMode(); }}>📋 Listas{customLists.length > 0 ? ` (${customLists.length})` : ''}</button>
         <button className={`nav-tab ${activeTab === 'season' ? 'active' : ''}`} onClick={() => { setActiveTab('season'); setLocalSearch(''); exitBulkMode(); fetchSeason(selectedSeason.season, selectedSeason.year); }}>🌸 Temporada</button>
         <button className={`nav-tab ${activeTab === 'stats' ? 'active' : ''}`} onClick={() => { setActiveTab('stats'); setLocalSearch(''); exitBulkMode(); }}>📊 Stats</button>
       </nav>
@@ -563,6 +595,12 @@ export default function AnimeTracker() {
           </>
         )}
 
+        {activeTab === 'lists' && (
+          <CustomListsTab customLists={customLists} onCreateList={createCustomList} onDeleteList={deleteCustomList}
+            onRenameList={renameCustomList} onRemoveFromList={removeFromCustomList} airingData={airingData}
+            onDetail={(a) => setShowAnimeDetail(a)} />
+        )}
+
         {activeTab === 'season' && (
           <SeasonSection seasonAnime={seasonAnime} seasonLoading={seasonLoading} schedule={schedule} watchedList={watchedList} watchLater={watchLater}
             selectedSeason={selectedSeason} onChangeSeason={changeSeason}
@@ -591,7 +629,8 @@ export default function AnimeTracker() {
         airingData={airingData} updateEpisode={updateEpisode} updateUserRating={updateUserRating} updateAnimeLink={updateAnimeLink}
         updateAnimeNotes={updateAnimeNotes} markAsFinished={markAsFinished} dropAnime={dropAnime} deleteAnime={deleteAnime}
         addToWatchLater={addToWatchLater} markAsWatched={markAsWatched}
-        setShowMoveDayPicker={setShowMoveDayPicker} setShowDayPicker={setShowDayPicker} resumeAnime={resumeAnime} />}
+        setShowMoveDayPicker={setShowMoveDayPicker} setShowDayPicker={setShowDayPicker} resumeAnime={resumeAnime}
+        customLists={customLists} addToCustomList={addToCustomList} removeFromCustomList={removeFromCustomList} />}
 
       {showDayPicker && <DayPickerModal showDayPicker={showDayPicker} setShowDayPicker={setShowDayPicker}
         watchLater={watchLater} addToSchedule={addToSchedule} moveFromWatchLaterToSchedule={moveFromWatchLaterToSchedule} />}
@@ -604,6 +643,7 @@ export default function AnimeTracker() {
       {showBulkDayPicker && (
         <div className="modal-overlay" onClick={() => setShowBulkDayPicker(false)}>
           <div className="day-picker-modal fade-in" onClick={e => e.stopPropagation()}>
+            <div className="bottom-sheet-handle"></div>
             <h3 style={{ marginBottom: '1rem', textAlign: 'center' }}>Mover {bulkSelected.size} anime{bulkSelected.size > 1 ? 's' : ''} a...</h3>
             <div className="days-grid">
               {daysOfWeek.map(day => (
