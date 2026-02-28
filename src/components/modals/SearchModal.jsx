@@ -1,19 +1,17 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 
 const Highlight = ({ text, query }) => {
     if (!query || query.length < 2 || !text) return <>{text}</>;
     const qNorm = query.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    // Construir mapa de posiciones: para cada char en la versión stripped, guardar su índice original
     const lower = text.toLowerCase();
     const nfd = lower.normalize('NFD');
-    const origIdx = []; // origIdx[i] = índice en text original del i-ésimo char stripped
+    const origIdx = [];
     let stripped = '';
     for (let i = 0, origPos = 0; i < nfd.length; i++) {
         if (!/[\u0300-\u036f]/.test(nfd[i])) {
             stripped += nfd[i];
             origIdx.push(origPos);
         }
-        // Avanzar origPos al siguiente char NFC cuando terminamos un cluster NFD
         const nextIsBase = i + 1 >= nfd.length || !/[\u0300-\u036f]/.test(nfd[i + 1]);
         if (nextIsBase && !/[\u0300-\u036f]/.test(nfd[i])) origPos++;
         if (/[\u0300-\u036f]/.test(nfd[i]) && nextIsBase) origPos++;
@@ -26,13 +24,101 @@ const Highlight = ({ text, query }) => {
     return <>{text.slice(0, start)}<mark className="search-highlight">{text.slice(start, end)}</mark>{text.slice(end)}</>;
 };
 
-const SearchModal = ({ setShowSearch, searchQuery, handleSearch, searchResults, isSearching, searchPartial = [], setSearchResults, setSearchQuery, setShowDayPicker, addToWatchLater, markAsWatchedFromSearch }) => (
+const TYPE_OPTIONS = ['Todos', 'TV', 'Película', 'OVA', 'ONA', 'Special', 'TV Short', 'Serie'];
+const SCORE_OPTIONS = [
+    { label: 'Cualquiera', min: 0 },
+    { label: '7+', min: 7 },
+    { label: '8+', min: 8 },
+    { label: '9+', min: 9 },
+];
+
+const SearchModal = ({ setShowSearch, searchQuery, handleSearch, searchResults, isSearching, searchPartial = [], setSearchResults, setSearchQuery, setShowDayPicker, addToWatchLater, markAsWatchedFromSearch }) => {
+    const [showFilters, setShowFilters] = useState(false);
+    const [filterType, setFilterType] = useState('Todos');
+    const [filterYearFrom, setFilterYearFrom] = useState('');
+    const [filterYearTo, setFilterYearTo] = useState('');
+    const [filterScore, setFilterScore] = useState(0);
+
+    const hasActiveFilters = filterType !== 'Todos' || filterYearFrom || filterYearTo || filterScore > 0;
+
+    const filteredResults = useMemo(() => {
+        if (!hasActiveFilters) return searchResults;
+        return searchResults.filter(anime => {
+            // Type filter
+            if (filterType !== 'Todos') {
+                const animeType = (anime.type || '').toLowerCase();
+                const target = filterType.toLowerCase();
+                if (animeType !== target) return false;
+            }
+            // Year filter
+            if (filterYearFrom) {
+                const year = parseInt(anime.year);
+                if (!year || year < parseInt(filterYearFrom)) return false;
+            }
+            if (filterYearTo) {
+                const year = parseInt(anime.year);
+                if (!year || year > parseInt(filterYearTo)) return false;
+            }
+            // Score filter
+            if (filterScore > 0) {
+                if (!anime.rating || anime.rating < filterScore) return false;
+            }
+            return true;
+        });
+    }, [searchResults, filterType, filterYearFrom, filterYearTo, filterScore, hasActiveFilters]);
+
+    const clearFilters = () => {
+        setFilterType('Todos');
+        setFilterYearFrom('');
+        setFilterYearTo('');
+        setFilterScore(0);
+    };
+
+    return (
     <div className="modal-overlay" onClick={() => { setShowSearch(false); setSearchResults([]); setSearchQuery(''); }}>
       <div className="search-modal" onClick={e => e.stopPropagation()}>
         <div className="search-header">
-          <input type="text" placeholder="🔍 Buscar anime o serie..." value={searchQuery} onChange={e => handleSearch(e.target.value)} autoFocus />
-          <button className="close-btn" onClick={() => { setShowSearch(false); setSearchResults([]); setSearchQuery(''); }}>×</button>
+          <input type="text" placeholder="Buscar anime o serie..." value={searchQuery} onChange={e => handleSearch(e.target.value)} autoFocus />
+          <button className={`filter-toggle-btn ${hasActiveFilters ? 'active' : ''}`} onClick={() => setShowFilters(!showFilters)} title="Filtros">
+            {hasActiveFilters ? '⚙ Filtros activos' : '⚙'}
+          </button>
+          <button className="close-btn" onClick={() => { setShowSearch(false); setSearchResults([]); setSearchQuery(''); }}>x</button>
         </div>
+
+        {showFilters && (
+          <div className="search-filters fade-in">
+            <div className="search-filters-row">
+              <div className="search-filter-group">
+                <label>Tipo</label>
+                <div className="filter-chips">
+                  {TYPE_OPTIONS.map(t => (
+                    <button key={t} className={`filter-chip ${filterType === t ? 'active' : ''}`} onClick={() => setFilterType(t)}>{t}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="search-filter-group">
+                <label>Año</label>
+                <div className="filter-year-range">
+                  <input type="number" placeholder="Desde" value={filterYearFrom} onChange={e => setFilterYearFrom(e.target.value)} min="1960" max="2030" />
+                  <span>—</span>
+                  <input type="number" placeholder="Hasta" value={filterYearTo} onChange={e => setFilterYearTo(e.target.value)} min="1960" max="2030" />
+                </div>
+              </div>
+              <div className="search-filter-group">
+                <label>Puntuación</label>
+                <div className="filter-chips">
+                  {SCORE_OPTIONS.map(s => (
+                    <button key={s.min} className={`filter-chip ${filterScore === s.min ? 'active' : ''}`} onClick={() => setFilterScore(s.min)}>{s.label}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            {hasActiveFilters && (
+              <button className="clear-filters-btn" onClick={clearFilters}>Limpiar filtros</button>
+            )}
+          </div>
+        )}
+
         <div className="search-results">
           {isSearching ? <div className="skeleton-search-list">{Array.from({ length: 5 }).map((_, i) => (
             <div key={i} className="skeleton-search-item">
@@ -44,13 +130,18 @@ const SearchModal = ({ setShowSearch, searchQuery, handleSearch, searchResults, 
               </div>
             </div>
           ))}</div>
-          : searchResults.length > 0 ? <>
+          : filteredResults.length > 0 ? <>
             {searchPartial.length > 0 && (
               <div className="search-partial-notice">
                 Algunos resultados pueden faltar ({searchPartial.join(', ')} no respondió)
               </div>
             )}
-            {searchResults.map(anime => (
+            {hasActiveFilters && (
+              <div className="search-filter-count">
+                Mostrando {filteredResults.length} de {searchResults.length} resultados
+              </div>
+            )}
+            {filteredResults.map(anime => (
             <div key={anime.id} className="search-result-item fade-in">
               <img src={anime.imageSm || anime.image} alt={anime.title} />
               <div className="search-result-info">
@@ -72,11 +163,13 @@ const SearchModal = ({ setShowSearch, searchQuery, handleSearch, searchResults, 
               </div>
             </div>
           ))}</>
+          : searchResults.length > 0 && hasActiveFilters ? <div className="no-results"><span>🔍</span><p>Ningún resultado coincide con los filtros</p><button className="clear-filters-btn" onClick={clearFilters}>Limpiar filtros</button></div>
           : searchQuery.length > 1 ? <div className="no-results"><span>😢</span><p>Sin resultados para "{searchQuery}"</p></div>
           : <div className="search-placeholder"><span>🎌</span><p>Buscá anime, series o películas</p><p className="search-hint">MAL · Kitsu · AniList · TVMaze · iTunes</p></div>}
         </div>
       </div>
     </div>
-);
+    );
+};
 
 export default SearchModal;
