@@ -5,6 +5,7 @@ import AnimeCard from './components/AnimeCard';
 import AiringSection from './components/AiringSection';
 import SeasonSection from './components/SeasonSection';
 import StatsPanel from './components/StatsPanel';
+import TopAnimeSection from './components/TopAnimeSection';
 import CustomListsTab from './components/CustomListsTab';
 import SearchModal from './components/modals/SearchModal';
 import AnimeDetailModal from './components/modals/AnimeDetailModal';
@@ -36,6 +37,8 @@ export default function AnimeTracker() {
   const [bulkSelected, setBulkSelected] = useState(new Set());
   const [seasonAnime, setSeasonAnime] = useState([]);
   const [seasonLoading, setSeasonLoading] = useState(false);
+  const [topAnime, setTopAnime] = useState([]);
+  const [topLoading, setTopLoading] = useState(false);
   const [selectedSeason, setSelectedSeason] = useState(() => {
     const m = new Date().getMonth() + 1;
     return { season: m <= 3 ? 'WINTER' : m <= 6 ? 'SPRING' : m <= 9 ? 'SUMMER' : 'FALL', year: new Date().getFullYear() };
@@ -391,6 +394,34 @@ export default function AnimeTracker() {
   };
   const changeSeason = (s, y) => { setSelectedSeason({ season: s, year: y }); fetchSeason(s, y); };
 
+  // --- Top Anime ---
+  const topCacheRef = useRef(null);
+  const fetchTopAnime = () => {
+    if (topCacheRef.current) { setTopAnime(topCacheRef.current); return; }
+    setTopLoading(true);
+    setTopAnime([]);
+    const query = `query { Page(page: 1, perPage: 50) { media(type: ANIME, sort: SCORE_DESC, isAdult: false) {
+      id idMal title { romaji english native } coverImage { large medium } genres averageScore episodes format status seasonYear description(asHtml: false) siteUrl
+    } } }`;
+    const formatMap = { TV: 'TV', TV_SHORT: 'TV Short', MOVIE: 'Película', SPECIAL: 'Special', OVA: 'OVA', ONA: 'ONA', MUSIC: 'Music' };
+    fetch('https://graphql.anilist.co', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query })
+    }).then(r => r.json()).then(data => {
+      const results = (data?.data?.Page?.media || []).map(m => ({
+        id: m.idMal || (m.id + 300000), title: m.title?.english || m.title?.romaji || '', titleJp: m.title?.native || '',
+        image: m.coverImage?.large || '', imageSm: m.coverImage?.medium || m.coverImage?.large || '',
+        genres: m.genres || [],
+        synopsis: (m.description || '').replace(/<[^>]*>/g, '').trim() || 'Sin sinopsis.',
+        rating: m.averageScore ? Number((m.averageScore / 10).toFixed(1)) : 0, episodes: m.episodes || null,
+        type: formatMap[m.format] || m.format || '', year: m.seasonYear || '', status: m.status || '',
+        source: 'AniList', malUrl: m.siteUrl || '', watchLink: '', currentEp: 0, userRating: 0, notes: ''
+      }));
+      topCacheRef.current = results;
+      setTopAnime(results);
+    }).catch(() => {}).finally(() => setTopLoading(false));
+  };
+
   // --- Estadísticas ---
   const stats = useMemo(() => {
     const allSchedule = daysOfWeek.flatMap(d => schedule[d] || []);
@@ -451,6 +482,7 @@ export default function AnimeTracker() {
         <button className={`nav-tab ${activeTab === 'watched' ? 'active' : ''}`} onClick={() => { setActiveTab('watched'); setLocalSearch(''); exitBulkMode(); setWatchedVisible(30); }}>✓ Vistas ({watchedList.length})</button>
         <button className={`nav-tab ${activeTab === 'lists' ? 'active' : ''}`} onClick={() => { setActiveTab('lists'); setLocalSearch(''); exitBulkMode(); }}>📋 Listas{customLists.length > 0 ? ` (${customLists.length})` : ''}</button>
         <button className={`nav-tab ${activeTab === 'season' ? 'active' : ''}`} onClick={() => { setActiveTab('season'); setLocalSearch(''); exitBulkMode(); fetchSeason(selectedSeason.season, selectedSeason.year); }}>🌸 Temporada</button>
+        <button className={`nav-tab ${activeTab === 'top' ? 'active' : ''}`} onClick={() => { setActiveTab('top'); setLocalSearch(''); exitBulkMode(); fetchTopAnime(); }}>🏆 Top</button>
         <button className={`nav-tab ${activeTab === 'stats' ? 'active' : ''}`} onClick={() => { setActiveTab('stats'); setLocalSearch(''); exitBulkMode(); }}>📊 Stats</button>
       </nav>
 
@@ -618,6 +650,12 @@ export default function AnimeTracker() {
             selectedSeason={selectedSeason} onChangeSeason={changeSeason}
             setShowDayPicker={setShowDayPicker} addToWatchLater={addToWatchLater} markAsWatched={markAsWatched}
             onDetail={(a) => setShowAnimeDetail({ ...a, _isWatchLater: false, _isWatched: false, _isSeason: true })} />
+        )}
+
+        {activeTab === 'top' && (
+          <TopAnimeSection topAnime={topAnime} topLoading={topLoading} schedule={schedule} watchedList={watchedList} watchLater={watchLater}
+            setShowDayPicker={setShowDayPicker} addToWatchLater={addToWatchLater} markAsWatched={markAsWatched}
+            onDetail={(a) => setShowAnimeDetail({ ...a, _isWatchLater: false, _isWatched: false, _isSeason: false })} />
         )}
 
         {activeTab === 'stats' && <StatsPanel stats={stats} />}
