@@ -13,6 +13,7 @@ import ImportModal from './components/modals/ImportModal';
 import { useFirebase } from './hooks/useFirebase';
 import { useAnimeData } from './hooks/useAnimeData';
 import { useDragDrop } from './hooks/useDragDrop';
+import { useNotifications } from './hooks/useNotifications';
 import { daysOfWeek, dayEmojis } from './constants';
 
 const emptySchedule = { 'Lunes': [], 'Martes': [], 'Miércoles': [], 'Jueves': [], 'Viernes': [], 'Sábado': [], 'Domingo': [] };
@@ -29,6 +30,8 @@ export default function AnimeTracker() {
   const [watchedSort, setWatchedSort] = useState('date');
   const [toast, setToast] = useState(null);
   const [localSearch, setLocalSearch] = useState('');
+  const [bulkMode, setBulkMode] = useState(false);
+  const [bulkSelected, setBulkSelected] = useState(new Set());
   const [seasonAnime, setSeasonAnime] = useState([]);
   const [seasonLoading, setSeasonLoading] = useState(false);
   const [selectedSeason, setSelectedSeason] = useState(() => {
@@ -60,6 +63,7 @@ export default function AnimeTracker() {
   const { user, syncing, loginWithGoogle, logout, FIREBASE_ENABLED } = useFirebase(schedule, watchedList, watchLater, setSchedule, setWatchedList, setWatchLater);
   const { searchQuery, setSearchQuery, searchResults, setSearchResults, isSearching, searchPartial, airingData, handleSearch } = useAnimeData(schedule);
   const { isDragging, dropTarget, dropIndex, handleDragStart, handleDragEnd, handleDragOverRow, handleDragOverCard, handleDrop, handleTouchStart, handleTouchMove, handleTouchEnd, touchRef, dragState } = useDragDrop(schedule, setSchedule, daysOfWeek);
+  const { notifEnabled, notifPermission, toggleNotifications } = useNotifications(airingData);
   const dayRowRefs = useRef({});
 
   // --- Toast ---
@@ -191,6 +195,100 @@ export default function AnimeTracker() {
     setShowMoveDayPicker(null);
   };
 
+  // --- Bulk Operations ---
+  const toggleBulkSelect = (id) => {
+    setBulkSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const bulkSelectAll = (list) => {
+    setBulkSelected(new Set(list.map(a => a.id)));
+  };
+
+  const bulkDeselectAll = () => {
+    setBulkSelected(new Set());
+  };
+
+  const exitBulkMode = () => {
+    setBulkMode(false);
+    setBulkSelected(new Set());
+  };
+
+  const bulkDelete = () => {
+    if (bulkSelected.size === 0) return;
+    const prevWatched = JSON.parse(JSON.stringify(watchedList));
+    const prevLater = JSON.parse(JSON.stringify(watchLater));
+    const prevSchedule = JSON.parse(JSON.stringify(schedule));
+    const count = bulkSelected.size;
+
+    if (activeTab === 'watched') {
+      setWatchedList(prev => prev.filter(a => !bulkSelected.has(a.id)));
+    } else if (activeTab === 'watchLater') {
+      setWatchLater(prev => prev.filter(a => !bulkSelected.has(a.id)));
+    } else if (activeTab === 'schedule') {
+      setSchedule(prev => {
+        const next = { ...prev };
+        daysOfWeek.forEach(d => { next[d] = next[d].filter(a => !bulkSelected.has(a.id)); });
+        return next;
+      });
+    }
+    exitBulkMode();
+    showToast(`${count} anime${count > 1 ? 's' : ''} eliminado${count > 1 ? 's' : ''}`, () => {
+      setSchedule(prevSchedule); setWatchedList(prevWatched); setWatchLater(prevLater);
+    });
+  };
+
+  const bulkMarkWatched = () => {
+    if (bulkSelected.size === 0) return;
+    const prevLater = JSON.parse(JSON.stringify(watchLater));
+    const prevWatched = JSON.parse(JSON.stringify(watchedList));
+    const count = bulkSelected.size;
+
+    const toMove = watchLater.filter(a => bulkSelected.has(a.id));
+    setWatchLater(prev => prev.filter(a => !bulkSelected.has(a.id)));
+    setWatchedList(prev => {
+      const existing = new Set(prev.map(a => a.id));
+      const newItems = toMove.filter(a => !existing.has(a.id)).map(a => ({
+        ...clean(a), finished: true, finishedDate: new Date().toISOString(),
+        currentEp: a.currentEp || 0, userRating: a.userRating || 0, notes: a.notes || ''
+      }));
+      return [...prev, ...newItems];
+    });
+    exitBulkMode();
+    showToast(`${count} anime${count > 1 ? 's' : ''} marcado${count > 1 ? 's' : ''} como visto${count > 1 ? 's' : ''}`, () => {
+      setWatchLater(prevLater); setWatchedList(prevWatched);
+    });
+  };
+
+  const [showBulkDayPicker, setShowBulkDayPicker] = useState(false);
+
+  const bulkMoveToSchedule = (day) => {
+    if (bulkSelected.size === 0) return;
+    const prevLater = JSON.parse(JSON.stringify(watchLater));
+    const prevSchedule = JSON.parse(JSON.stringify(schedule));
+    const count = bulkSelected.size;
+
+    const toMove = watchLater.filter(a => bulkSelected.has(a.id));
+    setWatchLater(prev => prev.filter(a => !bulkSelected.has(a.id)));
+    setSchedule(prev => {
+      const next = { ...prev };
+      toMove.forEach(a => {
+        const cleaned = { ...clean(a), currentEp: a.currentEp || 0, userRating: a.userRating || 0, notes: a.notes || '' };
+        next[day] = [...next[day].filter(x => x.id !== cleaned.id), cleaned];
+      });
+      return next;
+    });
+    setShowBulkDayPicker(false);
+    exitBulkMode();
+    showToast(`${count} anime${count > 1 ? 's' : ''} movido${count > 1 ? 's' : ''} a ${day}`, () => {
+      setWatchLater(prevLater); setSchedule(prevSchedule);
+    });
+  };
+
   const updateEpisode = (animeId, delta) => {
     const update = (list) => list.map(a => a.id === animeId ? { ...a, currentEp: Math.max(0, (a.currentEp || 0) + delta) } : a);
     setSchedule(prev => { const n = { ...prev }; daysOfWeek.forEach(d => { n[d] = update(n[d]); }); return n; });
@@ -301,6 +399,11 @@ export default function AnimeTracker() {
             <button className="import-btn" onClick={() => setShowImport(true)}>📥 Importar</button>
           </div>
           <div className="header-right">
+            {notifPermission !== 'unsupported' && (
+              <button className={`notif-toggle ${notifEnabled ? 'active' : ''}`} onClick={toggleNotifications} title={notifPermission === 'denied' ? 'Notificaciones bloqueadas en el navegador' : notifEnabled ? 'Desactivar notificaciones' : 'Activar notificaciones'}>
+                {notifEnabled ? '🔔' : '🔕'}{notifPermission === 'denied' && ' ⚠'}
+              </button>
+            )}
             <button className="theme-toggle" onClick={() => setDarkMode(!darkMode)}>
               {darkMode ? '☀️ Claro' : '🌙 Oscuro'}
             </button>
@@ -320,11 +423,11 @@ export default function AnimeTracker() {
       </header>
 
       <nav className="nav-tabs">
-        <button className={`nav-tab ${activeTab === 'schedule' ? 'active' : ''}`} onClick={() => { setActiveTab('schedule'); setLocalSearch(''); }}>📅 Semana</button>
-        <button className={`nav-tab ${activeTab === 'watchLater' ? 'active' : ''}`} onClick={() => { setActiveTab('watchLater'); setLocalSearch(''); }}>🕐 Después ({watchLater.length})</button>
-        <button className={`nav-tab ${activeTab === 'watched' ? 'active' : ''}`} onClick={() => { setActiveTab('watched'); setLocalSearch(''); }}>✓ Vistas ({watchedList.length})</button>
-        <button className={`nav-tab ${activeTab === 'season' ? 'active' : ''}`} onClick={() => { setActiveTab('season'); setLocalSearch(''); fetchSeason(selectedSeason.season, selectedSeason.year); }}>🌸 Temporada</button>
-        <button className={`nav-tab ${activeTab === 'stats' ? 'active' : ''}`} onClick={() => { setActiveTab('stats'); setLocalSearch(''); }}>📊 Stats</button>
+        <button className={`nav-tab ${activeTab === 'schedule' ? 'active' : ''}`} onClick={() => { setActiveTab('schedule'); setLocalSearch(''); exitBulkMode(); }}>📅 Semana</button>
+        <button className={`nav-tab ${activeTab === 'watchLater' ? 'active' : ''}`} onClick={() => { setActiveTab('watchLater'); setLocalSearch(''); exitBulkMode(); }}>🕐 Después ({watchLater.length})</button>
+        <button className={`nav-tab ${activeTab === 'watched' ? 'active' : ''}`} onClick={() => { setActiveTab('watched'); setLocalSearch(''); exitBulkMode(); }}>✓ Vistas ({watchedList.length})</button>
+        <button className={`nav-tab ${activeTab === 'season' ? 'active' : ''}`} onClick={() => { setActiveTab('season'); setLocalSearch(''); exitBulkMode(); fetchSeason(selectedSeason.season, selectedSeason.year); }}>🌸 Temporada</button>
+        <button className={`nav-tab ${activeTab === 'stats' ? 'active' : ''}`} onClick={() => { setActiveTab('stats'); setLocalSearch(''); exitBulkMode(); }}>📊 Stats</button>
       </nav>
 
       <main className="main-content">
@@ -363,13 +466,42 @@ export default function AnimeTracker() {
 
         {activeTab === 'watchLater' && (
           <>
-            <div className="section-header"><h2>🕐 Ver más tarde</h2><span className="count">{watchLater.length}</span></div>
+            <div className="section-header">
+              <h2>🕐 Ver más tarde</h2><span className="count">{watchLater.length}</span>
+              {watchLater.length > 0 && (
+                <button className={`bulk-mode-btn ${bulkMode ? 'active' : ''}`} onClick={() => bulkMode ? exitBulkMode() : setBulkMode(true)}>
+                  {bulkMode ? '✕ Cancelar' : '☑ Seleccionar'}
+                </button>
+              )}
+            </div>
+            {bulkMode && (
+              <div className="bulk-toolbar fade-in">
+                <div className="bulk-toolbar-left">
+                  <button className="bulk-select-all" onClick={() => {
+                    const filtered = filterByLocalSearch(watchLater);
+                    bulkSelected.size === filtered.length ? bulkDeselectAll() : bulkSelectAll(filtered);
+                  }}>
+                    {bulkSelected.size === filterByLocalSearch(watchLater).length ? '☐ Deseleccionar' : '☑ Seleccionar todo'}
+                  </button>
+                  <span className="bulk-count">{bulkSelected.size} seleccionado{bulkSelected.size !== 1 ? 's' : ''}</span>
+                </div>
+                <div className="bulk-toolbar-actions">
+                  <button className="bulk-action-btn schedule" onClick={() => setShowBulkDayPicker(true)} disabled={bulkSelected.size === 0}>📅 Mover a semana</button>
+                  <button className="bulk-action-btn watched" onClick={bulkMarkWatched} disabled={bulkSelected.size === 0}>✓ Marcar vistos</button>
+                  <button className="bulk-action-btn delete" onClick={bulkDelete} disabled={bulkSelected.size === 0}>🗑 Eliminar</button>
+                </div>
+              </div>
+            )}
             {watchLater.length > 3 && <div className="local-search"><input type="text" placeholder="🔍 Filtrar por nombre..." value={localSearch} onChange={e => setLocalSearch(e.target.value)} /></div>}
             <div className="anime-grid">
               {(() => {
                 const filtered = filterByLocalSearch(watchLater);
                 return filtered.length > 0 ? filtered.map(a => (
-                  <AnimeCard key={a.id} anime={a} isWatchLater airingData={airingData} onClick={() => setShowAnimeDetail({ ...a, _isWatchLater: true, _isWatched: false, _isSeason: false })} />
+                  <div key={a.id} className={`bulk-card-wrapper ${bulkMode ? 'selectable' : ''} ${bulkSelected.has(a.id) ? 'selected' : ''}`}
+                    onClick={bulkMode ? (e) => { e.stopPropagation(); toggleBulkSelect(a.id); } : undefined}>
+                    {bulkMode && <div className={`bulk-checkbox ${bulkSelected.has(a.id) ? 'checked' : ''}`}>{bulkSelected.has(a.id) ? '✓' : ''}</div>}
+                    <AnimeCard anime={a} isWatchLater airingData={airingData} onClick={bulkMode ? undefined : () => setShowAnimeDetail({ ...a, _isWatchLater: true, _isWatched: false, _isSeason: false })} />
+                  </div>
                 )) : <div className="empty-state"><span>📺</span><p>{localSearch ? 'Sin resultados' : 'No hay animes guardados'}</p></div>;
               })()}
             </div>
@@ -378,7 +510,30 @@ export default function AnimeTracker() {
 
         {activeTab === 'watched' && (
           <>
-            <div className="section-header"><h2>✓ Series vistas</h2><span className="count">{watchedList.length}</span></div>
+            <div className="section-header">
+              <h2>✓ Series vistas</h2><span className="count">{watchedList.length}</span>
+              {watchedList.length > 0 && (
+                <button className={`bulk-mode-btn ${bulkMode ? 'active' : ''}`} onClick={() => bulkMode ? exitBulkMode() : setBulkMode(true)}>
+                  {bulkMode ? '✕ Cancelar' : '☑ Seleccionar'}
+                </button>
+              )}
+            </div>
+            {bulkMode && (
+              <div className="bulk-toolbar fade-in">
+                <div className="bulk-toolbar-left">
+                  <button className="bulk-select-all" onClick={() => {
+                    const filtered = getFilteredWatched();
+                    bulkSelected.size === filtered.length ? bulkDeselectAll() : bulkSelectAll(filtered);
+                  }}>
+                    {bulkSelected.size === getFilteredWatched().length ? '☐ Deseleccionar' : '☑ Seleccionar todo'}
+                  </button>
+                  <span className="bulk-count">{bulkSelected.size} seleccionado{bulkSelected.size !== 1 ? 's' : ''}</span>
+                </div>
+                <div className="bulk-toolbar-actions">
+                  <button className="bulk-action-btn delete" onClick={bulkDelete} disabled={bulkSelected.size === 0}>🗑 Eliminar</button>
+                </div>
+              </div>
+            )}
             <div className="filter-bar">
               {['all', 'finished', 'dropped'].map(f => (
                 <button key={f} className={`filter-btn ${watchedFilter === f ? 'active' : ''}`} onClick={() => setWatchedFilter(f)}>
@@ -397,7 +552,11 @@ export default function AnimeTracker() {
               {(() => {
                 const filtered = getFilteredWatched();
                 return filtered.length > 0 ? filtered.map(a => (
-                  <AnimeCard key={a.id} anime={a} isWatched airingData={airingData} onClick={() => setShowAnimeDetail({ ...a, _isWatched: true, _isWatchLater: false, _isSeason: false })} />
+                  <div key={a.id} className={`bulk-card-wrapper ${bulkMode ? 'selectable' : ''} ${bulkSelected.has(a.id) ? 'selected' : ''}`}
+                    onClick={bulkMode ? (e) => { e.stopPropagation(); toggleBulkSelect(a.id); } : undefined}>
+                    {bulkMode && <div className={`bulk-checkbox ${bulkSelected.has(a.id) ? 'checked' : ''}`}>{bulkSelected.has(a.id) ? '✓' : ''}</div>}
+                    <AnimeCard anime={a} isWatched airingData={airingData} onClick={bulkMode ? undefined : () => setShowAnimeDetail({ ...a, _isWatched: true, _isWatchLater: false, _isSeason: false })} />
+                  </div>
                 )) : <div className="empty-state"><span>🎬</span><p>No hay resultados</p></div>;
               })()}
             </div>
@@ -441,6 +600,19 @@ export default function AnimeTracker() {
         moveAnimeToDay={moveAnimeToDay} />}
 
       {showImport && <ImportModal onClose={() => setShowImport(false)} onImport={handleImport} />}
+
+      {showBulkDayPicker && (
+        <div className="modal-overlay" onClick={() => setShowBulkDayPicker(false)}>
+          <div className="day-picker-modal fade-in" onClick={e => e.stopPropagation()}>
+            <h3 style={{ marginBottom: '1rem', textAlign: 'center' }}>Mover {bulkSelected.size} anime{bulkSelected.size > 1 ? 's' : ''} a...</h3>
+            <div className="days-grid">
+              {daysOfWeek.map(day => (
+                <button key={day} className="day-btn" onClick={() => bulkMoveToSchedule(day)}>{dayEmojis[daysOfWeek.indexOf(day)]} {day}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

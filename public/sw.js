@@ -29,3 +29,33 @@ self.addEventListener('fetch', (e) => {
     }).catch(() => caches.match(request))
   );
 });
+
+// --- Push Notifications ---
+self.addEventListener('message', (e) => {
+  if (e.data && e.data.type === 'SHOW_NOTIFICATION') {
+    const { title, body, icon, tag, data } = e.data;
+    self.registration.showNotification(title, {
+      body,
+      icon: icon || '/icon-192.png',
+      badge: '/icon-192.png',
+      tag: tag || 'anitracker-airing',
+      data,
+      vibrate: [200, 100, 200],
+      actions: [{ action: 'open', title: 'Ver detalles' }]
+    });
+  }
+});
+
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  e.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
+      for (const client of clientList) {
+        if (client.url.includes(self.location.origin) && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      return clients.openWindow('/');
+    })
+  );
+});
