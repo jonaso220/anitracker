@@ -449,8 +449,8 @@ export default function AnimeTracker() {
         <div className="header-content">
           <div className="header-left">
             <h1 className="logo">AniTracker</h1>
-            <button className="search-btn" onClick={() => setShowSearch(true)}>🔍 Buscar...</button>
-            <button className="import-btn" onClick={() => setShowImport(true)}>📥 Importar</button>
+            <button className="search-btn" onClick={() => setShowSearch(true)}>🔍<span className="btn-label"> Buscar...</span></button>
+            <button className="import-btn" onClick={() => setShowImport(true)}>📥<span className="btn-label"> Importar</span></button>
           </div>
           <div className="header-right">
             {notifPermission !== 'unsupported' && (
@@ -459,16 +459,16 @@ export default function AnimeTracker() {
               </button>
             )}
             <button className="theme-toggle" onClick={() => setDarkMode(!darkMode)}>
-              {darkMode ? '☀️ Claro' : '🌙 Oscuro'}
+              {darkMode ? '☀️' : '🌙'}<span className="btn-label">{darkMode ? ' Claro' : ' Oscuro'}</span>
             </button>
-            {FIREBASE_ENABLED && !user && <button className="auth-btn google" onClick={loginWithGoogle}>🔑 Google</button>}
+            {FIREBASE_ENABLED && !user && <button className="auth-btn google" onClick={loginWithGoogle}>🔑<span className="btn-label"> Google</span></button>}
             {user && (
               <>
                 <div className="user-info">
                   {user.photoURL && <img src={user.photoURL} alt="" />}
-                  <span>{user.displayName?.split(' ')[0]}</span>
+                  <span className="btn-label">{user.displayName?.split(' ')[0]}</span>
                 </div>
-                {syncing && <span style={{ fontSize: '0.75rem', opacity: 0.5 }}>☁️ Sincronizando...</span>}
+                {syncing && <span className="btn-label" style={{ fontSize: '0.75rem', opacity: 0.5 }}>☁️ Sincronizando...</span>}
                 <button className="auth-btn" onClick={logout}>Salir</button>
               </>
             )}
