@@ -40,8 +40,9 @@
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
   .genre-bar-label { min-width: 70px; font-size: 0.75rem; }
 
-  /* Nav tabs with 6 tabs on mobile */
-  .nav-tab { padding: 0.4rem 0.35rem; font-size: 0.65rem; }
+  /* Nav tabs: emoji-only on mobile */
+  .tab-label { display: none; }
+  .nav-tab { padding: 0.5rem 0.4rem; font-size: 1.15rem; line-height: 1; }
 
   /* Search filters mobile */
   .search-filters-row { flex-direction: column; gap: 0.75rem; }

@@ -53,7 +53,8 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
 
     if (!showAnimeDetail) return null;
     const a = showAnimeDetail;
-    const isSchedule = !a._isWatchLater && !a._isWatched && !a._isSeason;
+    const isDiscovery = a._isSeason || a._isTop;
+    const isSchedule = !a._isWatchLater && !a._isWatched && !isDiscovery;
     const closeAndDo = (fn) => { setShowAnimeDetail(null); fn(); };
     const airing = airingData[a.id];
 
@@ -206,9 +207,9 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                         <button className="detail-action-btn drop" onClick={() => closeAndDo(() => dropAnime(a, a._day))}>✗ Dropear</button>
                         <button className="detail-action-btn move" onClick={() => closeAndDo(() => setShowMoveDayPicker({ anime: a, fromDay: a._day }))}>↔ Mover día</button>
                     </>}
-                    {(a._isWatchLater || a._isSeason) && <button className="detail-action-btn schedule" onClick={() => closeAndDo(() => setShowDayPicker(a))}>📅 Añadir a semana</button>}
-                    {a._isSeason && <button className="detail-action-btn later" onClick={() => closeAndDo(() => addToWatchLater(a))}>🕐 Ver después</button>}
-                    {a._isSeason && <button className="detail-action-btn watched" onClick={() => closeAndDo(() => markAsWatched(a))}>✓ Visto</button>}
+                    {(a._isWatchLater || isDiscovery) && <button className="detail-action-btn schedule" onClick={() => closeAndDo(() => setShowDayPicker(a))}>📅 Añadir a semana</button>}
+                    {isDiscovery && <button className="detail-action-btn later" onClick={() => closeAndDo(() => addToWatchLater(a))}>🕐 Ver después</button>}
+                    {isDiscovery && <button className="detail-action-btn watched" onClick={() => closeAndDo(() => markAsWatched(a))}>✓ Visto</button>}
                     {a._isWatched && !a.finished && <button className="detail-action-btn resume" onClick={() => closeAndDo(() => resumeAnime(a))}>▶ Retomar</button>}
                     {a._isCustomList && (
                         <button className="detail-action-btn delete" onClick={() => closeAndDo(() => removeFromCustomList(a._customListId, a.id))}>✕ Quitar de lista</button>

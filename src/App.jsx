@@ -414,7 +414,7 @@ export default function AnimeTracker() {
         genres: m.genres || [],
         synopsis: (m.description || '').replace(/<[^>]*>/g, '').trim() || 'Sin sinopsis.',
         rating: m.averageScore ? Number((m.averageScore / 10).toFixed(1)) : 0, episodes: m.episodes || null,
-        type: formatMap[m.format] || m.format || '', year: m.seasonYear || '', status: m.status || '',
+        type: formatMap[m.format] || m.format || '', year: m.seasonYear || null, status: m.status || '',
         source: 'AniList', malUrl: m.siteUrl || '', watchLink: '', currentEp: 0, userRating: 0, notes: ''
       }));
       topCacheRef.current = results;
@@ -477,13 +477,13 @@ export default function AnimeTracker() {
       </header>
 
       <nav className="nav-tabs">
-        <button className={`nav-tab ${activeTab === 'schedule' ? 'active' : ''}`} onClick={() => { setActiveTab('schedule'); setLocalSearch(''); exitBulkMode(); }}>📅 Semana</button>
-        <button className={`nav-tab ${activeTab === 'watchLater' ? 'active' : ''}`} onClick={() => { setActiveTab('watchLater'); setLocalSearch(''); exitBulkMode(); setWatchLaterVisible(30); }}>🕐 Después ({watchLater.length})</button>
-        <button className={`nav-tab ${activeTab === 'watched' ? 'active' : ''}`} onClick={() => { setActiveTab('watched'); setLocalSearch(''); exitBulkMode(); setWatchedVisible(30); }}>✓ Vistas ({watchedList.length})</button>
-        <button className={`nav-tab ${activeTab === 'lists' ? 'active' : ''}`} onClick={() => { setActiveTab('lists'); setLocalSearch(''); exitBulkMode(); }}>📋 Listas{customLists.length > 0 ? ` (${customLists.length})` : ''}</button>
-        <button className={`nav-tab ${activeTab === 'season' ? 'active' : ''}`} onClick={() => { setActiveTab('season'); setLocalSearch(''); exitBulkMode(); fetchSeason(selectedSeason.season, selectedSeason.year); }}>🌸 Temporada</button>
-        <button className={`nav-tab ${activeTab === 'top' ? 'active' : ''}`} onClick={() => { setActiveTab('top'); setLocalSearch(''); exitBulkMode(); fetchTopAnime(); }}>🏆 Top</button>
-        <button className={`nav-tab ${activeTab === 'stats' ? 'active' : ''}`} onClick={() => { setActiveTab('stats'); setLocalSearch(''); exitBulkMode(); }}>📊 Stats</button>
+        <button className={`nav-tab ${activeTab === 'schedule' ? 'active' : ''}`} onClick={() => { setActiveTab('schedule'); setLocalSearch(''); exitBulkMode(); }}>📅<span className="tab-label"> Semana</span></button>
+        <button className={`nav-tab ${activeTab === 'watchLater' ? 'active' : ''}`} onClick={() => { setActiveTab('watchLater'); setLocalSearch(''); exitBulkMode(); setWatchLaterVisible(30); }}>🕐<span className="tab-label"> Después ({watchLater.length})</span></button>
+        <button className={`nav-tab ${activeTab === 'watched' ? 'active' : ''}`} onClick={() => { setActiveTab('watched'); setLocalSearch(''); exitBulkMode(); setWatchedVisible(30); }}>✓<span className="tab-label"> Vistas ({watchedList.length})</span></button>
+        <button className={`nav-tab ${activeTab === 'lists' ? 'active' : ''}`} onClick={() => { setActiveTab('lists'); setLocalSearch(''); exitBulkMode(); }}>📋<span className="tab-label"> Listas{customLists.length > 0 ? ` (${customLists.length})` : ''}</span></button>
+        <button className={`nav-tab ${activeTab === 'season' ? 'active' : ''}`} onClick={() => { setActiveTab('season'); setLocalSearch(''); exitBulkMode(); fetchSeason(selectedSeason.season, selectedSeason.year); }}>🌸<span className="tab-label"> Temporada</span></button>
+        <button className={`nav-tab ${activeTab === 'top' ? 'active' : ''}`} onClick={() => { setActiveTab('top'); setLocalSearch(''); exitBulkMode(); fetchTopAnime(); }}>🏆<span className="tab-label"> Top</span></button>
+        <button className={`nav-tab ${activeTab === 'stats' ? 'active' : ''}`} onClick={() => { setActiveTab('stats'); setLocalSearch(''); exitBulkMode(); }}>📊<span className="tab-label"> Stats</span></button>
       </nav>
 
       <main className="main-content">
@@ -655,7 +655,7 @@ export default function AnimeTracker() {
         {activeTab === 'top' && (
           <TopAnimeSection topAnime={topAnime} topLoading={topLoading} schedule={schedule} watchedList={watchedList} watchLater={watchLater}
             setShowDayPicker={setShowDayPicker} addToWatchLater={addToWatchLater} markAsWatched={markAsWatched}
-            onDetail={(a) => setShowAnimeDetail({ ...a, _isWatchLater: false, _isWatched: false, _isSeason: false })} />
+            onDetail={(a) => setShowAnimeDetail({ ...a, _isWatchLater: false, _isWatched: false, _isSeason: false, _isTop: true })} />
         )}
 
         {activeTab === 'stats' && <StatsPanel stats={stats} />}
