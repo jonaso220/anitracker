@@ -1,7 +1,7 @@
 /**
  * Remove internal flags from anime objects before persisting.
  */
-export const clean = ({ _day, _isWatchLater, _isWatched, _isSeason, _isCustomList, _customListId, ...rest }) => rest;
+export const clean = ({ _day, _isWatchLater, _isWatched, _isSeason, _isTop, _isCustomList, _customListId, ...rest }) => rest;
 
 /**
  * Filter a list of anime by local search query (accent-insensitive, case-insensitive).
