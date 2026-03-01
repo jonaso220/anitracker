@@ -447,12 +447,10 @@ export default function AnimeTracker() {
     <div className={`anime-tracker ${darkMode ? 'dark' : 'light'}`}>
       <header className="header">
         <div className="header-content">
-          <div className="header-left">
-            <h1 className="logo">AniTracker</h1>
+          <h1 className="logo">AniTracker</h1>
+          <div className="header-actions">
             <button className="search-btn" onClick={() => setShowSearch(true)}>🔍<span className="btn-label"> Buscar...</span></button>
             <button className="import-btn" onClick={() => setShowImport(true)}>📥<span className="btn-label"> Importar</span></button>
-          </div>
-          <div className="header-right">
             {notifPermission !== 'unsupported' && (
               <button className={`notif-toggle ${notifEnabled ? 'active' : ''}`} onClick={toggleNotifications} title={notifPermission === 'denied' ? 'Notificaciones bloqueadas en el navegador' : notifEnabled ? 'Desactivar notificaciones' : 'Activar notificaciones'}>
                 {notifEnabled ? '🔔' : '🔕'}{notifPermission === 'denied' && ' ⚠'}
