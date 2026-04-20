@@ -3,7 +3,7 @@ import React from 'react';
 const StatsPanel = ({ stats }) => (
     <div className="stats-panel fade-in">
         <div className="section-header"><h2>📊 Estadísticas</h2></div>
-        <div className="stats-grid">
+        <div className="stats-grid stagger-in">
             <div className="stat-card">
                 <span className="stat-number">{stats.allTotal}</span>
                 <span className="stat-label">Total animes</span>

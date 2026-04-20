@@ -1,8 +1,14 @@
-/* ============ RESET Y BASES ============ */
+/* ============ RESET ============ */
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+}
+
+html, body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 /* Screen-reader only utility */
@@ -18,42 +24,72 @@
   border: 0;
 }
 
+/* ============ ANIMATIONS ============ */
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
+  from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
 }
-
-.fade-in {
-  animation: fadeIn 0.3s ease-out;
+@keyframes fadeInScale {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes slideUpOverlay {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(168, 85, 247, 0.5); }
+  50% { box-shadow: 0 0 0 8px rgba(168, 85, 247, 0); }
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
 }
 
-/* ============ LAYOUT PRINCIPAL ============ */
+.fade-in { animation: fadeIn 0.35s var(--ease-out) both; }
+
+/* Stagger helper — apply to children of .stagger-in */
+.stagger-in > * {
+  animation: fadeIn 0.4s var(--ease-out) both;
+}
+.stagger-in > *:nth-child(1) { animation-delay: 0.02s; }
+.stagger-in > *:nth-child(2) { animation-delay: 0.06s; }
+.stagger-in > *:nth-child(3) { animation-delay: 0.1s; }
+.stagger-in > *:nth-child(4) { animation-delay: 0.14s; }
+.stagger-in > *:nth-child(5) { animation-delay: 0.18s; }
+.stagger-in > *:nth-child(6) { animation-delay: 0.22s; }
+.stagger-in > *:nth-child(7) { animation-delay: 0.26s; }
+.stagger-in > *:nth-child(n+8) { animation-delay: 0.3s; }
+
+/* ============ APP LAYOUT ============ */
 .anime-tracker {
   min-height: 100vh;
+  min-height: 100dvh;
   font-family: 'Outfit', sans-serif;
   position: relative;
   overflow-x: hidden;
-  transition: background 0.4s ease, color 0.4s ease;
+  background: var(--bg-app);
+  color: var(--text-primary);
+  transition: background 0.4s var(--ease-out), color 0.4s var(--ease-out);
 }
 
-.anime-tracker.dark {
-  background: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 50%, #16213e 100%);
-  color: #fff;
-}
-
-.anime-tracker.light {
-  background: linear-gradient(135deg, #f0f4ff 0%, #e8ecf5 50%, #f5f0ff 100%);
-  color: #1a1a2e;
-}
-
-.anime-tracker.dark::before {
+.anime-tracker::before {
   content: '';
   position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: radial-gradient(circle at 20% 80%, rgba(255,107,107,0.1) 0%, transparent 50%),
-              radial-gradient(circle at 80% 20%, rgba(78,205,196,0.1) 0%, transparent 50%);
+  inset: 0;
+  background: var(--bg-app-overlay);
   pointer-events: none;
   z-index: 0;
+  opacity: 1;
+  transition: opacity var(--transition-slow);
 }
 
 .main-content {
@@ -65,6 +101,18 @@
 }
 
 /* ============ SCROLLBAR ============ */
-::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(168,85,247,0.25); border-radius: 3px; }
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(168, 85, 247, 0.35), rgba(78, 205, 196, 0.35));
+  border-radius: var(--radius-pill);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(168, 85, 247, 0.55), rgba(78, 205, 196, 0.55));
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}
+/* Firefox */
+* { scrollbar-width: thin; scrollbar-color: rgba(168, 85, 247, 0.4) transparent; }

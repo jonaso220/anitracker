@@ -21,7 +21,7 @@ export async function searchAnilist(query, { signal, limit = 12 } = {}) {
     Page(page: 1, perPage: $perPage) {
       media(search: $search, type: ANIME, sort: SEARCH_MATCH) {
         id idMal title { romaji english native userPreferred }
-        coverImage { large medium } bannerImage
+        coverImage { extraLarge large medium } bannerImage
         genres averageScore episodes status seasonYear format
         description(asHtml: false) siteUrl synonyms
       }
@@ -35,7 +35,7 @@ export async function fetchSeason(season, year, { signal, perPage = 30 } = {}) {
   const gql = `query ($season: MediaSeason, $year: Int, $perPage: Int) {
     Page(page: 1, perPage: $perPage) {
       media(season: $season, seasonYear: $year, type: ANIME, sort: POPULARITY_DESC, isAdult: false) {
-        id idMal title { romaji english native } coverImage { large medium }
+        id idMal title { romaji english native } coverImage { extraLarge large medium }
         genres averageScore episodes format status seasonYear
         description(asHtml: false) siteUrl
       }
@@ -49,7 +49,7 @@ export async function fetchTopAnime({ signal, perPage = 50 } = {}) {
   const gql = `query ($perPage: Int) {
     Page(page: 1, perPage: $perPage) {
       media(type: ANIME, sort: SCORE_DESC, isAdult: false) {
-        id idMal title { romaji english native } coverImage { large medium }
+        id idMal title { romaji english native } coverImage { extraLarge large medium }
         genres averageScore episodes format status seasonYear
         description(asHtml: false) siteUrl
       }
@@ -132,7 +132,7 @@ export function toAnime(a, { fallbackYear } = {}) {
     titleJp: titleNative,
     titleEn,
     altTitles: allTitles.filter((t, i, arr) => arr.indexOf(t) === i && t !== title),
-    image: a.coverImage?.large || '',
+    image: a.coverImage?.extraLarge || a.coverImage?.large || '',
     imageSm: a.coverImage?.medium || a.coverImage?.large || '',
     genres: a.genres || [],
     synopsis: cleanSynopsis,

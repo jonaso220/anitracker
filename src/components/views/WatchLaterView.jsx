@@ -58,7 +58,7 @@ const WatchLaterView = ({
       )}
       {filtered.length > 0 ? (
         <>
-          <div className="anime-grid">
+          <div className="anime-grid stagger-in">
             {visibleItems.map((a) => (
               <div
                 key={a.id}
