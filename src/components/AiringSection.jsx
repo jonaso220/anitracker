@@ -31,7 +31,7 @@ const AiringSection = ({ schedule, airingData, onDetail }) => {
                 {airingAnime.map(a => (
                     <div key={a.id} className={`airing-item ${a.airing.hasAired ? 'aired' : a.airing.isToday ? 'today' : ''}`}
                         onClick={() => onDetail(a)}>
-                        <img src={a.image} alt={a.title} className="airing-img" />
+                        <img src={a.imageSm || a.image} alt={a.title} className="airing-img" loading="lazy" decoding="async" />
                         <div className="airing-info">
                             <span className="airing-title">{a.title}</span>
                             <span className="airing-ep">Ep. {a.airing.episode}{a.airing.totalEpisodes ? ` / ${a.airing.totalEpisodes}` : ''}</span>

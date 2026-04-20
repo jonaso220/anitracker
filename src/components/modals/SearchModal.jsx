@@ -74,16 +74,18 @@ const SearchModal = ({ setShowSearch, searchQuery, handleSearch, searchResults, 
         setFilterScore(0);
     };
 
+    const closeSearch = () => { setShowSearch(false); setSearchResults([]); setSearchQuery(''); };
     return (
-    <div className="modal-overlay" onClick={() => { setShowSearch(false); setSearchResults([]); setSearchQuery(''); }}>
+    <div className="modal-overlay" onClick={closeSearch} role="dialog" aria-modal="true" aria-labelledby="search-modal-title" onKeyDown={(e) => { if (e.key === 'Escape') closeSearch(); }}>
       <div className="search-modal" onClick={e => e.stopPropagation()}>
-        <div className="bottom-sheet-handle"></div>
+        <div className="bottom-sheet-handle" aria-hidden="true"></div>
+        <h2 id="search-modal-title" className="sr-only">Buscar anime</h2>
         <div className="search-header">
-          <input type="text" placeholder="Buscar anime o serie..." value={searchQuery} onChange={e => handleSearch(e.target.value)} autoFocus />
-          <button className={`filter-toggle-btn ${hasActiveFilters ? 'active' : ''}`} onClick={() => setShowFilters(!showFilters)} title="Filtros">
+          <input type="text" placeholder="Buscar anime o serie..." value={searchQuery} onChange={e => handleSearch(e.target.value)} autoFocus aria-label="Buscar anime o serie" />
+          <button className={`filter-toggle-btn ${hasActiveFilters ? 'active' : ''}`} onClick={() => setShowFilters(!showFilters)} title="Filtros" aria-pressed={showFilters} aria-label="Mostrar filtros">
             {hasActiveFilters ? '⚙ Filtros activos' : '⚙'}
           </button>
-          <button className="close-btn" onClick={() => { setShowSearch(false); setSearchResults([]); setSearchQuery(''); }}>x</button>
+          <button className="close-btn" onClick={closeSearch} aria-label="Cerrar buscador">×</button>
         </div>
 
         {showFilters && (
@@ -144,7 +146,7 @@ const SearchModal = ({ setShowSearch, searchQuery, handleSearch, searchResults, 
             )}
             {filteredResults.map(anime => (
             <div key={anime.id} className="search-result-item fade-in">
-              <img src={anime.imageSm || anime.image} alt={anime.title} />
+              <img src={anime.imageSm || anime.image} alt={anime.title} loading="lazy" decoding="async" />
               <div className="search-result-info">
                 <div className="search-result-title-row"><h4><Highlight text={anime.title} query={searchQuery} /></h4><span className="source-badge">{anime.source}</span></div>
                 {anime.altTitles?.length > 0 && <p className="alt-titles">También: {anime.altTitles.slice(0, 3).map((t, i) => <React.Fragment key={i}>{i > 0 && ' · '}<Highlight text={t} query={searchQuery} /></React.Fragment>)}</p>}

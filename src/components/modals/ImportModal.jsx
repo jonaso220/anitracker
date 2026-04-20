@@ -104,11 +104,11 @@ const ImportModal = ({ onClose, onImport }) => {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="import-modal-title" onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}>
       <div className="import-modal fade-in" onClick={e => e.stopPropagation()}>
-        <div className="bottom-sheet-handle"></div>
-        <button className="close-btn" onClick={onClose}>×</button>
-        <h2 className="import-title">Importar desde AniList</h2>
+        <div className="bottom-sheet-handle" aria-hidden="true"></div>
+        <button className="close-btn" onClick={onClose} aria-label="Cerrar">×</button>
+        <h2 id="import-modal-title" className="import-title">Importar desde AniList</h2>
         <p className="import-desc">Ingresá tu nombre de usuario de AniList para importar tu lista de anime.</p>
 
         <div className="import-input-row">

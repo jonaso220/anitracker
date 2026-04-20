@@ -57,7 +57,7 @@ const TopAnimeSection = ({ topAnime, topLoading, schedule, watchedList, watchLat
           {filtered.map((anime, idx) => (
             <div key={anime.id} className={`season-card fade-in ${allUserIds.has(anime.id) ? 'already-added' : ''}`}>
               <div className="season-card-image" onClick={() => onDetail(anime)}>
-                <img src={anime.image || anime.imageSm} alt={anime.title} loading="lazy" onError={e => { e.target.style.display = 'none'; if (e.target.nextSibling) e.target.nextSibling.style.display = 'flex'; }} />
+                <img src={anime.imageSm || anime.image} alt={anime.title} loading="lazy" decoding="async" onError={e => { e.target.style.display = 'none'; if (e.target.nextSibling) e.target.nextSibling.style.display = 'flex'; }} />
                 <div className="img-fallback" style={{ display: 'none' }}>{anime.title?.charAt(0) || '?'}</div>
                 <div className="rank-badge">#{idx + 1}</div>
                 {anime.rating > 0 && <div className="anime-card-score">⭐ {Number(anime.rating).toFixed(1)}</div>}

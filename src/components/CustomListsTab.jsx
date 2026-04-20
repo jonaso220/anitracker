@@ -71,7 +71,14 @@ const CustomListsTab = ({ customLists, onCreateList, onDeleteList, onRenameList,
                 <div className="custom-lists-container">
                     {customLists.map(list => (
                         <div key={list.id} className="custom-list-section fade-in">
-                            <div className="custom-list-header" onClick={() => toggleCollapse(list.id)}>
+                            <div
+                                className="custom-list-header"
+                                onClick={() => toggleCollapse(list.id)}
+                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleCollapse(list.id); } }}
+                                role="button"
+                                tabIndex={0}
+                                aria-expanded={!collapsedLists.has(list.id)}
+                            >
                                 <div className="custom-list-title">
                                     <span className="custom-list-emoji">{list.emoji}</span>
                                     {editingId === list.id ? (

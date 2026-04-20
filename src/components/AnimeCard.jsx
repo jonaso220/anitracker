@@ -51,7 +51,7 @@ const AnimeCard = ({
       onTouchEnd={isDraggable ? onTouchEnd : undefined}
     >
       <div className="anime-card-image">
-        <img src={anime.imageSm || anime.image} alt={anime.title} loading="lazy" draggable="false" onError={handleImgError} />
+        <img src={anime.imageSm || anime.image} alt={anime.title} loading="lazy" decoding="async" draggable="false" onError={handleImgError} />
         <div className="img-fallback" style={{ display: 'none' }}>{anime.title?.charAt(0) || '?'}</div>
         {anime.rating > 0 && (
           <div className="anime-card-score">⭐ {Number(anime.rating).toFixed(1)}</div>

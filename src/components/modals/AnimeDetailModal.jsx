@@ -59,14 +59,21 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
     const airing = airingData[a.id];
 
     return (
-        <div className="modal-overlay" onClick={() => setShowAnimeDetail(null)}>
+        <div
+            className="modal-overlay"
+            onClick={() => setShowAnimeDetail(null)}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="anime-detail-title"
+            onKeyDown={(e) => { if (e.key === 'Escape') setShowAnimeDetail(null); }}
+        >
             <div className="detail-modal fade-in" onClick={e => e.stopPropagation()}>
-                <div className="bottom-sheet-handle"></div>
-                <button className="close-btn" onClick={() => setShowAnimeDetail(null)}>×</button>
+                <div className="bottom-sheet-handle" aria-hidden="true"></div>
+                <button className="close-btn" onClick={() => setShowAnimeDetail(null)} aria-label="Cerrar">×</button>
                 <div className="detail-header">
-                    <img src={a.image} alt={a.title} />
+                    <img src={a.image} alt={a.title} loading="lazy" decoding="async" />
                     <div className="detail-info">
-                        <h2>{a.title}</h2>
+                        <h2 id="anime-detail-title">{a.title}</h2>
                         {a.titleJp && <p className="title-jp">{a.titleJp}</p>}
                         <div className="detail-meta">
                             {a.type && <span className="meta-tag type">{a.type}</span>}
