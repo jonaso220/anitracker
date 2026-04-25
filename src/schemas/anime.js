@@ -48,6 +48,11 @@ export function normalizeAnime(raw) {
     type: toStr(raw.type),
     malUrl: toStr(raw.malUrl),
     watchLink: toStr(raw.watchLink),
+    streamingLinks: Array.isArray(raw.streamingLinks)
+      ? raw.streamingLinks
+          .filter((l) => l && typeof l.url === 'string' && typeof l.site === 'string')
+          .map((l) => ({ site: l.site, url: l.url, language: toStr(l.language) }))
+      : [],
     currentEp: toNumber(raw.currentEp, 0),
     userRating: toNumber(raw.userRating, 0),
     notes: toStr(raw.notes),

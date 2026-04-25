@@ -65,115 +65,168 @@
   box-shadow: var(--shadow-glow-brand);
 }
 
-/* ============ SEASON/TOP GRID ============ */
+/* ============ DISCOVERY GRID (Season + Top) ============ */
 .season-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: 1rem;
 }
 
+/* ============ DISCOVERY CARD (Netflix-style) ============ */
 .season-card {
   position: relative;
   border-radius: var(--radius-lg);
   overflow: hidden;
+  cursor: pointer;
   border: 1px solid var(--border-subtle);
-  background: var(--bg-surface);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: #0a0a14;
   box-shadow: var(--shadow-xs);
+  aspect-ratio: 3 / 4;
   transition: transform var(--transition-med), box-shadow var(--transition-med),
               border-color var(--transition-med);
+  isolation: isolate;
 }
 .light .season-card { background: #fff; }
 .season-card:hover {
-  transform: translateY(-6px);
-  box-shadow: var(--shadow-lg), 0 0 32px rgba(168, 85, 247, 0.18);
-  border-color: var(--border-brand);
+  transform: translateY(-3px);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.35), 0 0 16px rgba(168, 85, 247, 0.15);
+  border-color: rgba(168, 85, 247, 0.35);
 }
-.season-card.already-added { opacity: 0.6; }
-.season-card.already-added:hover { opacity: 0.85; }
+
+.season-card.high-rated { border-color: rgba(251, 191, 36, 0.4); }
+.season-card.high-rated:hover {
+  border-color: rgba(251, 191, 36, 0.6);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.35), 0 0 24px rgba(251, 191, 36, 0.3);
+}
+
+.season-card.already-added { opacity: 0.55; }
+.season-card.already-added:hover { opacity: 0.95; }
 
 .season-card-image {
-  position: relative;
-  aspect-ratio: 3 / 4;
-  overflow: hidden;
-  cursor: pointer;
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: linear-gradient(135deg, rgba(168, 85, 247, 0.1), rgba(78, 205, 196, 0.1));
+  overflow: hidden;
 }
 .season-card-image img {
+  position: relative;
   width: 100%;
   height: 100%;
   object-fit: cover;
   transition: transform 0.6s var(--ease-out);
   image-rendering: -webkit-optimize-contrast;
   image-rendering: auto;
+  z-index: 1;
 }
-.season-card:hover .season-card-image img { transform: scale(1.08); }
+.season-card:hover .season-card-image img { transform: scale(1.05); }
 
-.season-card-content {
-  padding: 0.7rem;
+/* Already-in-list pill (top-center, prominent) */
+.season-added-pill {
+  position: absolute;
+  top: 0.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.25rem 0.75rem;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.95), rgba(16, 185, 129, 0.92));
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  z-index: 4;
+  box-shadow: 0 4px 12px rgba(34, 197, 94, 0.4);
+}
+
+/* Title + meta overlay (always-on title, hover-revealed actions) */
+.season-card-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 1.6rem 0.7rem 0.75rem;
+  background: linear-gradient(to top,
+    rgba(10, 10, 20, 0.95) 0%,
+    rgba(10, 10, 20, 0.85) 35%,
+    rgba(10, 10, 20, 0.4) 75%,
+    transparent 100%);
+  z-index: 2;
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.4rem;
 }
-.season-card-content h3 {
-  font-size: 0.82rem;
-  font-weight: 600;
+.season-card-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #fff;
   letter-spacing: -0.01em;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  cursor: pointer;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.7);
+  transition: transform var(--transition-med);
 }
-.season-card-meta {
+.season-card:hover .season-card-title { transform: translateY(-2px); }
+
+.season-card-overlay-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: max-height var(--transition-med), opacity var(--transition-med);
+}
+.season-card:hover .season-card-overlay-meta,
+.season-card:focus-within .season-card-overlay-meta {
+  max-height: 200px;
+  opacity: 1;
+}
+
+.season-card-tags {
   display: flex;
   flex-wrap: wrap;
   gap: 0.3rem;
-  margin-top: 0.15rem;
 }
-.season-card-meta .meta-tag {
-  font-size: 0.62rem;
-  padding: 0.15rem 0.45rem;
+.season-card-tags .meta-tag {
+  font-size: 0.6rem;
+  padding: 0.13rem 0.45rem;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #fff;
+  border-radius: var(--radius-pill);
+  font-weight: 600;
+  white-space: nowrap;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
 }
 
 .season-card-actions {
   display: flex;
   gap: 0.35rem;
-  margin-top: 0.4rem;
 }
 .season-card-actions .add-btn {
-  padding: 0.45rem 0.55rem;
-  font-size: 0.78rem;
+  flex: 1;
+  padding: 0.4rem 0.4rem;
+  font-size: 0.85rem;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  border: 1px solid transparent;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   transition: all var(--transition-fast);
   font-weight: 600;
 }
-.dark .season-card-actions .schedule-btn { background: rgba(168, 85, 247, 0.22); color: #c4b5fd; border-color: rgba(168, 85, 247, 0.25); }
-.dark .season-card-actions .later-btn { background: rgba(59, 130, 246, 0.22); color: #93c5fd; border-color: rgba(59, 130, 246, 0.25); }
-.dark .season-card-actions .watched-btn { background: rgba(34, 197, 94, 0.22); color: #4ade80; border-color: rgba(34, 197, 94, 0.25); }
-.light .season-card-actions .schedule-btn { background: rgba(168, 85, 247, 0.12); color: #7c3aed; border-color: rgba(168, 85, 247, 0.2); }
-.light .season-card-actions .later-btn { background: rgba(59, 130, 246, 0.12); color: #2563eb; border-color: rgba(59, 130, 246, 0.2); }
-.light .season-card-actions .watched-btn { background: rgba(34, 197, 94, 0.12); color: #16a34a; border-color: rgba(34, 197, 94, 0.2); }
-.season-card-actions .add-btn:hover {
-  transform: translateY(-2px);
-  filter: brightness(1.2);
-  box-shadow: var(--shadow-sm);
-}
-
-.season-added-badge {
-  margin-top: 0.5rem;
-  padding: 0.35rem 0.6rem;
-  border-radius: var(--radius-sm);
-  font-size: 0.7rem;
-  font-weight: 700;
-  text-align: center;
-  background: linear-gradient(135deg, rgba(34, 197, 94, 0.18), rgba(16, 185, 129, 0.12));
-  border: 1px solid rgba(34, 197, 94, 0.22);
-  color: #4ade80;
-}
-.light .season-added-badge { color: #16a34a; }
+.season-card-actions .schedule-btn:hover { background: rgba(168, 85, 247, 0.85); border-color: rgba(168, 85, 247, 0.6); }
+.season-card-actions .later-btn:hover    { background: rgba(59, 130, 246, 0.85); border-color: rgba(59, 130, 246, 0.6); }
+.season-card-actions .watched-btn:hover  { background: rgba(34, 197, 94, 0.85); border-color: rgba(34, 197, 94, 0.6); }
+.season-card-actions .add-btn:hover { transform: translateY(-1px); }
 
 /* Rank badge (top anime) */
 .rank-badge {
@@ -187,6 +240,6 @@
   padding: 0.2rem 0.55rem;
   border-radius: var(--radius-xs);
   box-shadow: 0 4px 14px rgba(251, 191, 36, 0.4);
-  z-index: 3;
+  z-index: 4;
   letter-spacing: -0.01em;
 }

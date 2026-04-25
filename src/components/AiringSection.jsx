@@ -1,7 +1,7 @@
 import React from 'react';
 import { daysOfWeek } from '../constants';
 
-const AiringSection = ({ schedule, airingData, onDetail }) => {
+const AiringSection = ({ schedule, airingData, onDetail, onScrollToDay }) => {
     const allAnime = daysOfWeek.flatMap(d => (schedule[d] || []).map(a => ({ ...a, _day: d })));
     const airingAnime = allAnime.filter(a => airingData[a.id]).map(a => ({
         ...a, airing: airingData[a.id]
@@ -25,7 +25,12 @@ const AiringSection = ({ schedule, airingData, onDetail }) => {
     return (
         <div className="airing-section fade-in">
             <div className="airing-header">
-                <span className="airing-icon">📡</span><h3>Próximos episodios</h3><span className="airing-count">{airingAnime.length}</span>
+                <span className="airing-icon" aria-hidden="true">
+                    <span className="airing-icon-dot" />
+                    📡
+                </span>
+                <h3>Próximos episodios</h3>
+                <span className="airing-count">{airingAnime.length}</span>
             </div>
             <div className="airing-list">
                 {airingAnime.map(a => (
@@ -39,6 +44,17 @@ const AiringSection = ({ schedule, airingData, onDetail }) => {
                         <div className={`airing-time ${a.airing.hasAired ? 'aired' : a.airing.isToday ? 'today' : a.airing.isTomorrow ? 'tomorrow' : 'later'}`}>
                             {formatAiringTime(a.airing)}
                         </div>
+                        {onScrollToDay && a._day && (
+                            <button
+                                type="button"
+                                className="airing-jump"
+                                onClick={(e) => { e.stopPropagation(); onScrollToDay(a._day); }}
+                                aria-label={`Ir al día ${a._day}`}
+                                title={`Ir a ${a._day}`}
+                            >
+                                <span aria-hidden="true">↓</span>
+                            </button>
+                        )}
                     </div>
                 ))}
             </div>

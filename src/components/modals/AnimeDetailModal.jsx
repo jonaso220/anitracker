@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import StarRating from '../StarRating';
 import { sanitizeUrl, pruneTranslationCache } from '../../constants';
+import { translateEnToEs } from '../../services/translationService';
+import { buildStreamingOptions } from '../../services/streamingService';
 
 const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, updateEpisode, updateUserRating, updateAnimeLink, updateAnimeNotes, markAsFinished, dropAnime, deleteAnime, addToWatchLater, markAsWatched, setShowMoveDayPicker, setShowDayPicker, resumeAnime, customLists = [], addToCustomList, removeFromCustomList }) => {
     // Compute initial synopsis synchronously (Spanish detection + cache check)
@@ -25,31 +27,53 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
     const [showLinkInput, setShowLinkInput] = useState(false);
     const [translatedSynopsis, setTranslatedSynopsis] = useState(initialSynopsis.text);
     const [isTranslating, setIsTranslating] = useState(initialSynopsis.needsFetch);
+    const [translationFailed, setTranslationFailed] = useState(false);
+    const [retryNonce, setRetryNonce] = useState(0);
     const [bingeMode, setBingeMode] = useState(false);
     const [bingeCount, setBingeCount] = useState(0);
-    const [bingeStart] = useState(Date.now());
+    const [bingeStart, setBingeStart] = useState(Date.now());
     const [showListPicker, setShowListPicker] = useState(false);
+
+    // Re-sync local state when the user opens a different anime without
+    // closing the modal first (otherwise inputs show stale values).
+    useEffect(() => {
+        if (!showAnimeDetail) return;
+        setLocalEp(showAnimeDetail.currentEp || 0);
+        setLocalRating(showAnimeDetail.userRating || 0);
+        setLocalLink(showAnimeDetail.watchLink || '');
+        setLocalNotes(showAnimeDetail.notes || '');
+        setShowLinkInput(false);
+        setBingeMode(false);
+        setBingeCount(0);
+        setBingeStart(Date.now());
+        setShowListPicker(false);
+    }, [showAnimeDetail?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Only fetch translation if needed (not already Spanish or cached)
     useEffect(() => {
-        if (!initialSynopsis.needsFetch) return;
-        let cancelled = false;
+        if (!initialSynopsis.needsFetch && retryNonce === 0) return;
         const syn = showAnimeDetail?.synopsis;
+        if (!syn) return;
+        const ctrl = new AbortController();
         const cacheKey = `anitracker-tr-${showAnimeDetail?.id}`;
-        fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent((syn || '').slice(0, 1500))}&langpair=en|es`)
-            .then(r => r.json()).then(data => {
-                if (cancelled) return;
-                if (data.responseStatus === 200 && data.responseData?.translatedText) {
-                    const tr = data.responseData.translatedText;
-                    if (tr !== tr.toUpperCase() || tr.length < 50) {
-                        setTranslatedSynopsis(tr);
-                        try { localStorage.setItem(cacheKey, tr); pruneTranslationCache(); } catch { /* empty */ }
-                    } else setTranslatedSynopsis(syn);
-                } else setTranslatedSynopsis(syn);
-            }).catch(() => { if (!cancelled) setTranslatedSynopsis(syn); })
-            .finally(() => { if (!cancelled) setIsTranslating(false); });
-        return () => { cancelled = true; };
-    }, [showAnimeDetail?.id, showAnimeDetail?.synopsis, initialSynopsis.needsFetch]);
+        setIsTranslating(true);
+        setTranslationFailed(false);
+        translateEnToEs(syn, ctrl.signal).then((tr) => {
+            if (ctrl.signal.aborted) return;
+            if (tr) {
+                setTranslatedSynopsis(tr);
+                try { localStorage.setItem(cacheKey, tr); pruneTranslationCache(); } catch { /* empty */ }
+            } else {
+                setTranslatedSynopsis(syn);
+                setTranslationFailed(true);
+            }
+        }).finally(() => {
+            if (!ctrl.signal.aborted) setIsTranslating(false);
+        });
+        return () => ctrl.abort();
+    }, [showAnimeDetail?.id, showAnimeDetail?.synopsis, initialSynopsis.needsFetch, retryNonce]);
+
+    const retryTranslate = useCallback(() => setRetryNonce((n) => n + 1), []);
 
     if (!showAnimeDetail) return null;
     const a = showAnimeDetail;
@@ -86,7 +110,20 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                 </div>
 
                 <div className="detail-synopsis">
-                    <h4>📖 Sinopsis</h4>
+                    <div className="detail-synopsis-header">
+                        <h4>📖 Sinopsis</h4>
+                        {translationFailed && !isTranslating && (
+                            <button
+                                type="button"
+                                className="synopsis-retry"
+                                onClick={retryTranslate}
+                                title="Reintentar traducción al español"
+                                aria-label="Reintentar traducción al español"
+                            >
+                                <span aria-hidden="true">🔄</span> Traducir
+                            </button>
+                        )}
+                    </div>
                     {isTranslating ? <p className="synopsis-loading">Traduciendo<span className="dot-anim">...</span></p>
                     : <p>{translatedSynopsis || a.synopsis || 'Sin sinopsis.'}</p>}
                 </div>
@@ -151,10 +188,37 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                             <button className="detail-action-sm" onClick={() => setShowLinkInput(true)}>✏️ Editar</button>
                         </div>
                     ) : (
-                        <div className="detail-link-edit">
-                            <input type="url" placeholder="URL..." value={localLink} onChange={e => setLocalLink(e.target.value)} />
-                            <button className="save-link-btn" onClick={() => { updateAnimeLink(a.id, localLink); setShowLinkInput(false); }}>Guardar</button>
-                        </div>
+                        <>
+                            {(() => {
+                                const suggestions = buildStreamingOptions(a);
+                                if (suggestions.length === 0) return null;
+                                return (
+                                    <div className="streaming-suggestions" role="group" aria-label="Plataformas sugeridas">
+                                        {suggestions.map((s) => (
+                                            <button
+                                                key={s.site}
+                                                type="button"
+                                                className={`streaming-chip ${s.official ? 'official' : 'guess'}`}
+                                                onClick={() => {
+                                                    setLocalLink(s.url);
+                                                    updateAnimeLink(a.id, s.url);
+                                                    setShowLinkInput(false);
+                                                }}
+                                                title={s.official ? `${s.site} (oficial)` : `${s.site} (estimado por título)`}
+                                            >
+                                                <span aria-hidden="true">{s.icon}</span>
+                                                <span>{s.site}</span>
+                                                {!s.official && <span className="streaming-chip-tag" aria-hidden="true">~</span>}
+                                            </button>
+                                        ))}
+                                    </div>
+                                );
+                            })()}
+                            <div className="detail-link-edit">
+                                <input type="url" placeholder="O pegá una URL..." value={localLink} onChange={e => setLocalLink(e.target.value)} />
+                                <button className="save-link-btn" onClick={() => { updateAnimeLink(a.id, localLink); setShowLinkInput(false); }}>Guardar</button>
+                            </div>
+                        </>
                     )}
                 </div>
 

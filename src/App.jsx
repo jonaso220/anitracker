@@ -143,6 +143,7 @@ export default function AnimeTracker() {
         {activeTab === 'schedule' && (
           <ScheduleView
             schedule={schedule} airingData={airingData} setShowAnimeDetail={setShowAnimeDetail}
+            updateEpisode={actions.updateEpisode}
             {...dragDrop}
           />
         )}

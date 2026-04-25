@@ -14,17 +14,18 @@ const NavTabs = ({ activeTab, counts, onChange }) => (
   <nav className="nav-tabs" role="tablist" aria-label="Secciones">
     {TABS.map((t) => {
       const count = counts[t.id];
-      const suffix = count ? ` (${count})` : '';
+      const isActive = activeTab === t.id;
       return (
         <button
           key={t.id}
           role="tab"
-          aria-selected={activeTab === t.id}
-          className={`nav-tab ${activeTab === t.id ? 'active' : ''}`}
+          aria-selected={isActive}
+          className={`nav-tab ${isActive ? 'active' : ''}`}
           onClick={() => onChange(t.id)}
         >
           <span aria-hidden="true">{t.icon}</span>
-          <span className="tab-label"> {t.labelKey}{suffix}</span>
+          <span className="tab-label"> {t.labelKey}</span>
+          {count ? <span className="nav-tab-count" aria-label={`${count} elementos`}>{count}</span> : null}
         </button>
       );
     })}

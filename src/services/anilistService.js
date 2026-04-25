@@ -24,6 +24,7 @@ export async function searchAnilist(query, { signal, limit = 12 } = {}) {
         coverImage { extraLarge large medium } bannerImage
         genres averageScore episodes status seasonYear format
         description(asHtml: false) siteUrl synonyms
+        externalLinks { url site type language }
       }
     }
   }`;
@@ -38,6 +39,7 @@ export async function fetchSeason(season, year, { signal, perPage = 30 } = {}) {
         id idMal title { romaji english native } coverImage { extraLarge large medium }
         genres averageScore episodes format status seasonYear
         description(asHtml: false) siteUrl
+        externalLinks { url site type language }
       }
     }
   }`;
@@ -52,6 +54,7 @@ export async function fetchTopAnime({ signal, perPage = 50 } = {}) {
         id idMal title { romaji english native } coverImage { extraLarge large medium }
         genres averageScore episodes format status seasonYear
         description(asHtml: false) siteUrl
+        externalLinks { url site type language }
       }
     }
   }`;
@@ -124,6 +127,9 @@ export function toAnime(a, { fallbackYear } = {}) {
   const title = titleEn || titleRomaji || '';
   const allTitles = [titleEn, titleRomaji, titleNative, ...(a.synonyms || [])].filter(Boolean);
   const cleanSynopsis = (a.description || '').replace(/<[^>]*>/g, '').replace(/\n/g, ' ').trim();
+  const streamingLinks = (a.externalLinks || [])
+    .filter((l) => l && l.type === 'STREAMING' && l.url && l.site)
+    .map((l) => ({ site: l.site, url: l.url, language: l.language || '' }));
   return normalizeAnime({
     id: a.idMal || (a.id + 300000),
     source: 'AniList',
@@ -142,5 +148,6 @@ export function toAnime(a, { fallbackYear } = {}) {
     year: a.seasonYear || fallbackYear || '',
     type: FORMAT_MAP[a.format] || a.format || '',
     malUrl: a.siteUrl || `https://anilist.co/anime/${a.id}`,
+    streamingLinks,
   });
 }

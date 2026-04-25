@@ -93,11 +93,14 @@ export function useFirebase(schedule, watchedList, watchLater, setSchedule, setW
   // Inicializar Auth
   useEffect(() => {
     if (!FIREBASE_ENABLED) return;
+    let unsubscribe = null;
+    let cancelled = false;
     initFirebase().then(async () => {
-      if (!firebaseAuth || !auth) return;
+      if (cancelled || !firebaseAuth || !auth) return;
 
       try {
         const result = await firebaseAuth.getRedirectResult(auth);
+        if (cancelled) return;
         if (result?.user) {
           setUser(result.user);
           if (hasLoadedUser.current !== result.user.uid) {
@@ -107,7 +110,8 @@ export function useFirebase(schedule, watchedList, watchLater, setSchedule, setW
         }
       } catch (e) { console.error('Redirect result error:', e); }
 
-      firebaseAuth.onAuthStateChanged(auth, (u) => {
+      if (cancelled) return;
+      unsubscribe = firebaseAuth.onAuthStateChanged(auth, (u) => {
         setUser(u);
         if (u && hasLoadedUser.current !== u.uid) {
           hasLoadedUser.current = u.uid;
@@ -115,6 +119,11 @@ export function useFirebase(schedule, watchedList, watchLater, setSchedule, setW
         }
       });
     });
+    return () => {
+      cancelled = true;
+      if (unsubscribe) unsubscribe();
+      if (syncTimer.current) { clearTimeout(syncTimer.current); syncTimer.current = null; }
+    };
   }, []);
 
   // Auto-sync

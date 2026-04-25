@@ -18,10 +18,9 @@ export function useDragDrop(schedule, setSchedule, daysOfWeek) {
       if (fromDay) {
         next[fromDay] = next[fromDay].filter(a => a.id !== anime.id);
       }
-      const targetList = [...(next[toDay] || []).filter(a => a.id !== anime.id)];
-      const clampedIdx = Math.min(index ?? targetList.length, targetList.length);
-      targetList.splice(clampedIdx, 0, anime);
-      next[toDay] = targetList;
+      const filtered = (next[toDay] || []).filter(a => a.id !== anime.id);
+      const clampedIdx = Math.min(index ?? filtered.length, filtered.length);
+      next[toDay] = [...filtered.slice(0, clampedIdx), anime, ...filtered.slice(clampedIdx)];
       return next;
     });
   };

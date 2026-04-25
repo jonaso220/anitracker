@@ -172,9 +172,14 @@ export function useAnimeActions({
 
   const handleImport = useCallback((data) => {
     let count = 0;
-    const allScheduleIds = new Set(daysOfWeek.flatMap((d) => (schedule[d] || []).map((a) => a.id)));
-    const watchLaterIds = new Set(watchLater.map((a) => a.id));
-    const watchedIds = new Set(watchedList.map((a) => a.id));
+    // Read fresh from refs to avoid races when the user imports while
+    // schedule/watchLater/watchedList are mid-update.
+    const currentSchedule = scheduleRef.current || {};
+    const currentWatchLater = watchLaterRef.current || [];
+    const currentWatched = watchedListRef.current || [];
+    const allScheduleIds = new Set(daysOfWeek.flatMap((d) => (currentSchedule[d] || []).map((a) => a.id)));
+    const watchLaterIds = new Set(currentWatchLater.map((a) => a.id));
+    const watchedIds = new Set(currentWatched.map((a) => a.id));
 
     if (data.schedule?.length) {
       data.schedule.forEach((a) => { if (!allScheduleIds.has(a.id)) count++; });
@@ -214,7 +219,7 @@ export function useAnimeActions({
       });
     }
     showToast(`Importados ${count} animes desde AniList`);
-  }, [schedule, watchLater, watchedList, setSchedule, setWatchLater, setWatchedList, showToast]);
+  }, [scheduleRef, watchLaterRef, watchedListRef, setSchedule, setWatchLater, setWatchedList, showToast]);
 
   return {
     addToSchedule,

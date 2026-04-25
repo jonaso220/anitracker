@@ -75,12 +75,18 @@ export function useNotifications(airingData) {
     });
   }, []);
 
+  // Hold the latest airingData in a ref so the polling interval can read fresh
+  // data without being torn down + re-created on every refresh of airingData.
+  const airingDataRef = useRef(airingData);
+  useEffect(() => { airingDataRef.current = airingData; }, [airingData]);
+
   // Check airing data periodically for notifications
   useEffect(() => {
     if (!notifEnabled || notifPermission !== 'granted') return;
 
     const checkAiring = () => {
-      Object.entries(airingData).forEach(([id, airing]) => {
+      const data = airingDataRef.current || {};
+      Object.entries(data).forEach(([id, airing]) => {
         const key = `${id}-ep${airing.episode}`;
 
         // Already aired - notify if not already done
@@ -117,7 +123,7 @@ export function useNotifications(airingData) {
     return () => {
       if (checkIntervalRef.current) clearInterval(checkIntervalRef.current);
     };
-  }, [airingData, notifEnabled, notifPermission, sendNotification, saveNotified]);
+  }, [notifEnabled, notifPermission, sendNotification, saveNotified]);
 
   return {
     notifEnabled,

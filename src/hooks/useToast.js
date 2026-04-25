@@ -1,10 +1,18 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 const DEFAULT_TTL_MS = 5000;
 
 export function useToast({ ttl = DEFAULT_TTL_MS } = {}) {
   const [toast, setToast] = useState(null);
   const timerRef = useRef(null);
+  const toastRef = useRef(null);
+
+  useEffect(() => { toastRef.current = toast; }, [toast]);
+
+  // Cleanup pending timer on unmount.
+  useEffect(() => () => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+  }, []);
 
   const showToast = useCallback((message, undoFn) => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -17,10 +25,13 @@ export function useToast({ ttl = DEFAULT_TTL_MS } = {}) {
     setToast(null);
   }, []);
 
+  // Read latest toast from ref so undo always runs on the visible toast,
+  // not on a stale snapshot captured at the time the user mounted.
   const undoToast = useCallback(() => {
-    if (toast?.undoFn) toast.undoFn();
+    const current = toastRef.current;
+    if (current?.undoFn) current.undoFn();
     dismissToast();
-  }, [toast, dismissToast]);
+  }, [dismissToast]);
 
   return { toast, showToast, dismissToast, undoToast };
 }
