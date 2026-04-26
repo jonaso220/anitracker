@@ -47,19 +47,45 @@
   flex-shrink: 0;
   filter: drop-shadow(0 0 12px rgba(168, 85, 247, 0.4));
   transition: filter var(--transition-med), transform var(--transition-med);
+  /* Welcome flash on mount: a single brighter pulse fades back to rest. */
+  animation: logoMarkWelcome 1.4s var(--ease-out) 1;
 }
 .logo:hover .logo-mark {
   filter: drop-shadow(0 0 16px rgba(78, 205, 196, 0.55));
   transform: scale(1.04) rotate(-4deg);
+}
+@keyframes logoMarkWelcome {
+  0%   { filter: drop-shadow(0 0 0 rgba(168, 85, 247, 0)); }
+  35%  { filter: drop-shadow(0 0 22px rgba(168, 85, 247, 0.85)) drop-shadow(0 0 32px rgba(78, 205, 196, 0.55)); }
+  100% { filter: drop-shadow(0 0 12px rgba(168, 85, 247, 0.4)); }
+}
+
+/* Sparkle twinkle — two sparkles offset out of phase so the icon
+   always has one star at peak brightness. */
+.logo-sparkle {
+  transform-origin: center;
+  transform-box: fill-box;
+  animation: logoSparkleTwinkle 3.2s var(--ease-in-out) infinite;
+}
+.logo-sparkle-2 { animation-delay: 1.6s; }
+@keyframes logoSparkleTwinkle {
+  0%, 100% { transform: scale(1) rotate(0deg);   opacity: 1; }
+  50%      { transform: scale(0.55) rotate(45deg); opacity: 0.55; }
 }
 
 .logo-text {
   display: inline-flex;
   align-items: baseline;
   color: #f5f5fa;
-  text-shadow: 0 0 18px rgba(255, 255, 255, 0.18);
+  /* Brand-tinted glow ties the white text to the colored mark + accents. */
+  text-shadow:
+    0 0 18px rgba(168, 85, 247, 0.18),
+    0 0 28px rgba(78, 205, 196, 0.12);
 }
-.light .logo-text { color: #1a1a2e; text-shadow: none; }
+.light .logo-text {
+  color: #1a1a2e;
+  text-shadow: none;
+}
 
 .logo-text-ani,
 .logo-text-tracker { font-weight: inherit; }
@@ -74,14 +100,17 @@
 .logo-text-i::first-letter { color: inherit; }
 .logo-text-i-star {
   position: absolute;
-  top: -0.18em;
+  top: -0.06em;
   left: 50%;
   transform: translate(-50%, 0);
-  width: 0.5em;
-  height: 0.5em;
+  width: 0.42em;
+  height: 0.42em;
   background: linear-gradient(135deg, #a855f7, #4ecdc4, #c084fc, #4ecdc4);
   background-size: 300% 300%;
   animation: logoColorShift 5s linear infinite;
+  /* Offset 0.6s after the icon mark gradient cycle so the brand colors
+     visually flow from icon → i-star → T-cap rather than fire in unison. */
+  animation-delay: 0.6s;
   clip-path: polygon(
     50% 0%, 58% 38%, 95% 50%, 58% 62%,
     50% 100%, 42% 62%, 5% 50%, 42% 38%
@@ -93,11 +122,11 @@
 .logo-text-i::before {
   content: '';
   position: absolute;
-  top: -0.12em;
+  top: 0;
   left: 50%;
   transform: translateX(-50%);
-  width: 0.55em;
-  height: 0.4em;
+  width: 0.5em;
+  height: 0.32em;
   background: var(--bg-elevated, transparent);
   z-index: 1;
 }

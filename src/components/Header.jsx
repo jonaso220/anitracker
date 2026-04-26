@@ -51,17 +51,23 @@ const Header = ({
                   <animate attributeName="stop-color" values="#4ecdc4; #c084fc; #a855f7; #4ecdc4" dur="5s" repeatCount="indefinite" />
                 </stop>
               </linearGradient>
+              <linearGradient id="logoBookmarkHighlight" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="rgba(255,255,255,0.55)" />
+                <stop offset="100%" stopColor="rgba(255,255,255,0)" />
+              </linearGradient>
             </defs>
             {/* Top-left sparkle */}
-            <path d="M11 14 L12.2 17 L15.2 18.2 L12.2 19.4 L11 22.4 L9.8 19.4 L6.8 18.2 L9.8 17 Z" fill="url(#logoBrandGrad)" />
-            {/* Main circle */}
-            <circle cx="40" cy="46" r="25" fill="none" stroke="url(#logoBrandGrad)" strokeWidth="3.5" />
+            <path className="logo-sparkle logo-sparkle-1" d="M11 14 L12.2 17 L15.2 18.2 L12.2 19.4 L11 22.4 L9.8 19.4 L6.8 18.2 L9.8 17 Z" fill="url(#logoBrandGrad)" />
+            {/* Main circle (round linecaps for softer ends if it ever becomes a partial arc) */}
+            <circle cx="40" cy="46" r="25" fill="none" stroke="url(#logoBrandGrad)" strokeWidth="3.5" strokeLinecap="round" />
             {/* Play triangle */}
-            <path d="M33 35 L54 46 L33 57 Z" fill="url(#logoBrandGrad)" />
+            <path d="M33 35 L54 46 L33 57 Z" fill="url(#logoBrandGrad)" strokeLinejoin="round" />
             {/* Bookmark on top of circle, sticking upward */}
             <path d="M48 8 L64 8 L64 30 L56 25 L48 30 Z" fill="url(#logoBrandGrad)" />
+            {/* Subtle inner highlight on the bookmark's left edge gives it volume */}
+            <path d="M49 9 L49 28.6" stroke="url(#logoBookmarkHighlight)" strokeWidth="1.2" strokeLinecap="round" />
             {/* Mid-right sparkle */}
-            <path d="M70 40 L70.9 42.2 L73.1 43.1 L70.9 44 L70 46.2 L69.1 44 L66.9 43.1 L69.1 42.2 Z" fill="url(#logoBrandGrad)" />
+            <path className="logo-sparkle logo-sparkle-2" d="M70 40 L70.9 42.2 L73.1 43.1 L70.9 44 L70 46.2 L69.1 44 L66.9 43.1 L69.1 42.2 Z" fill="url(#logoBrandGrad)" />
           </svg>
           <span className="logo-text">
             <span className="logo-text-ani">
@@ -80,14 +86,17 @@ const Header = ({
               >
                 <defs>
                   <linearGradient id="logoTGrad" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="60" y2="0">
+                    {/* Start each cycle 1.2s after the icon's mark gradient
+                        (icon ⇒ i-star at +0.6s ⇒ T-cap at +1.2s) so the
+                        colors visually flow across the logo. */}
                     <stop offset="0%" stopColor="#a855f7">
-                      <animate attributeName="stop-color" values="#a855f7; #4ecdc4; #c084fc; #a855f7" dur="5s" repeatCount="indefinite" />
+                      <animate attributeName="stop-color" values="#a855f7; #4ecdc4; #c084fc; #a855f7" dur="5s" begin="-3.8s" repeatCount="indefinite" />
                     </stop>
                     <stop offset="50%" stopColor="#4ecdc4">
-                      <animate attributeName="stop-color" values="#4ecdc4; #c084fc; #a855f7; #4ecdc4" dur="5s" repeatCount="indefinite" />
+                      <animate attributeName="stop-color" values="#4ecdc4; #c084fc; #a855f7; #4ecdc4" dur="5s" begin="-3.8s" repeatCount="indefinite" />
                     </stop>
                     <stop offset="100%" stopColor="#a855f7">
-                      <animate attributeName="stop-color" values="#a855f7; #4ecdc4; #c084fc; #a855f7" dur="5s" repeatCount="indefinite" />
+                      <animate attributeName="stop-color" values="#a855f7; #4ecdc4; #c084fc; #a855f7" dur="5s" begin="-3.8s" repeatCount="indefinite" />
                     </stop>
                   </linearGradient>
                 </defs>
@@ -95,8 +104,9 @@ const Header = ({
                     top edge, hiding the join cleanly). currentColor inherits
                     text color so it adapts to dark/light theme. */}
                 <rect x="22" y="0" width="16" height="72" rx="1" fill="currentColor" />
-                {/* Crossbar (top horizontal stroke) - animated brand gradient */}
-                <rect x="0" y="0" width="60" height="14" rx="1.5" fill="url(#logoTGrad)" />
+                {/* Crossbar (top horizontal stroke) — height 16/72 ≈ 22% to
+                    match Saira 800's actual stroke weight. */}
+                <rect x="0" y="0" width="60" height="16" rx="1.5" fill="url(#logoTGrad)" />
               </svg>
               racker
             </span>
