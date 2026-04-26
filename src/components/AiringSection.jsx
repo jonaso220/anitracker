@@ -1,11 +1,24 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { daysOfWeek } from '../constants';
+
+const STORAGE_KEY = 'anitracker-airing-expanded';
 
 const AiringSection = ({ schedule, airingData, onDetail, onScrollToDay }) => {
     const allAnime = daysOfWeek.flatMap(d => (schedule[d] || []).map(a => ({ ...a, _day: d })));
     const airingAnime = allAnime.filter(a => airingData[a.id]).map(a => ({
         ...a, airing: airingData[a.id]
     })).sort((a, b) => a.airing.airingAt - b.airing.airingAt);
+
+    const [expanded, setExpanded] = useState(() => {
+        try { return localStorage.getItem(STORAGE_KEY) === 'true'; } catch { return false; }
+    });
+    const toggle = () => {
+        setExpanded((v) => {
+            const next = !v;
+            try { localStorage.setItem(STORAGE_KEY, String(next)); } catch { /* empty */ }
+            return next;
+        });
+    };
 
     if (airingAnime.length === 0) return null;
 
@@ -23,16 +36,23 @@ const AiringSection = ({ schedule, airingData, onDetail, onScrollToDay }) => {
     };
 
     return (
-        <div className="airing-section fade-in">
-            <div className="airing-header">
+        <div className={`airing-section fade-in ${expanded ? 'expanded' : 'collapsed'}`}>
+            <button
+                type="button"
+                className="airing-header"
+                onClick={toggle}
+                aria-expanded={expanded}
+                aria-controls="airing-list-panel"
+            >
                 <span className="airing-icon" aria-hidden="true">
                     <span className="airing-icon-dot" />
                     📡
                 </span>
                 <h3>Próximos episodios</h3>
                 <span className="airing-count">{airingAnime.length}</span>
-            </div>
-            <div className="airing-list">
+                <span className="airing-chevron" aria-hidden="true">▾</span>
+            </button>
+            <div id="airing-list-panel" className="airing-list" hidden={!expanded}>
                 {airingAnime.map(a => (
                     <div key={a.id} className={`airing-item ${a.airing.hasAired ? 'aired' : a.airing.isToday ? 'today' : ''}`}
                         onClick={() => onDetail(a)}>
