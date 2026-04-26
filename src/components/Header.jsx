@@ -41,32 +41,40 @@ const Header = ({
     <header className="header" role="banner">
       <div className="header-content">
         <h1 className="logo" aria-label="AniTracker">
-          <svg className="logo-mark" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <svg className="logo-mark" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
             <defs>
-              <linearGradient id="logoBrandGrad" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+              <linearGradient id="logoBrandGrad" x1="0" y1="0" x2="80" y2="80" gradientUnits="userSpaceOnUse">
                 <stop offset="0%" stopColor="#a855f7">
-                  <animate attributeName="stop-color" values="#a855f7; #4ecdc4; #ff6b6b; #a855f7" dur="6s" repeatCount="indefinite" />
+                  <animate attributeName="stop-color" values="#a855f7; #4ecdc4; #c084fc; #a855f7" dur="5s" repeatCount="indefinite" />
                 </stop>
                 <stop offset="100%" stopColor="#4ecdc4">
-                  <animate attributeName="stop-color" values="#4ecdc4; #ff6b6b; #a855f7; #4ecdc4" dur="6s" repeatCount="indefinite" />
+                  <animate attributeName="stop-color" values="#4ecdc4; #c084fc; #a855f7; #4ecdc4" dur="5s" repeatCount="indefinite" />
                 </stop>
               </linearGradient>
             </defs>
-            {/* Outer ring */}
-            <circle cx="32" cy="34" r="22" fill="none" stroke="url(#logoBrandGrad)" strokeWidth="3" />
+            {/* Top-left sparkle */}
+            <path d="M11 14 L12.2 17 L15.2 18.2 L12.2 19.4 L11 22.4 L9.8 19.4 L6.8 18.2 L9.8 17 Z" fill="url(#logoBrandGrad)" />
+            {/* Main circle */}
+            <circle cx="40" cy="46" r="25" fill="none" stroke="url(#logoBrandGrad)" strokeWidth="3.5" />
             {/* Play triangle */}
-            <path d="M27 26 L43 34 L27 42 Z" fill="url(#logoBrandGrad)" />
-            {/* Bookmark on top */}
-            <path d="M40 6 L52 6 L52 22 L46 18 L40 22 Z" fill="url(#logoBrandGrad)" />
-            {/* Sparkle stars */}
-            <path d="M14 12 L15.2 14.8 L18 16 L15.2 17.2 L14 20 L12.8 17.2 L10 16 L12.8 14.8 Z" fill="url(#logoBrandGrad)" />
-            <path d="M50 32 L51 34.4 L53.4 35.4 L51 36.4 L50 38.8 L49 36.4 L46.6 35.4 L49 34.4 Z" fill="url(#logoBrandGrad)" />
+            <path d="M33 35 L54 46 L33 57 Z" fill="url(#logoBrandGrad)" />
+            {/* Bookmark on top of circle, sticking upward */}
+            <path d="M48 8 L64 8 L64 30 L56 25 L48 30 Z" fill="url(#logoBrandGrad)" />
+            {/* Mid-right sparkle */}
+            <path d="M70 40 L70.9 42.2 L73.1 43.1 L70.9 44 L70 46.2 L69.1 44 L66.9 43.1 L69.1 42.2 Z" fill="url(#logoBrandGrad)" />
           </svg>
           <span className="logo-text">
-            <span className="logo-text-ani">Ani</span>
+            <span className="logo-text-ani">
+              An<span className="logo-text-i">
+                <span className="logo-text-i-star" aria-hidden="true" />
+                i
+              </span>
+            </span>
             <span className="logo-text-tracker">
-              <span className="logo-text-accent" aria-hidden="true" />
-              Tracker
+              <span className="logo-text-t">
+                <span className="logo-text-t-cap" aria-hidden="true" />
+                T
+              </span>racker
             </span>
           </span>
         </h1>

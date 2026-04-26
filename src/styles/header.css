@@ -32,8 +32,9 @@
 .logo {
   display: inline-flex;
   align-items: center;
-  gap: 0.6rem;
-  font-family: 'Audiowide', 'Zen Dots', cursive;
+  gap: 0.55rem;
+  font-family: 'Saira', 'Audiowide', 'Zen Dots', cursive;
+  font-weight: 800;
   font-size: 1.7rem;
   letter-spacing: 0.005em;
   cursor: default;
@@ -41,8 +42,8 @@
 }
 
 .logo-mark {
-  width: 38px;
-  height: 38px;
+  width: 42px;
+  height: 42px;
   flex-shrink: 0;
   filter: drop-shadow(0 0 12px rgba(168, 85, 247, 0.4));
   transition: filter var(--transition-med), transform var(--transition-med);
@@ -58,41 +59,76 @@
   color: #f5f5fa;
   text-shadow: 0 0 18px rgba(255, 255, 255, 0.18);
 }
-.light .logo-text {
-  color: #1a1a2e;
-  text-shadow: none;
-}
+.light .logo-text { color: #1a1a2e; text-shadow: none; }
 
-.logo-text-ani {
-  font-weight: 400;
-}
+.logo-text-ani,
+.logo-text-tracker { font-weight: inherit; }
 
-.logo-text-tracker {
+/* Wrap the "i" — replace its dot with a colored star above */
+.logo-text-i {
   position: relative;
-  font-weight: 400;
-  padding-top: 0.18em;
+  display: inline-block;
+  /* Hide the natural dot of the "i" so the star replaces it cleanly */
+  font-feature-settings: "dotless-i";
+}
+.logo-text-i::first-letter { color: inherit; }
+.logo-text-i-star {
+  position: absolute;
+  top: -0.18em;
+  left: 50%;
+  transform: translate(-50%, 0);
+  width: 0.5em;
+  height: 0.5em;
+  background: linear-gradient(135deg, #a855f7, #4ecdc4, #c084fc, #4ecdc4);
+  background-size: 300% 300%;
+  animation: logoColorShift 5s linear infinite;
+  clip-path: polygon(
+    50% 0%, 58% 38%, 95% 50%, 58% 62%,
+    50% 100%, 42% 62%, 5% 50%, 42% 38%
+  );
+  filter: drop-shadow(0 0 6px rgba(168, 85, 247, 0.55));
+  z-index: 2;
+}
+/* Cover the lowercase "i" dot underneath the star */
+.logo-text-i::before {
+  content: '';
+  position: absolute;
+  top: -0.12em;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0.55em;
+  height: 0.4em;
+  background: var(--bg-elevated, transparent);
+  z-index: 1;
 }
 
-/* Animated cyan/violet stripe above "Tracker" mimicking the running color effect */
-.logo-text-accent {
-  position: absolute;
-  top: -0.05em;
-  left: 0.05em;
-  right: 0.05em;
-  height: 3px;
-  border-radius: 2px;
-  background: linear-gradient(90deg, #a855f7, #4ecdc4, #a855f7, #4ecdc4);
-  background-size: 300% 100%;
-  animation: logoAccentShift 4.5s linear infinite;
-  box-shadow: 0 0 8px rgba(78, 205, 196, 0.55), 0 0 14px rgba(168, 85, 247, 0.35);
+/* Wrap the "T" — colored cap on the top horizontal stroke */
+.logo-text-t {
+  position: relative;
+  display: inline-block;
 }
-@keyframes logoAccentShift {
+.logo-text-t-cap {
+  position: absolute;
+  top: 0.04em;
+  left: -0.02em;
+  right: -0.02em;
+  height: 0.14em;
+  border-radius: 1px;
+  background: linear-gradient(90deg, #a855f7, #4ecdc4, #c084fc, #4ecdc4, #a855f7);
+  background-size: 400% 100%;
+  animation: logoColorShift 5s linear infinite;
+  box-shadow: 0 0 8px rgba(78, 205, 196, 0.55), 0 0 14px rgba(168, 85, 247, 0.35);
+  z-index: 2;
+}
+
+@keyframes logoColorShift {
   0%   { background-position: 0% 50%; }
-  100% { background-position: 300% 50%; }
+  100% { background-position: 400% 50%; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .logo-text-accent { animation: none; }
+  .logo-text-i-star,
+  .logo-text-t-cap { animation: none; }
 }
 
 /* Header pill buttons */
