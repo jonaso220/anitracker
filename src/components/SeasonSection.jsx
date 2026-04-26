@@ -1,17 +1,27 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { daysOfWeek } from '../constants';
 import DiscoveryCard from './DiscoveryCard';
+import RatingFilterBar from './RatingFilterBar';
+import { applyRatingFilter } from '../utils';
 
 const SEASONS = ['WINTER', 'SPRING', 'SUMMER', 'FALL'];
 const SEASON_LABELS = { WINTER: 'Invierno', SPRING: 'Primavera', SUMMER: 'Verano', FALL: 'Otoño' };
 const SEASON_ICONS = { WINTER: '❄️', SPRING: '🌸', SUMMER: '☀️', FALL: '🍂' };
 
 const SeasonSection = ({ seasonAnime, seasonLoading, schedule, watchedList, watchLater, selectedSeason, onChangeSeason, setShowDayPicker, addToWatchLater, markAsWatched, onDetail }) => {
+    const [minRating, setMinRating] = useState(0);
+    const [sortByRating, setSortByRating] = useState(false);
+
     const now = new Date();
     const curMonth = now.getMonth() + 1;
     const curSeason = curMonth <= 3 ? 'WINTER' : curMonth <= 6 ? 'SPRING' : curMonth <= 9 ? 'SUMMER' : 'FALL';
     const curYear = now.getFullYear();
     const isCurrent = selectedSeason.season === curSeason && selectedSeason.year === curYear;
+
+    const filteredSeason = useMemo(
+        () => applyRatingFilter(seasonAnime, { minRating, sortByRating }),
+        [seasonAnime, minRating, sortByRating]
+    );
 
     const goPrev = () => {
         const idx = SEASONS.indexOf(selectedSeason.season);
@@ -35,7 +45,7 @@ const SeasonSection = ({ seasonAnime, seasonLoading, schedule, watchedList, watc
         <>
             <div className="section-header">
                 <h2>{SEASON_ICONS[selectedSeason.season]} Temporada</h2>
-                <span className="count">{seasonAnime.length}</span>
+                <span className="count">{filteredSeason.length}{minRating > 0 && ` / ${seasonAnime.length}`}</span>
             </div>
             <div className="season-selector">
                 <button className="season-nav-btn" onClick={goPrev} title="Temporada anterior">◀</button>
@@ -47,6 +57,14 @@ const SeasonSection = ({ seasonAnime, seasonLoading, schedule, watchedList, watc
                     <button className="season-today-btn" onClick={goCurrentSeason} title="Ir a temporada actual">Actual</button>
                 )}
             </div>
+            {!seasonLoading && seasonAnime.length > 0 && (
+                <RatingFilterBar
+                    minRating={minRating}
+                    setMinRating={setMinRating}
+                    sortByRating={sortByRating}
+                    setSortByRating={setSortByRating}
+                />
+            )}
             {seasonLoading ? (
                 <div className="season-grid">
                     {Array.from({ length: 12 }).map((_, i) => (
@@ -60,9 +78,9 @@ const SeasonSection = ({ seasonAnime, seasonLoading, schedule, watchedList, watc
                         </div>
                     ))}
                 </div>
-            ) : seasonAnime.length > 0 ? (
+            ) : filteredSeason.length > 0 ? (
                 <div className="season-grid stagger-in">
-                    {seasonAnime.map(anime => (
+                    {filteredSeason.map(anime => (
                         <DiscoveryCard
                             key={anime.id}
                             anime={anime}
@@ -74,6 +92,8 @@ const SeasonSection = ({ seasonAnime, seasonLoading, schedule, watchedList, watc
                         />
                     ))}
                 </div>
+            ) : seasonAnime.length > 0 ? (
+                <div className="empty-state"><span>⭐</span><p>Sin animes con esa valoración</p></div>
             ) : <div className="empty-state"><span>🌸</span><p>No se encontraron animes para esta temporada</p></div>}
         </>
     );

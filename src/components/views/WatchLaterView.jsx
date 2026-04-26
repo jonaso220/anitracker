@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import AnimeCard from '../AnimeCard';
 import BulkToolbar from './BulkToolbar';
-import { filterByLocalSearch } from '../../utils';
+import RatingFilterBar from '../RatingFilterBar';
+import { filterByLocalSearch, applyRatingFilter } from '../../utils';
 
 const PAGE_SIZE = 30;
 
@@ -12,8 +13,13 @@ const WatchLaterView = ({
   setShowAnimeDetail,
 }) => {
   const [visible, setVisible] = useState(PAGE_SIZE);
+  const [minRating, setMinRating] = useState(0);
+  const [sortByRating, setSortByRating] = useState(false);
 
-  const filtered = useMemo(() => filterByLocalSearch(watchLater, localSearch), [watchLater, localSearch]);
+  const filtered = useMemo(() => {
+    const bySearch = filterByLocalSearch(watchLater, localSearch);
+    return applyRatingFilter(bySearch, { minRating, sortByRating });
+  }, [watchLater, localSearch, minRating, sortByRating]);
   const visibleItems = filtered.slice(0, visible);
   const remaining = filtered.length - visible;
 
@@ -55,6 +61,14 @@ const WatchLaterView = ({
             aria-label="Filtrar lista por nombre"
           />
         </div>
+      )}
+      {watchLater.length > 3 && (
+        <RatingFilterBar
+          minRating={minRating}
+          setMinRating={(v) => { setMinRating(v); setVisible(PAGE_SIZE); }}
+          sortByRating={sortByRating}
+          setSortByRating={setSortByRating}
+        />
       )}
       {filtered.length > 0 ? (
         <>

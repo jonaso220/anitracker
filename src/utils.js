@@ -16,6 +16,17 @@ export const filterByLocalSearch = (list, localSearch) => {
 };
 
 /**
+ * Apply a minimum-rating filter and an optional rating-desc sort to a list.
+ * Items without a rating count as 0 and are kept only when minRating is 0.
+ */
+export const applyRatingFilter = (list, { minRating = 0, sortByRating = false } = {}) => {
+  let out = list;
+  if (minRating > 0) out = out.filter((a) => (a.rating || 0) >= minRating);
+  if (sortByRating) out = [...out].sort((a, b) => (b.rating || 0) - (a.rating || 0));
+  return out;
+};
+
+/**
  * Filter and sort the watched list based on filter, sort, and search criteria.
  */
 export const getFilteredWatched = (watchedList, watchedFilter, watchedSort, localSearch) => {
