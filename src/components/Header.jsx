@@ -123,10 +123,6 @@ const Header = ({
             <span className="search-input-placeholder">Buscar anime...</span>
             <kbd className="search-input-hint" aria-hidden="true">⌘K</kbd>
           </button>
-          <button className="import-btn" onClick={onOpenImport} aria-label="Importar desde AniList">
-            <span aria-hidden="true">📥</span><span className="btn-label"> Importar</span>
-          </button>
-
           {firebaseEnabled && !user && (
             <button className="auth-btn google" onClick={loginWithGoogle} aria-label="Iniciar sesión con Google">
               <span aria-hidden="true">🔑</span><span className="btn-label"> Google</span>
@@ -162,6 +158,15 @@ const Header = ({
                     </div>
                   </div>
                 )}
+                <button
+                  className="user-menu-item"
+                  role="menuitem"
+                  onClick={() => { setMenuOpen(false); onOpenImport?.(); }}
+                >
+                  <span aria-hidden="true">📥</span>
+                  <span>Importar desde AniList</span>
+                </button>
+                <div className="user-menu-divider" />
                 <button
                   className="user-menu-item"
                   role="menuitem"
