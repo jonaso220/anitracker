@@ -30,26 +30,69 @@
 }
 
 .logo {
-  font-family: 'Zen Dots', cursive;
-  font-size: 1.8rem;
-  letter-spacing: -0.02em;
-  background: var(--gradient-text);
-  background-size: 200% 100%;
-  background-position: 0% 50%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-family: 'Audiowide', 'Zen Dots', cursive;
+  font-size: 1.7rem;
+  letter-spacing: 0.005em;
   cursor: default;
-  transition: background-position 1.6s var(--ease-out);
-  animation: logoShift 4s var(--ease-out) 1;
+  line-height: 1;
 }
-.logo:hover {
-  background-position: 200% 50%;
+
+.logo-mark {
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  filter: drop-shadow(0 0 12px rgba(168, 85, 247, 0.4));
+  transition: filter var(--transition-med), transform var(--transition-med);
 }
-@keyframes logoShift {
-  0% { background-position: 0% 50%; }
-  60% { background-position: 200% 50%; }
-  100% { background-position: 0% 50%; }
+.logo:hover .logo-mark {
+  filter: drop-shadow(0 0 16px rgba(78, 205, 196, 0.55));
+  transform: scale(1.04) rotate(-4deg);
+}
+
+.logo-text {
+  display: inline-flex;
+  align-items: baseline;
+  color: #f5f5fa;
+  text-shadow: 0 0 18px rgba(255, 255, 255, 0.18);
+}
+.light .logo-text {
+  color: #1a1a2e;
+  text-shadow: none;
+}
+
+.logo-text-ani {
+  font-weight: 400;
+}
+
+.logo-text-tracker {
+  position: relative;
+  font-weight: 400;
+  padding-top: 0.18em;
+}
+
+/* Animated cyan/violet stripe above "Tracker" mimicking the running color effect */
+.logo-text-accent {
+  position: absolute;
+  top: -0.05em;
+  left: 0.05em;
+  right: 0.05em;
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #a855f7, #4ecdc4, #a855f7, #4ecdc4);
+  background-size: 300% 100%;
+  animation: logoAccentShift 4.5s linear infinite;
+  box-shadow: 0 0 8px rgba(78, 205, 196, 0.55), 0 0 14px rgba(168, 85, 247, 0.35);
+}
+@keyframes logoAccentShift {
+  0%   { background-position: 0% 50%; }
+  100% { background-position: 300% 50%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .logo-text-accent { animation: none; }
 }
 
 /* Header pill buttons */
