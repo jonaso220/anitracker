@@ -102,24 +102,21 @@
   z-index: 1;
 }
 
-/* Wrap the "T" — colored cap on the top horizontal stroke */
+/* The "T" — drawn as an inline SVG so the colored crossbar matches the
+   visual top of the letter pixel-perfectly on every screen. ViewBox is
+   60×72 to match Saira 800 T proportions (cap-height ratio ~0.72).
+   currentColor paints the stem so it matches surrounding text. */
 .logo-text-t {
-  position: relative;
   display: inline-block;
+  width: 0.6em;
+  height: 0.72em;
+  /* Lock the SVG's bottom to the text baseline. Without this it would
+     align to the bottom of the line box (under the descender). */
+  vertical-align: baseline;
+  margin-right: 0.03em;
+  filter: drop-shadow(0 0 4px rgba(168, 85, 247, 0.45));
 }
-.logo-text-t-cap {
-  position: absolute;
-  top: 0.04em;
-  left: -0.02em;
-  right: -0.02em;
-  height: 0.14em;
-  border-radius: 1px;
-  background: linear-gradient(90deg, #a855f7, #4ecdc4, #c084fc, #4ecdc4, #a855f7);
-  background-size: 400% 100%;
-  animation: logoColorShift 5s linear infinite;
-  box-shadow: 0 0 8px rgba(78, 205, 196, 0.55), 0 0 14px rgba(168, 85, 247, 0.35);
-  z-index: 2;
-}
+.light .logo-text-t { filter: none; }
 
 @keyframes logoColorShift {
   0%   { background-position: 0% 50%; }
@@ -128,7 +125,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .logo-text-i-star,
-  .logo-text-t-cap { animation: none; }
+  .logo-text-t { animation: none; }
 }
 
 /* Header pill buttons */

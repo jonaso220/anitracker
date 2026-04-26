@@ -71,10 +71,34 @@ const Header = ({
               </span>
             </span>
             <span className="logo-text-tracker">
-              <span className="logo-text-t">
-                <span className="logo-text-t-cap" aria-hidden="true" />
-                T
-              </span>racker
+              <svg
+                className="logo-text-t"
+                viewBox="0 0 60 72"
+                preserveAspectRatio="xMidYMid meet"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <defs>
+                  <linearGradient id="logoTGrad" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="60" y2="0">
+                    <stop offset="0%" stopColor="#a855f7">
+                      <animate attributeName="stop-color" values="#a855f7; #4ecdc4; #c084fc; #a855f7" dur="5s" repeatCount="indefinite" />
+                    </stop>
+                    <stop offset="50%" stopColor="#4ecdc4">
+                      <animate attributeName="stop-color" values="#4ecdc4; #c084fc; #a855f7; #4ecdc4" dur="5s" repeatCount="indefinite" />
+                    </stop>
+                    <stop offset="100%" stopColor="#a855f7">
+                      <animate attributeName="stop-color" values="#a855f7; #4ecdc4; #c084fc; #a855f7" dur="5s" repeatCount="indefinite" />
+                    </stop>
+                  </linearGradient>
+                </defs>
+                {/* Vertical stem (drawn first so the crossbar paints over its
+                    top edge, hiding the join cleanly). currentColor inherits
+                    text color so it adapts to dark/light theme. */}
+                <rect x="22" y="0" width="16" height="72" rx="1" fill="currentColor" />
+                {/* Crossbar (top horizontal stroke) - animated brand gradient */}
+                <rect x="0" y="0" width="60" height="14" rx="1.5" fill="url(#logoTGrad)" />
+              </svg>
+              racker
             </span>
           </span>
         </h1>
