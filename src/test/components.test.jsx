@@ -29,17 +29,12 @@ describe('AnimeCard', () => {
     expect(container.querySelector('.anime-card-score')).toBeInTheDocument();
   });
 
-  it('renders episode badge when currentEp > 0', () => {
-    const { container } = render(<AnimeCard anime={mockAnime} airingData={{}} onClick={() => {}} />);
-    const epBadge = container.querySelector('.anime-card-ep');
-    expect(epBadge).toBeInTheDocument();
-    expect(epBadge.textContent).toContain('120');
-  });
-
   it('renders progress bar when episodes known', () => {
     const { container } = render(<AnimeCard anime={mockAnime} airingData={{}} onClick={() => {}} />);
-    const progressFill = container.querySelector('.card-progress-fill');
+    const progressFill = container.querySelector('.anime-card-progress-fill');
     expect(progressFill).toBeInTheDocument();
+    // 120 / 500 → 24%
+    expect(progressFill.style.width).toBe('24%');
   });
 
   it('renders genres', () => {
@@ -51,14 +46,14 @@ describe('AnimeCard', () => {
   it('renders completed badge for watched finished anime', () => {
     const finished = { ...mockAnime, finished: true };
     const { container } = render(<AnimeCard anime={finished} airingData={{}} isWatched onClick={() => {}} />);
-    const badge = container.querySelector('.status-badge.finished');
+    const badge = container.querySelector('.anime-card-status-pill.finished');
     expect(badge).toBeInTheDocument();
   });
 
   it('renders dropped badge for watched unfinished anime', () => {
     const dropped = { ...mockAnime, finished: false };
     const { container } = render(<AnimeCard anime={dropped} airingData={{}} isWatched onClick={() => {}} />);
-    const badge = container.querySelector('.status-badge.dropped');
+    const badge = container.querySelector('.anime-card-status-pill.dropped');
     expect(badge).toBeInTheDocument();
   });
 });
