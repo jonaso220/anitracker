@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v3';
+const CACHE_VERSION = 'v4';
 const STATIC_CACHE = `anitracker-static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `anitracker-runtime-${CACHE_VERSION}`;
 const IMAGE_CACHE = `anitracker-images-${CACHE_VERSION}`;
@@ -41,9 +41,11 @@ const IMAGE_HOSTS = [
   'is5-ssl.mzstatic.com',
 ];
 
+// Don't skipWaiting() automatically — let the page surface a banner so the
+// user controls when to swap. The page will postMessage SKIP_WAITING below.
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(STATIC_CACHE).then((cache) => cache.addAll(PRECACHE_URLS)).then(() => self.skipWaiting())
+    caches.open(STATIC_CACHE).then((cache) => cache.addAll(PRECACHE_URLS))
   );
 });
 

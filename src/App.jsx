@@ -4,6 +4,7 @@ import './App.css';
 import Header from './components/Header';
 import NavTabs from './components/NavTabs';
 import Toast from './components/Toast';
+import UpdateBanner from './components/UpdateBanner';
 import ScheduleView from './components/views/ScheduleView';
 import WatchLaterView from './components/views/WatchLaterView';
 import WatchedView from './components/views/WatchedView';
@@ -27,6 +28,7 @@ import { useBulkMode } from './hooks/useBulkMode';
 import { useAnimeActions } from './hooks/useAnimeActions';
 import { useBulkActions } from './hooks/useBulkActions';
 import { useDiscovery } from './hooks/useDiscovery';
+import { useServiceWorkerUpdate } from './hooks/useServiceWorkerUpdate';
 import { daysOfWeek } from './constants';
 
 const EMPTY_SCHEDULE = { 'Lunes': [], 'Martes': [], 'Miércoles': [], 'Jueves': [], 'Viernes': [], 'Sábado': [], 'Domingo': [] };
@@ -67,6 +69,7 @@ export default function AnimeTracker() {
   const { searchQuery, setSearchQuery, searchResults, setSearchResults, isSearching, searchPartial, airingData, handleSearch } = useAnimeData(schedule);
   const dragDrop = useDragDrop(schedule, setSchedule, daysOfWeek);
   const bulk = useBulkMode();
+  const { updateAvailable, applyUpdate } = useServiceWorkerUpdate();
   const discovery = useDiscovery();
 
   const actions = useAnimeActions({
@@ -214,6 +217,7 @@ export default function AnimeTracker() {
       </main>
 
       <Toast toast={toast} onUndo={undoToast} onDismiss={dismissToast} />
+      <UpdateBanner visible={updateAvailable} onUpdate={applyUpdate} />
 
       {showSearch && (
         <SearchModal
