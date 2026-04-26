@@ -21,7 +21,6 @@ import BulkDayPickerModal from './components/modals/BulkDayPickerModal';
 import { useFirebase } from './hooks/useFirebase';
 import { useAnimeData } from './hooks/useAnimeData';
 import { useDragDrop } from './hooks/useDragDrop';
-import { useNotifications } from './hooks/useNotifications';
 import { usePersistedState } from './hooks/usePersistedState';
 import { useToast } from './hooks/useToast';
 import { useBulkMode } from './hooks/useBulkMode';
@@ -67,7 +66,6 @@ export default function AnimeTracker() {
   );
   const { searchQuery, setSearchQuery, searchResults, setSearchResults, isSearching, searchPartial, airingData, handleSearch } = useAnimeData(schedule);
   const dragDrop = useDragDrop(schedule, setSchedule, daysOfWeek);
-  const { notifEnabled, notifPermission, toggleNotifications } = useNotifications(airingData);
   const bulk = useBulkMode();
   const discovery = useDiscovery();
 
@@ -128,7 +126,6 @@ export default function AnimeTracker() {
     <div className={`anime-tracker ${darkMode ? 'dark' : 'light'}`}>
       <Header
         darkMode={darkMode} setDarkMode={setDarkMode}
-        notifEnabled={notifEnabled} notifPermission={notifPermission} toggleNotifications={toggleNotifications}
         user={user} syncing={syncing} loginWithGoogle={loginWithGoogle} logout={logout} firebaseEnabled={FIREBASE_ENABLED}
         onOpenSearch={() => setShowSearch(true)} onOpenImport={() => setShowImport(true)}
       />

@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 
 const Header = ({
   darkMode, setDarkMode,
-  notifEnabled, notifPermission, toggleNotifications,
   user, syncing, loginWithGoogle, logout, firebaseEnabled,
   onOpenSearch, onOpenImport,
 }) => {
@@ -34,8 +33,6 @@ const Header = ({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onOpenSearch]);
-
-  const notifSupported = notifPermission !== 'unsupported';
 
   return (
     <header className="header" role="banner">
@@ -145,7 +142,6 @@ const Header = ({
                 </span>
               )}
               {syncing && <span className="user-menu-sync" aria-hidden="true">☁️</span>}
-              {notifEnabled && notifPermission === 'denied' && <span className="user-menu-warn" aria-hidden="true">⚠</span>}
             </button>
             {menuOpen && (
               <div className="user-menu-dropdown" role="menu">
@@ -175,20 +171,6 @@ const Header = ({
                   <span aria-hidden="true">{darkMode ? '☀️' : '🌙'}</span>
                   <span>{darkMode ? 'Tema claro' : 'Tema oscuro'}</span>
                 </button>
-                {notifSupported && (
-                  <button
-                    className={`user-menu-item ${notifEnabled ? 'active' : ''}`}
-                    role="menuitem"
-                    onClick={() => { toggleNotifications(); }}
-                    title={notifPermission === 'denied' ? 'Notificaciones bloqueadas en el navegador' : ''}
-                  >
-                    <span aria-hidden="true">{notifEnabled ? '🔔' : '🔕'}</span>
-                    <span>
-                      {notifEnabled ? 'Notificaciones activas' : 'Activar notificaciones'}
-                      {notifPermission === 'denied' && ' ⚠'}
-                    </span>
-                  </button>
-                )}
                 {user && (
                   <>
                     <div className="user-menu-divider" />
