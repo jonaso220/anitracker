@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import StarRating from '../StarRating';
 import { sanitizeUrl, pruneTranslationCache } from '../../constants';
 import { translateEnToEs } from '../../services/translationService';
-import { buildStreamingOptions } from '../../services/streamingService';
 
 const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, updateEpisode, updateUserRating, updateAnimeLink, updateAnimeNotes, markAsFinished, dropAnime, deleteAnime, addToWatchLater, markAsWatched, setShowMoveDayPicker, setShowDayPicker, resumeAnime, customLists = [], addToCustomList, removeFromCustomList }) => {
     // Compute initial synopsis synchronously (Spanish detection + cache check)
@@ -188,37 +187,14 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                             <button className="detail-action-sm" onClick={() => setShowLinkInput(true)}>✏️ Editar</button>
                         </div>
                     ) : (
-                        <>
-                            {(() => {
-                                const suggestions = buildStreamingOptions(a);
-                                if (suggestions.length === 0) return null;
-                                return (
-                                    <div className="streaming-suggestions" role="group" aria-label="Plataformas sugeridas">
-                                        {suggestions.map((s) => (
-                                            <button
-                                                key={s.site}
-                                                type="button"
-                                                className={`streaming-chip ${s.official ? 'official' : 'guess'}`}
-                                                onClick={() => {
-                                                    setLocalLink(s.url);
-                                                    updateAnimeLink(a.id, s.url);
-                                                    setShowLinkInput(false);
-                                                }}
-                                                title={s.official ? `${s.site} (oficial)` : `${s.site} (estimado por título)`}
-                                            >
-                                                <span aria-hidden="true">{s.icon}</span>
-                                                <span>{s.site}</span>
-                                                {!s.official && <span className="streaming-chip-tag" aria-hidden="true">~</span>}
-                                            </button>
-                                        ))}
-                                    </div>
-                                );
-                            })()}
-                            <div className="detail-link-edit">
-                                <input type="url" placeholder="O pegá una URL..." value={localLink} onChange={e => setLocalLink(e.target.value)} />
-                                <button className="save-link-btn" onClick={() => { updateAnimeLink(a.id, localLink); setShowLinkInput(false); }}>Guardar</button>
-                            </div>
-                        </>
+                        <div className="detail-link-edit">
+                            <input type="url" placeholder="Pegá una URL..." value={localLink} onChange={e => setLocalLink(e.target.value)} />
+                            <button className="save-link-btn" onClick={() => {
+                                updateAnimeLink(a.id, localLink);
+                                setShowAnimeDetail({ ...a, watchLink: localLink });
+                                setShowLinkInput(false);
+                            }}>Guardar</button>
+                        </div>
                     )}
                 </div>
 
