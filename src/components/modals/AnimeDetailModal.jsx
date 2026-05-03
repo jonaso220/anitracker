@@ -30,23 +30,17 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
     const [retryNonce, setRetryNonce] = useState(0);
     const [bingeMode, setBingeMode] = useState(false);
     const [bingeCount, setBingeCount] = useState(0);
-    const [bingeStart, setBingeStart] = useState(Date.now());
+    const [bingeStart] = useState(() => Date.now());
+    const [bingeMinutes, setBingeMinutes] = useState(0);
     const [showListPicker, setShowListPicker] = useState(false);
 
-    // Re-sync local state when the user opens a different anime without
-    // closing the modal first (otherwise inputs show stale values).
     useEffect(() => {
-        if (!showAnimeDetail) return;
-        setLocalEp(showAnimeDetail.currentEp || 0);
-        setLocalRating(showAnimeDetail.userRating || 0);
-        setLocalLink(showAnimeDetail.watchLink || '');
-        setLocalNotes(showAnimeDetail.notes || '');
-        setShowLinkInput(false);
-        setBingeMode(false);
-        setBingeCount(0);
-        setBingeStart(Date.now());
-        setShowListPicker(false);
-    }, [showAnimeDetail?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+        if (!bingeMode) return undefined;
+        const updateElapsed = () => setBingeMinutes(Math.round((Date.now() - bingeStart) / 60000));
+        updateElapsed();
+        const intervalId = setInterval(updateElapsed, 30000);
+        return () => clearInterval(intervalId);
+    }, [bingeMode, bingeStart]);
 
     // Only fetch translation if needed (not already Spanish or cached)
     useEffect(() => {
@@ -55,8 +49,6 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
         if (!syn) return;
         const ctrl = new AbortController();
         const cacheKey = `anitracker-tr-${showAnimeDetail?.id}`;
-        setIsTranslating(true);
-        setTranslationFailed(false);
         translateEnToEs(syn, ctrl.signal).then((tr) => {
             if (ctrl.signal.aborted) return;
             if (tr) {
@@ -72,7 +64,11 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
         return () => ctrl.abort();
     }, [showAnimeDetail?.id, showAnimeDetail?.synopsis, initialSynopsis.needsFetch, retryNonce]);
 
-    const retryTranslate = useCallback(() => setRetryNonce((n) => n + 1), []);
+    const retryTranslate = useCallback(() => {
+        setIsTranslating(true);
+        setTranslationFailed(false);
+        setRetryNonce((n) => n + 1);
+    }, []);
 
     if (!showAnimeDetail) return null;
     const a = showAnimeDetail;
@@ -164,7 +160,7 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                                 {bingeCount > 0 && (
                                     <div className="binge-stats">
                                         <span className="binge-stat">🔥 {bingeCount} ep{bingeCount > 1 ? 's' : ''} esta sesión</span>
-                                        <span className="binge-stat">⏱ {Math.round((Date.now() - bingeStart) / 60000)} min</span>
+                                        <span className="binge-stat">⏱ {bingeMinutes} min</span>
                                     </div>
                                 )}
                             </div>

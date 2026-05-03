@@ -112,7 +112,7 @@ export function useDragDrop(schedule, setSchedule, daysOfWeek) {
     }, 400);
   };
 
-  const handleTouchMove = (e, day) => {
+  const handleTouchMove = (e) => {
     const touch = e.touches[0];
     const dx = Math.abs(touch.clientX - touchRef.current.startX);
     const dy = Math.abs(touch.clientY - touchRef.current.startY);

@@ -4,6 +4,14 @@ const ANILIST_URL = 'https://graphql.anilist.co';
 
 const FORMAT_MAP = { TV: 'TV', TV_SHORT: 'TV Short', MOVIE: 'Película', SPECIAL: 'Special', OVA: 'OVA', ONA: 'ONA', MUSIC: 'Music' };
 const STATUS_MAP = { FINISHED: 'Finished', RELEASING: 'En emisión', NOT_YET_RELEASED: 'No estrenado', CANCELLED: 'Cancelado', HIATUS: 'En pausa' };
+const LIST_STATUS_DESTINATION = {
+  CURRENT: 'schedule',
+  PLANNING: 'watchLater',
+  COMPLETED: 'watched',
+  DROPPED: 'watched',
+  PAUSED: 'watchLater',
+  REPEATING: 'schedule',
+};
 
 async function anilistFetch(query, variables, { signal } = {}) {
   const res = await fetch(ANILIST_URL, {
@@ -60,6 +68,57 @@ export async function fetchTopAnime({ signal, perPage = 50 } = {}) {
   }`;
   const data = await anilistFetch(gql, { perPage }, { signal });
   return (data?.data?.Page?.media || []).map((m) => toAnime(m)).filter(Boolean);
+}
+
+export async function fetchAnilistUserAnimeLists(username, { signal } = {}) {
+  const trimmed = username?.trim();
+  if (!trimmed) return { schedule: [], watchLater: [], watched: [] };
+
+  const gql = `query ($username: String) {
+    MediaListCollection(userName: $username, type: ANIME) {
+      lists {
+        name status
+        entries {
+          status progress score(format: POINT_10)
+          media {
+            id idMal
+            title { romaji english native userPreferred }
+            coverImage { extraLarge large medium }
+            genres averageScore episodes format status seasonYear
+            description(asHtml: false) siteUrl synonyms
+            externalLinks { url site type language }
+          }
+        }
+      }
+    }
+  }`;
+
+  const data = await anilistFetch(gql, { username: trimmed }, { signal });
+  if (data?.errors?.length) {
+    const err = new Error(data.errors[0]?.message || 'Error al buscar');
+    err.code = data.errors[0]?.message === 'User not found' ? 'ANILIST_USER_NOT_FOUND' : 'ANILIST_IMPORT_ERROR';
+    throw err;
+  }
+
+  const items = { schedule: [], watchLater: [], watched: [] };
+  const lists = data?.data?.MediaListCollection?.lists || [];
+  lists.forEach((list) => {
+    (list.entries || []).forEach((entry) => {
+      const anime = toAnime(entry.media);
+      if (!anime) return;
+      const dest = LIST_STATUS_DESTINATION[entry.status] || 'watchLater';
+      items[dest].push({
+        ...anime,
+        currentEp: Number(entry.progress) || 0,
+        userRating: Number(entry.score) || 0,
+        notes: '',
+        _importStatus: entry.status,
+        _finished: entry.status === 'COMPLETED',
+        _dropped: entry.status === 'DROPPED',
+      });
+    });
+  });
+  return items;
 }
 
 /**
@@ -133,6 +192,9 @@ export function toAnime(a, { fallbackYear } = {}) {
   return normalizeAnime({
     id: a.idMal || (a.id + 300000),
     source: 'AniList',
+    sourceId: a.id,
+    sourceKey: `anilist:${a.id}`,
+    malId: a.idMal || null,
     title,
     titleOriginal: titleRomaji,
     titleJp: titleNative,

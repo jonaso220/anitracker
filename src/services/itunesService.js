@@ -17,10 +17,13 @@ export function toAnime(item) {
   if (!title) return null;
   const isMovie = item.kind === 'feature-movie';
   const artUrl = (item.artworkUrl100 || '').replace('100x100', '600x600');
-  const id = (item.trackId || item.collectionId || hashString(title)) + 500000;
+  const sourceId = item.trackId || item.collectionId || hashString(title);
+  const id = sourceId + 500000;
   return normalizeAnime({
     id,
     source: 'iTunes',
+    sourceId,
+    sourceKey: `itunes:${sourceId}`,
     title,
     titleOriginal: title,
     titleJp: '',

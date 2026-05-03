@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { toAnime as jikanToAnime } from '../services/jikanService';
 import { toAnime as kitsuToAnime } from '../services/kitsuService';
-import { toAnime as anilistToAnime, fetchAiringInfo } from '../services/anilistService';
+import { toAnime as anilistToAnime, fetchAiringInfo, fetchAnilistUserAnimeLists } from '../services/anilistService';
 import { toAnime as tvmazeToAnime } from '../services/tvmazeService';
 import { toAnime as itunesToAnime } from '../services/itunesService';
 import { searchAnime } from '../services/searchAnime';
@@ -25,6 +25,7 @@ describe('adapter: jikanService.toAnime', () => {
     });
     expect(a).toMatchObject({
       id: 20, source: 'MAL', title: 'Naruto', titleJp: 'ナルト',
+      sourceId: '20', sourceKey: 'mal:20', malId: 20,
       image: 'big.jpg', imageSm: 'sm.jpg', rating: 8.2, episodes: 220,
     });
     expect(a.malUrl).toBe('https://myanimelist.net/anime/20');
@@ -47,6 +48,8 @@ describe('adapter: anilistService.toAnime', () => {
   it('prefers idMal when available', () => {
     const a = anilistToAnime({ id: 5, idMal: 200, title: { english: 'A' }, coverImage: { large: 'l' }, synonyms: [] });
     expect(a.id).toBe(200);
+    expect(a.sourceKey).toBe('anilist:5');
+    expect(a.malId).toBe(200);
   });
   it('offsets AniList id by 300000 when no MAL id', () => {
     const a = anilistToAnime({ id: 5, idMal: null, title: { english: 'A' }, coverImage: { large: 'l' } });
@@ -55,6 +58,83 @@ describe('adapter: anilistService.toAnime', () => {
   it('maps AniList format enums to Spanish labels', () => {
     const a = anilistToAnime({ id: 1, title: { english: 'A' }, format: 'MOVIE' });
     expect(a.type).toBe('Película');
+  });
+});
+
+describe('anilistService.fetchAnilistUserAnimeLists', () => {
+  beforeEach(() => { vi.spyOn(globalThis, 'fetch'); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it('imports AniList entries into app destinations', async () => {
+    globalThis.fetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({
+        data: {
+          MediaListCollection: {
+            lists: [{
+              entries: [
+                {
+                  status: 'CURRENT',
+                  progress: 4,
+                  score: 8,
+                  media: {
+                    id: 5,
+                    idMal: 200,
+                    title: { english: 'A', romaji: 'A Romaji', native: 'A JP' },
+                    coverImage: { large: 'cover.jpg' },
+                    genres: ['Action'],
+                    averageScore: 80,
+                    episodes: 12,
+                    format: 'TV',
+                    status: 'RELEASING',
+                    seasonYear: 2025,
+                    description: 'Story',
+                    siteUrl: 'https://anilist.co/anime/5',
+                    synonyms: [],
+                    externalLinks: [],
+                  },
+                },
+                {
+                  status: 'DROPPED',
+                  progress: 2,
+                  score: 0,
+                  media: {
+                    id: 6,
+                    idMal: null,
+                    title: { romaji: 'B' },
+                    coverImage: {},
+                    synonyms: [],
+                  },
+                },
+              ],
+            }],
+          },
+        },
+      }),
+    });
+
+    const lists = await fetchAnilistUserAnimeLists('user');
+    expect(lists.schedule[0]).toMatchObject({
+      id: 200,
+      sourceKey: 'anilist:5',
+      currentEp: 4,
+      userRating: 8,
+      _importStatus: 'CURRENT',
+    });
+    expect(lists.watched[0]).toMatchObject({
+      id: 300006,
+      sourceKey: 'anilist:6',
+      _dropped: true,
+    });
+  });
+
+  it('throws a friendly code for unknown AniList users', async () => {
+    globalThis.fetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ errors: [{ message: 'User not found' }] }),
+    });
+
+    await expect(fetchAnilistUserAnimeLists('missing')).rejects.toMatchObject({ code: 'ANILIST_USER_NOT_FOUND' });
   });
 });
 

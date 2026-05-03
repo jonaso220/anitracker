@@ -22,6 +22,8 @@ export function toAnime(s) {
   return normalizeAnime({
     id: s.id + 400000,
     source: 'TVMaze',
+    sourceId: s.id,
+    sourceKey: `tvmaze:${s.id}`,
     title,
     titleOriginal: title,
     titleJp: '',

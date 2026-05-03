@@ -14,9 +14,9 @@ const updateInList = (list, animeId, updater) =>
  * Refs are passed in so that undo snapshots always capture the latest state.
  */
 export function useAnimeActions({
-  schedule, setSchedule, scheduleRef,
-  watchedList, setWatchedList, watchedListRef,
-  watchLater, setWatchLater, watchLaterRef,
+  setSchedule, scheduleRef,
+  setWatchedList, watchedListRef,
+  setWatchLater, watchLaterRef,
   setCustomLists, customListsRef,
   showToast,
   setShowDayPicker, setShowSearch, setSearchQuery, setSearchResults,

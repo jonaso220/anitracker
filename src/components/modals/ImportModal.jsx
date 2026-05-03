@@ -1,13 +1,5 @@
 import React, { useState } from 'react';
-
-const STATUS_MAP = {
-  CURRENT: 'schedule',
-  PLANNING: 'watchLater',
-  COMPLETED: 'watched',
-  DROPPED: 'watched',
-  PAUSED: 'watchLater',
-  REPEATING: 'schedule'
-};
+import { fetchAnilistUserAnimeLists } from '../../services/anilistService';
 
 const ImportModal = ({ onClose, onImport }) => {
   const [username, setUsername] = useState('');
@@ -22,73 +14,9 @@ const ImportModal = ({ onClose, onImport }) => {
     setError('');
     setPreview(null);
     try {
-      const query = `query ($username: String) {
-        MediaListCollection(userName: $username, type: ANIME) {
-          lists {
-            name status
-            entries {
-              status progress score(format: POINT_10)
-              media {
-                id idMal
-                title { romaji english native }
-                coverImage { large medium }
-                genres averageScore episodes format seasonYear
-                description(asHtml: false) siteUrl
-              }
-            }
-          }
-        }
-      }`;
-      const res = await fetch('https://graphql.anilist.co', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, variables: { username: username.trim() } })
-      }).then(r => r.json());
-
-      if (res.errors) {
-        setError(res.errors[0]?.message === 'User not found' ? 'Usuario no encontrado en AniList' : (res.errors[0]?.message || 'Error al buscar'));
-        setLoading(false);
-        return;
-      }
-
-      const lists = res.data?.MediaListCollection?.lists || [];
-      const formatMap = { TV: 'TV', TV_SHORT: 'TV Short', MOVIE: 'Película', SPECIAL: 'Special', OVA: 'OVA', ONA: 'ONA', MUSIC: 'Music' };
-      const items = { schedule: [], watchLater: [], watched: [] };
-
-      lists.forEach(list => {
-        (list.entries || []).forEach(entry => {
-          const m = entry.media;
-          if (!m) return;
-          const dest = STATUS_MAP[entry.status] || 'watchLater';
-          const anime = {
-            id: m.idMal || (m.id + 300000),
-            title: m.title?.english || m.title?.romaji || '',
-            titleJp: m.title?.native || '',
-            image: m.coverImage?.large || '',
-            imageSm: m.coverImage?.medium || m.coverImage?.large || '',
-            genres: m.genres || [],
-            synopsis: (m.description || '').replace(/<[^>]*>/g, '').trim() || 'Sin sinopsis.',
-            rating: m.averageScore ? Number((m.averageScore / 10).toFixed(1)) : 0,
-            episodes: m.episodes || null,
-            type: formatMap[m.format] || m.format || '',
-            year: m.seasonYear || '',
-            source: 'AniList',
-            malUrl: m.siteUrl || '',
-            watchLink: '',
-            currentEp: entry.progress || 0,
-            userRating: entry.score || 0,
-            notes: '',
-            _importStatus: entry.status,
-            _finished: entry.status === 'COMPLETED',
-            _dropped: entry.status === 'DROPPED'
-          };
-          items[dest].push(anime);
-        });
-      });
-
-      setPreview(items);
-    } catch (e) {
-      setError('Error de conexión con AniList');
+      setPreview(await fetchAnilistUserAnimeLists(username));
+    } catch (err) {
+      setError(err?.code === 'ANILIST_USER_NOT_FOUND' ? 'Usuario no encontrado en AniList' : (err?.message || 'Error de conexión con AniList'));
     }
     setLoading(false);
   };

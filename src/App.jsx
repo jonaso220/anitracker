@@ -64,7 +64,7 @@ export default function AnimeTracker() {
   // --- Hooks ---
   const { toast, showToast, dismissToast, undoToast } = useToast();
   const { user, syncing, loginWithGoogle, logout, FIREBASE_ENABLED } = useFirebase(
-    schedule, watchedList, watchLater, setSchedule, setWatchedList, setWatchLater
+    schedule, watchedList, watchLater, customLists, setSchedule, setWatchedList, setWatchLater, setCustomLists
   );
   const { searchQuery, setSearchQuery, searchResults, setSearchResults, isSearching, searchPartial, airingData, handleSearch } = useAnimeData(schedule);
   const dragDrop = useDragDrop(schedule, setSchedule, daysOfWeek);

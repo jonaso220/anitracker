@@ -32,6 +32,9 @@ export function normalizeAnime(raw) {
   return {
     id,
     source: toStr(raw.source),
+    sourceId: toStr(raw.sourceId || raw.id),
+    sourceKey: toStr(raw.sourceKey || (raw.source ? `${toStr(raw.source).toLowerCase()}:${raw.sourceId || raw.id}` : '')),
+    malId: raw.malId == null ? null : toNumber(raw.malId, null),
     title: toStr(raw.title),
     titleOriginal: toStr(raw.titleOriginal),
     titleJp: toStr(raw.titleJp),
