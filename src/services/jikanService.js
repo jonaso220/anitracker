@@ -17,6 +17,9 @@ export function toAnime(a) {
   return normalizeAnime({
     id: a.mal_id,
     source: 'MAL',
+    sourceId: a.mal_id,
+    sourceKey: `mal:${a.mal_id}`,
+    malId: a.mal_id,
     title,
     titleOriginal: a.title,
     titleJp: a.title_japanese || '',

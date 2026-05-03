@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 // Firebase config — these are public Firebase Web SDK keys (safe to commit).
 // Security is enforced via Firebase Security Rules, not by hiding these values.
@@ -21,19 +21,29 @@ const initFirebase = async () => {
   try {
     const { initializeApp } = await import('firebase/app');
     const { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signOut, onAuthStateChanged, browserLocalPersistence, setPersistence } = await import('firebase/auth');
-    const { getFirestore, doc, setDoc, getDoc } = await import('firebase/firestore');
+    const { getFirestore, doc, setDoc, getDoc, serverTimestamp } = await import('firebase/firestore');
 
     firebaseApp = initializeApp(FIREBASE_CONFIG);
     auth = getAuth(firebaseApp);
-    try { await setPersistence(auth, browserLocalPersistence); } catch (e) {}
+    try { await setPersistence(auth, browserLocalPersistence); } catch { /* Persistence is best-effort. */ }
     db = getFirestore(firebaseApp);
 
     firebaseAuth = { signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signOut, onAuthStateChanged };
-    firebaseDb = { doc, setDoc, getDoc };
+    firebaseDb = { doc, setDoc, getDoc, serverTimestamp };
   } catch (e) { console.error('Firebase init error:', e); }
 };
 
-export function useFirebase(schedule, watchedList, watchLater, setSchedule, setWatchedList, setWatchLater) {
+const parseCloudField = (value, fallback) => {
+  if (value == null) return fallback;
+  if (typeof value !== 'string') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+};
+
+export function useFirebase(schedule, watchedList, watchLater, customLists, setSchedule, setWatchedList, setWatchLater, setCustomLists) {
   const [user, setUser] = useState(null);
   const [syncing, setSyncing] = useState(false);
   const hasLoadedUser = useRef(null);
@@ -42,29 +52,31 @@ export function useFirebase(schedule, watchedList, watchLater, setSchedule, setW
   const syncTimer = useRef(null);
   const savedLoadVersion = useRef(0);
 
-  // Refs para que saveToCloud siempre lea los valores más recientes
-  const scheduleRef = useRef(schedule);
-  const watchedListRef = useRef(watchedList);
-  const watchLaterRef = useRef(watchLater);
-  scheduleRef.current = schedule;
-  watchedListRef.current = watchedList;
-  watchLaterRef.current = watchLater;
+  // Refs para que saveToCloud siempre lea los valores más recientes.
+  const dataRef = useRef({ schedule, watchedList, watchLater, customLists });
+  useEffect(() => {
+    dataRef.current = { schedule, watchedList, watchLater, customLists };
+  }, [schedule, watchedList, watchLater, customLists]);
 
-  const saveToCloud = async (uid) => {
+  const saveToCloud = useCallback(async (uid) => {
     if (!firebaseDb || !db || !uid) return;
     setSyncing(true);
     try {
+      const latest = dataRef.current;
       await firebaseDb.setDoc(firebaseDb.doc(db, 'users', uid), {
-        schedule: JSON.stringify(scheduleRef.current),
-        watchedList: JSON.stringify(watchedListRef.current),
-        watchLater: JSON.stringify(watchLaterRef.current),
-        updatedAt: new Date().toISOString()
-      });
+        schemaVersion: 2,
+        schedule: latest.schedule,
+        watchedList: latest.watchedList,
+        watchLater: latest.watchLater,
+        customLists: latest.customLists,
+        updatedAt: firebaseDb.serverTimestamp(),
+        updatedAtIso: new Date().toISOString(),
+      }, { merge: true });
     } catch (e) { console.error('Save error:', e); }
     setSyncing(false);
-  };
+  }, []);
 
-  const loadFromCloud = async (uid) => {
+  const loadFromCloud = useCallback(async (uid) => {
     if (!firebaseDb || !db || !uid) return;
     // Set the flag BEFORE the async getDoc to prevent the auto-sync effect
     // from saving stale/empty local data to cloud while we're loading.
@@ -75,9 +87,11 @@ export function useFirebase(schedule, watchedList, watchLater, setSchedule, setW
       if (snap.exists()) {
         const data = snap.data();
         loadVersion.current++;
-        if (data.schedule) setSchedule(JSON.parse(data.schedule));
-        if (data.watchedList) setWatchedList(JSON.parse(data.watchedList));
-        if (data.watchLater) setWatchLater(JSON.parse(data.watchLater));
+        savedLoadVersion.current = loadVersion.current;
+        if (data.schedule) setSchedule(parseCloudField(data.schedule, {}));
+        if (data.watchedList) setWatchedList(parseCloudField(data.watchedList, []));
+        if (data.watchLater) setWatchLater(parseCloudField(data.watchLater, []));
+        if (data.customLists) setCustomLists(parseCloudField(data.customLists, []));
         // Use queueMicrotask to flip the flag after React has processed the batched state updates
         queueMicrotask(() => { isLoadingFromCloud.current = false; });
       } else {
@@ -88,7 +102,7 @@ export function useFirebase(schedule, watchedList, watchLater, setSchedule, setW
       isLoadingFromCloud.current = false;
     }
     setSyncing(false);
-  };
+  }, [setSchedule, setWatchedList, setWatchLater, setCustomLists]);
 
   // Inicializar Auth
   useEffect(() => {
@@ -124,7 +138,7 @@ export function useFirebase(schedule, watchedList, watchLater, setSchedule, setW
       if (unsubscribe) unsubscribe();
       if (syncTimer.current) { clearTimeout(syncTimer.current); syncTimer.current = null; }
     };
-  }, []);
+  }, [loadFromCloud]);
 
   // Auto-sync
   useEffect(() => {
@@ -146,7 +160,7 @@ export function useFirebase(schedule, watchedList, watchLater, setSchedule, setW
     syncTimer.current = setTimeout(() => {
       if (!isLoadingFromCloud.current) saveToCloud(user.uid);
     }, 2000);
-  }, [schedule, watchedList, watchLater, user]);
+  }, [schedule, watchedList, watchLater, customLists, user, saveToCloud]);
 
   const loginWithGoogle = async () => {
     if (!FIREBASE_ENABLED) { alert('Firebase no está configurado.'); return; }
@@ -166,13 +180,13 @@ export function useFirebase(schedule, watchedList, watchLater, setSchedule, setW
     // Browser (including mobile Safari): use popup — redirect fails in iOS Safari due to
     // ITP (Intelligent Tracking Prevention) dropping the auth state after navigation.
     if (isStandalone) {
-      try { await firebaseAuth.signInWithRedirect(auth, provider); } catch (_) {}
+      try { await firebaseAuth.signInWithRedirect(auth, provider); } catch { /* Auth fallback is best-effort. */ }
     } else {
       try {
         await firebaseAuth.signInWithPopup(auth, provider);
       } catch (e) {
         if (e.code === 'auth/popup-blocked' || e.code === 'auth/popup-closed-by-user') {
-          try { await firebaseAuth.signInWithRedirect(auth, provider); } catch (_) {}
+          try { await firebaseAuth.signInWithRedirect(auth, provider); } catch { /* Auth fallback is best-effort. */ }
         }
       }
     }

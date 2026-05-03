@@ -19,6 +19,8 @@ export function toAnime(a) {
   return normalizeAnime({
     id: parseInt(a.id, 10) + 100000,
     source: 'Kitsu',
+    sourceId: a.id,
+    sourceKey: `kitsu:${a.id}`,
     title,
     titleOriginal: at.canonicalTitle || '',
     titleJp,

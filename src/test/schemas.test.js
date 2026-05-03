@@ -23,6 +23,16 @@ describe('normalizeAnime', () => {
     expect(a.userRating).toBe(0);
     expect(a.notes).toBe('');
     expect(a.watchLink).toBe('');
+    expect(a.sourceId).toBe('1');
+    expect(a.sourceKey).toBe('');
+    expect(a.malId).toBeNull();
+  });
+
+  it('preserves stable source metadata', () => {
+    const a = normalizeAnime({ id: 300005, source: 'AniList', sourceId: 5, sourceKey: 'anilist:5', malId: 200, title: 'Test' });
+    expect(a.sourceId).toBe('5');
+    expect(a.sourceKey).toBe('anilist:5');
+    expect(a.malId).toBe(200);
   });
 
   it('coerces episode count', () => {
