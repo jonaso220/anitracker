@@ -69,23 +69,46 @@ describe('StatsPanel', () => {
     avgRating: '7.5',
     topGenres: [['Action', 10], ['Comedy', 7], ['Drama', 3]],
     allTotal: 18,
+    ratingDist: [0, 0, 0, 0, 0, 1, 2, 3, 2, 2],
+    ratedCount: 10,
   };
 
-  it('renders total count', () => {
+  it('renders summary values', () => {
     render(<StatsPanel stats={mockStats} />);
-    expect(screen.getByText('18')).toBeInTheDocument();
+    expect(screen.getByText('18')).toBeInTheDocument(); // allTotal
+    expect(screen.getByText('150')).toBeInTheDocument(); // totalEps
+    expect(screen.getByText('7.5')).toBeInTheDocument(); // avgRating
   });
 
-  it('renders stat labels', () => {
+  it('renders summary card labels', () => {
     render(<StatsPanel stats={mockStats} />);
-    expect(screen.getByText('Total animes')).toBeInTheDocument();
-    expect(screen.getByText('En semana')).toBeInTheDocument();
-    expect(screen.getByText('Completados')).toBeInTheDocument();
+    expect(screen.getByText('Total')).toBeInTheDocument();
+    expect(screen.getByText('En horario')).toBeInTheDocument();
+    expect(screen.getByText('Episodios')).toBeInTheDocument();
   });
 
-  it('renders genre bars', () => {
+  it('renders the library composition and genre charts', () => {
     render(<StatsPanel stats={mockStats} />);
+    expect(screen.getByText('Composición de tu biblioteca')).toBeInTheDocument();
+    expect(screen.getByText('Géneros favoritos')).toBeInTheDocument();
     expect(screen.getByText('Action')).toBeInTheDocument();
     expect(screen.getByText('Comedy')).toBeInTheDocument();
+  });
+
+  it('renders the rating distribution when there are ratings', () => {
+    render(<StatsPanel stats={mockStats} />);
+    expect(screen.getByText('Tus puntuaciones')).toBeInTheDocument();
+  });
+
+  it('hides charts gracefully when everything is empty', () => {
+    const emptyStats = {
+      totalSchedule: 0, totalWatched: 0, totalWatchLater: 0,
+      finished: 0, dropped: 0, totalEps: 0, avgRating: '—',
+      topGenres: [], allTotal: 0, ratingDist: [], ratedCount: 0,
+    };
+    render(<StatsPanel stats={emptyStats} />);
+    expect(screen.queryByText('Géneros favoritos')).not.toBeInTheDocument();
+    expect(screen.queryByText('Composición de tu biblioteca')).not.toBeInTheDocument();
+    expect(screen.queryByText('Tus puntuaciones')).not.toBeInTheDocument();
   });
 });

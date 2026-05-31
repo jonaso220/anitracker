@@ -17,6 +17,7 @@ export const es = {
   'header.import': 'Importar',
   'header.themeLight': 'Claro',
   'header.themeDark': 'Oscuro',
+  'header.backup': 'Copia de seguridad',
   'header.logout': 'Salir',
 
   'toast.undo': 'Deshacer',
@@ -40,6 +41,18 @@ export const es = {
   'search.partialNotice': 'Algunos resultados pueden faltar',
   'search.noResultsFor': 'Sin resultados para',
   'search.filterByName': '🔍 Filtrar por nombre...',
+
+  'stats.inSchedule': 'En horario',
+  'stats.finished': 'Terminados',
+  'stats.watched': 'Vistos',
+  'stats.pending': 'Pendientes',
+  'stats.total': 'Total',
+  'stats.avgRating': 'Rating medio',
+  'stats.episodes': 'Episodios',
+  'stats.dropped': 'Abandonados',
+  'stats.composition': 'Composición de tu biblioteca',
+  'stats.yourRatings': 'Tus puntuaciones',
+  'stats.topGenres': 'Géneros favoritos',
 };
 
 export default es;

@@ -1,0 +1,159 @@
+/* ============ BACKUP MODAL ============ */
+.backup-modal {
+  width: 100%;
+  max-width: 480px;
+  padding: 2rem;
+  border-radius: var(--radius-2xl);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-elevated-strong);
+  backdrop-filter: blur(30px) saturate(160%);
+  -webkit-backdrop-filter: blur(30px) saturate(160%);
+  box-shadow:
+    var(--shadow-xl),
+    0 0 0 1px rgba(168, 85, 247, 0.18),
+    0 0 24px rgba(168, 85, 247, 0.08);
+  position: relative;
+}
+
+.backup-title {
+  font-size: 1.4rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  margin-bottom: 1.25rem;
+  background: var(--gradient-brand);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.backup-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.backup-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.backup-section h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.backup-section p {
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.backup-section code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.82em;
+  padding: 0.05em 0.35em;
+  border-radius: var(--radius-xs);
+  background: rgba(168, 85, 247, 0.14);
+  color: var(--text-primary);
+}
+
+/* --- Buttons --- */
+.backup-btn {
+  align-self: flex-start;
+  cursor: pointer;
+  padding: 0.7rem 1.3rem;
+  font-size: 0.92rem;
+  font-weight: 700;
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  transition: all var(--transition-fast);
+}
+
+.backup-btn-primary {
+  background: var(--gradient-brand);
+  color: #fff;
+  box-shadow: var(--shadow-glow-brand);
+}
+.backup-btn-primary:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.08);
+}
+
+.backup-btn-secondary {
+  background: var(--bg-surface);
+  border-color: var(--border-subtle);
+  color: var(--text-primary);
+}
+.backup-btn-secondary:hover {
+  background: var(--bg-surface-hover);
+  border-color: var(--border-brand);
+}
+
+/* Visually hide the native file input; the <label> is the styled trigger. */
+.backup-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.backup-error {
+  font-size: 0.85rem;
+  color: var(--color-brand-accent);
+  font-weight: 600;
+}
+
+/* --- Restore confirmation --- */
+.backup-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.backup-confirm-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.backup-summary {
+  list-style: none;
+  margin: 0;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  display: grid;
+  gap: 0.45rem;
+}
+
+.backup-summary li {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.backup-summary strong {
+  color: var(--text-primary);
+  font-weight: 800;
+}
+
+.backup-warning {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-brand-gold);
+}
+
+.backup-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 0.5rem;
+}
+.backup-footer .backup-btn { align-self: auto; }

@@ -2,13 +2,18 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 // Firebase config — these are public Firebase Web SDK keys (safe to commit).
 // Security is enforced via Firebase Security Rules, not by hiding these values.
+//
+// Values can be overridden per-environment via Vite env vars (see .env.example).
+// When a VITE_FIREBASE_* var is set it takes precedence; otherwise we fall back
+// to the shared public project below so the app works out of the box.
+const env = import.meta.env;
 const FIREBASE_CONFIG = {
-  apiKey: "AIzaSyB3AcPFUO8DMBGUdM1emaOEzGtwrZ4BQ0Y",
-  authDomain: "animetracker-47abf.firebaseapp.com",
-  projectId: "animetracker-47abf",
-  storageBucket: "animetracker-47abf.firebasestorage.app",
-  messagingSenderId: "757726364049",
-  appId: "1:757726364049:web:045a512ed19c25924f5a30"
+  apiKey: env.VITE_FIREBASE_API_KEY || "AIzaSyB3AcPFUO8DMBGUdM1emaOEzGtwrZ4BQ0Y",
+  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN || "animetracker-47abf.firebaseapp.com",
+  projectId: env.VITE_FIREBASE_PROJECT_ID || "animetracker-47abf",
+  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET || "animetracker-47abf.firebasestorage.app",
+  messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID || "757726364049",
+  appId: env.VITE_FIREBASE_APP_ID || "1:757726364049:web:045a512ed19c25924f5a30"
 };
 
 const FIREBASE_ENABLED = FIREBASE_CONFIG.apiKey !== "";

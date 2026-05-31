@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { clean, filterByLocalSearch, getFilteredWatched, parseEpisodes, hashString } from '../utils';
+import { clean, filterByLocalSearch, getFilteredWatched, parseEpisodes, hashString, buildBackup, parseBackup } from '../utils';
 
 describe('clean', () => {
   it('removes internal flags from anime object', () => {
@@ -152,5 +152,51 @@ describe('hashString', () => {
     const hash = hashString('some random string');
     expect(hash).toBeGreaterThanOrEqual(0);
     expect(hash).toBeLessThan(100000);
+  });
+});
+
+describe('buildBackup', () => {
+  it('wraps data with metadata and a deterministic timestamp', () => {
+    const data = { schedule: { Lunes: [{ id: 1 }] }, watchedList: [{ id: 2 }], watchLater: [], customLists: [] };
+    const backup = buildBackup(data, '2026-01-01T00:00:00.000Z');
+    expect(backup.app).toBe('anitracker');
+    expect(backup.schemaVersion).toBe(2);
+    expect(backup.exportedAt).toBe('2026-01-01T00:00:00.000Z');
+    expect(backup.data).toEqual(data);
+  });
+
+  it('fills missing slices with empty defaults', () => {
+    const backup = buildBackup({}, '2026-01-01T00:00:00.000Z');
+    expect(backup.data).toEqual({ schedule: {}, watchedList: [], watchLater: [], customLists: [] });
+  });
+});
+
+describe('parseBackup', () => {
+  it('round-trips a backup produced by buildBackup', () => {
+    const data = { schedule: { Lunes: [{ id: 1 }] }, watchedList: [{ id: 2 }], watchLater: [{ id: 3 }], customLists: [{ id: 4, name: 'Fav', items: [] }] };
+    const json = JSON.stringify(buildBackup(data, '2026-01-01T00:00:00.000Z'));
+    expect(parseBackup(json)).toEqual(data);
+  });
+
+  it('accepts a raw data object (no wrapper)', () => {
+    const json = JSON.stringify({ watchLater: [{ id: 9 }] });
+    expect(parseBackup(json)).toEqual({ schedule: {}, watchedList: [], watchLater: [{ id: 9 }], customLists: [] });
+  });
+
+  it('coerces invalid slice types to safe defaults', () => {
+    const json = JSON.stringify({ schedule: ['nope'], watchedList: 'nope', watchLater: null });
+    expect(parseBackup(json)).toEqual({ schedule: {}, watchedList: [], watchLater: [], customLists: [] });
+  });
+
+  it('throws on malformed JSON', () => {
+    expect(() => parseBackup('{not json')).toThrow(/JSON/);
+  });
+
+  it('throws when no AniTracker keys are present', () => {
+    expect(() => parseBackup(JSON.stringify({ foo: 'bar' }))).toThrow(/AniTracker/);
+  });
+
+  it('throws on a non-object payload', () => {
+    expect(() => parseBackup(JSON.stringify([1, 2, 3]))).toThrow();
   });
 });

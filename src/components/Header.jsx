@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 const Header = ({
   darkMode, setDarkMode,
   user, syncing, loginWithGoogle, logout, firebaseEnabled,
-  onOpenSearch, onOpenImport,
+  onOpenSearch, onOpenImport, onOpenBackup,
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
@@ -161,6 +161,14 @@ const Header = ({
                 >
                   <span aria-hidden="true">📥</span>
                   <span>Importar desde AniList</span>
+                </button>
+                <button
+                  className="user-menu-item"
+                  role="menuitem"
+                  onClick={() => { setMenuOpen(false); onOpenBackup?.(); }}
+                >
+                  <span aria-hidden="true">💾</span>
+                  <span>Copia de seguridad</span>
                 </button>
                 <div className="user-menu-divider" />
                 <button

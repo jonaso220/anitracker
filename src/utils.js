@@ -67,3 +67,51 @@ export const hashString = (str) => {
   for (let i = 0; i < str.length; i++) { hash = ((hash << 5) - hash) + str.charCodeAt(i); hash |= 0; }
   return Math.abs(hash) % 100000;
 };
+
+const BACKUP_APP_ID = 'anitracker';
+const BACKUP_SCHEMA_VERSION = 2;
+
+/**
+ * Build a portable, serializable backup object from the user's data.
+ * `now` is injectable so the result can be made deterministic in tests.
+ */
+export const buildBackup = (
+  { schedule = {}, watchedList = [], watchLater = [], customLists = [] } = {},
+  now = new Date().toISOString(),
+) => ({
+  app: BACKUP_APP_ID,
+  schemaVersion: BACKUP_SCHEMA_VERSION,
+  exportedAt: now,
+  data: { schedule, watchedList, watchLater, customLists },
+});
+
+/**
+ * Parse and validate a backup JSON string. Accepts both the wrapped shape
+ * ({ app, data: {...} }) and a raw data object ({ schedule, ... }).
+ * Returns normalized { schedule, watchedList, watchLater, customLists }.
+ * Throws an Error with a user-facing (Spanish) message on invalid input.
+ */
+export const parseBackup = (jsonString) => {
+  let parsed;
+  try {
+    parsed = JSON.parse(jsonString);
+  } catch {
+    throw new Error('El archivo no es un JSON válido.');
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('El archivo no tiene un formato reconocible.');
+  }
+  const container = (parsed.data && typeof parsed.data === 'object') ? parsed.data : parsed;
+  const keys = ['schedule', 'watchedList', 'watchLater', 'customLists'];
+  if (!keys.some((k) => k in container)) {
+    throw new Error('El archivo no contiene datos de AniTracker.');
+  }
+  const isPlainObject = (v) => v && typeof v === 'object' && !Array.isArray(v);
+  const asArray = (v) => (Array.isArray(v) ? v : []);
+  return {
+    schedule: isPlainObject(container.schedule) ? container.schedule : {},
+    watchedList: asArray(container.watchedList),
+    watchLater: asArray(container.watchLater),
+    customLists: asArray(container.customLists),
+  };
+};

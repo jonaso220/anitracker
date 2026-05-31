@@ -1,23 +1,29 @@
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import './App.css';
 
+// Eager: part of the app shell or the default tab, so always needed on first paint.
 import Header from './components/Header';
 import NavTabs from './components/NavTabs';
 import Toast from './components/Toast';
 import UpdateBanner from './components/UpdateBanner';
 import ScheduleView from './components/views/ScheduleView';
-import WatchLaterView from './components/views/WatchLaterView';
-import WatchedView from './components/views/WatchedView';
-import SeasonSection from './components/SeasonSection';
-import TopAnimeSection from './components/TopAnimeSection';
-import CustomListsTab from './components/CustomListsTab';
-import StatsPanel from './components/StatsPanel';
-import SearchModal from './components/modals/SearchModal';
-import AnimeDetailModal from './components/modals/AnimeDetailModal';
-import DayPickerModal from './components/modals/DayPickerModal';
-import MoveDayPickerModal from './components/modals/MoveDayPickerModal';
-import ImportModal from './components/modals/ImportModal';
-import BulkDayPickerModal from './components/modals/BulkDayPickerModal';
+
+// Lazy: non-default tabs and modals are only fetched the first time they're
+// opened, keeping the initial JS bundle small. (Firebase is already code-split
+// inside useFirebase.)
+const WatchLaterView = lazy(() => import('./components/views/WatchLaterView'));
+const WatchedView = lazy(() => import('./components/views/WatchedView'));
+const SeasonSection = lazy(() => import('./components/SeasonSection'));
+const TopAnimeSection = lazy(() => import('./components/TopAnimeSection'));
+const CustomListsTab = lazy(() => import('./components/CustomListsTab'));
+const StatsPanel = lazy(() => import('./components/StatsPanel'));
+const SearchModal = lazy(() => import('./components/modals/SearchModal'));
+const AnimeDetailModal = lazy(() => import('./components/modals/AnimeDetailModal'));
+const DayPickerModal = lazy(() => import('./components/modals/DayPickerModal'));
+const MoveDayPickerModal = lazy(() => import('./components/modals/MoveDayPickerModal'));
+const ImportModal = lazy(() => import('./components/modals/ImportModal'));
+const BulkDayPickerModal = lazy(() => import('./components/modals/BulkDayPickerModal'));
+const BackupModal = lazy(() => import('./components/modals/BackupModal'));
 
 import { useFirebase } from './hooks/useFirebase';
 import { useAnimeData } from './hooks/useAnimeData';
@@ -30,6 +36,7 @@ import { useBulkActions } from './hooks/useBulkActions';
 import { useDiscovery } from './hooks/useDiscovery';
 import { useServiceWorkerUpdate } from './hooks/useServiceWorkerUpdate';
 import { daysOfWeek } from './constants';
+import { buildBackup } from './utils';
 
 const EMPTY_SCHEDULE = { 'Lunes': [], 'Martes': [], 'Miércoles': [], 'Jueves': [], 'Viernes': [], 'Sábado': [], 'Domingo': [] };
 
@@ -41,6 +48,7 @@ export default function AnimeTracker() {
   const [showDayPicker, setShowDayPicker] = useState(null);
   const [showMoveDayPicker, setShowMoveDayPicker] = useState(null);
   const [showImport, setShowImport] = useState(false);
+  const [showBackup, setShowBackup] = useState(false);
   const [showBulkDayPicker, setShowBulkDayPicker] = useState(false);
   const [watchedFilter, setWatchedFilter] = useState('all');
   const [watchedSort, setWatchedSort] = useState('date');
@@ -100,6 +108,29 @@ export default function AnimeTracker() {
     if (tab === 'top') discovery.loadTop();
   };
 
+  // --- Backup (export / restore) ---
+  const exportData = () => {
+    const backup = buildBackup({ schedule, watchedList, watchLater, customLists });
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `anitracker-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('Copia descargada');
+  };
+
+  const restoreBackup = (data) => {
+    setSchedule({ ...EMPTY_SCHEDULE, ...data.schedule });
+    setWatchedList(data.watchedList);
+    setWatchLater(data.watchLater);
+    setCustomLists(data.customLists);
+    showToast('Datos restaurados');
+  };
+
   // Apply dark/light class to the body for CSS custom properties
   useEffect(() => {
     document.documentElement.dataset.theme = darkMode ? 'dark' : 'light';
@@ -112,6 +143,12 @@ export default function AnimeTracker() {
     const genreCount = {};
     allAnime.forEach((a) => (a.genres || []).forEach((g) => { genreCount[g] = (genreCount[g] || 0) + 1; }));
     const rated = allAnime.filter((a) => a.userRating > 0);
+    // ratingDist[i] = number of anime whose userRating rounds to (i + 1), i.e. ratings 1..10
+    const ratingDist = Array.from({ length: 10 }, () => 0);
+    rated.forEach((a) => {
+      const r = Math.round(a.userRating);
+      if (r >= 1 && r <= 10) ratingDist[r - 1] += 1;
+    });
     return {
       totalSchedule: allSchedule.length,
       totalWatched: watchedList.length,
@@ -122,6 +159,8 @@ export default function AnimeTracker() {
       avgRating: rated.length > 0 ? (rated.reduce((s, a) => s + a.userRating, 0) / rated.length).toFixed(1) : '—',
       topGenres: Object.entries(genreCount).sort((a, b) => b[1] - a[1]).slice(0, 8),
       allTotal: allAnime.length,
+      ratingDist,
+      ratedCount: rated.length,
     };
   }, [schedule, watchedList, watchLater]);
 
@@ -131,6 +170,7 @@ export default function AnimeTracker() {
         darkMode={darkMode} setDarkMode={setDarkMode}
         user={user} syncing={syncing} loginWithGoogle={loginWithGoogle} logout={logout} firebaseEnabled={FIREBASE_ENABLED}
         onOpenSearch={() => setShowSearch(true)} onOpenImport={() => setShowImport(true)}
+        onOpenBackup={() => setShowBackup(true)}
       />
 
       <NavTabs
@@ -140,6 +180,7 @@ export default function AnimeTracker() {
       />
 
       <main className="main-content" id="main-content" role="main">
+        <Suspense fallback={<div className="route-loading" role="status" aria-live="polite">Cargando…</div>}>
         {activeTab === 'schedule' && (
           <ScheduleView
             schedule={schedule} airingData={airingData} setShowAnimeDetail={setShowAnimeDetail}
@@ -214,11 +255,13 @@ export default function AnimeTracker() {
         )}
 
         {activeTab === 'stats' && <StatsPanel stats={stats} />}
+        </Suspense>
       </main>
 
       <Toast toast={toast} onUndo={undoToast} onDismiss={dismissToast} />
       <UpdateBanner visible={updateAvailable} onUpdate={applyUpdate} />
 
+      <Suspense fallback={null}>
       {showSearch && (
         <SearchModal
           setShowSearch={setShowSearch}
@@ -270,6 +313,14 @@ export default function AnimeTracker() {
         <ImportModal onClose={() => setShowImport(false)} onImport={actions.handleImport} />
       )}
 
+      {showBackup && (
+        <BackupModal
+          onClose={() => setShowBackup(false)}
+          onExport={exportData}
+          onRestore={restoreBackup}
+        />
+      )}
+
       {showBulkDayPicker && (
         <BulkDayPickerModal
           count={bulk.bulkSelected.size}
@@ -280,6 +331,7 @@ export default function AnimeTracker() {
           onClose={() => setShowBulkDayPicker(false)}
         />
       )}
+      </Suspense>
     </div>
   );
 }
