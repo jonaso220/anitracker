@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v5';
+const CACHE_VERSION = 'v6';
 const STATIC_CACHE = `anitracker-static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `anitracker-runtime-${CACHE_VERSION}`;
 const IMAGE_CACHE = `anitracker-images-${CACHE_VERSION}`;
@@ -29,6 +29,7 @@ const NO_CACHE_HOSTS = [
   'securetoken.googleapis.com',
 ];
 
+// Image hosts for optimized caching
 const IMAGE_HOSTS = [
   'cdn.myanimelist.net',
   'media.kitsu.app',
