@@ -236,6 +236,24 @@
 @keyframes airingPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.82; } }
 .anime-card.has-airing .anime-card-overlay { padding-bottom: 1.7rem; }
 
+/* Next-episode day for non-urgent airing (further out than mañana): hover-only */
+.anime-card-airing.airing-later {
+  background: var(--gradient-brand);
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
+  pointer-events: none;
+}
+.anime-card:hover .anime-card-airing.airing-later,
+.anime-card:focus-within .anime-card-airing.airing-later {
+  opacity: 1;
+  transform: translateY(0);
+}
+.anime-card.has-airing-later:hover .anime-card-overlay,
+.anime-card.has-airing-later:focus-within .anime-card-overlay {
+  padding-bottom: 1.7rem;
+}
+
 /* Title + genres overlay (always visible, gradient bg for legibility) */
 .anime-card-overlay {
   position: absolute;

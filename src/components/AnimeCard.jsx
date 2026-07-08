@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import StarRating from './StarRating';
 import { sanitizeUrl } from '../constants';
-import { getPlatformInfo, pickAutoWatchLink } from '../utils';
+import { getPlatformInfo, pickAutoWatchLink, formatAiringWhen } from '../utils';
 
 // Derive a status used for the colored left border.
 const getCardStatus = ({ anime, isWatched, airing, ep, total }) => {
@@ -44,6 +44,12 @@ const AnimeCard = ({
     airing.isTomorrow ? `📢 Ep. ${airing.episode} mañana` : null
   ) : null;
 
+  // Episodes further out than tomorrow get a hover-only strip with the airing
+  // day (the urgent cases above already have their always-visible badge).
+  const airingHoverText = airing && !airingBadge
+    ? `📡 Ep. ${airing.episode} · ${formatAiringWhen(airing)}`
+    : null;
+
   const handleImgError = (e) => {
     e.target.style.display = 'none';
     const fallback = e.target.nextSibling;
@@ -71,7 +77,7 @@ const AnimeCard = ({
 
   return (
     <div
-      className={`anime-card fade-in status-${status} ${airingBadge ? 'has-airing' : ''} ${isDraggable ? 'draggable' : ''} ${isHighRated ? 'high-rated' : ''}`}
+      className={`anime-card fade-in status-${status} ${airingBadge ? 'has-airing' : ''} ${airingHoverText ? 'has-airing-later' : ''} ${isDraggable ? 'draggable' : ''} ${isHighRated ? 'high-rated' : ''}`}
       onClick={(e) => onClick && onClick(e, anime, day, isWatchLater, isWatched)}
       draggable={isDraggable}
       onDragStart={isDraggable && onDragStart ? (e) => onDragStart(e, anime, day) : undefined}
@@ -138,6 +144,9 @@ const AnimeCard = ({
         {/* Airing pulse */}
         {airingBadge && (
           <div className={`anime-card-airing ${airingBadge}`}>{airingText}</div>
+        )}
+        {airingHoverText && (
+          <div className="anime-card-airing airing-later">{airingHoverText}</div>
         )}
 
         {/* Bottom: title + genre overlay */}

@@ -47,6 +47,34 @@ export const pickAutoWatchLink = (anime) => {
 };
 
 /**
+ * Human-friendly "when does the next episode air" label, in Spanish:
+ * '¡Ya disponible!', 'En 2h 15m', 'Mañana', or the weekday name ('Sábado').
+ */
+export const formatAiringWhen = (airing) => {
+  if (!airing) return '';
+  if (airing.hasAired) return '¡Ya disponible!';
+  if (airing.isToday) {
+    const hours = Math.floor(airing.timeUntilAiring / 3600);
+    const mins = Math.floor((airing.timeUntilAiring % 3600) / 60);
+    return hours > 0 ? `En ${hours}h ${mins}m` : `En ${mins}m`;
+  }
+  if (airing.isTomorrow) return 'Mañana';
+  const dayNames = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+  return dayNames[new Date(airing.airingAt * 1000).getDay()];
+};
+
+/**
+ * Full air date of the next episode ('Sábado, 12 de julio, 14:30').
+ * `airingAt` is a unix timestamp in seconds (AniList format).
+ */
+export const formatAiringDate = (airingAt) => {
+  const d = new Date(airingAt * 1000);
+  const date = d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+  const time = d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+  return `${date.charAt(0).toUpperCase()}${date.slice(1)}, ${time}`;
+};
+
+/**
  * Filter a list of anime by local search query (accent-insensitive, case-insensitive).
  */
 export const filterByLocalSearch = (list, localSearch) => {

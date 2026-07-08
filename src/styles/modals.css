@@ -450,6 +450,16 @@
 .detail-airing-ep { font-weight: 700; font-size: 0.95rem; }
 .detail-airing-date { opacity: 0.7; font-size: 0.8rem; }
 
+/* Next-episode air date inside "Episodio actual" */
+.detail-next-ep {
+  margin-top: 0.6rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  text-align: center;
+}
+.detail-next-ep.aired { color: #22c55e; font-weight: 600; }
+.detail-next-ep.today { color: var(--color-airing-today); font-weight: 600; }
+
 /* Episode controls */
 .episode-controls {
   display: flex;

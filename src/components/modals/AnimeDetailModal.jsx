@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import StarRating from '../StarRating';
 import { sanitizeUrl, pruneTranslationCache } from '../../constants';
 import { translateEnToEs } from '../../services/translationService';
-import { getPlatformInfo } from '../../utils';
+import { getPlatformInfo, formatAiringDate } from '../../utils';
 import { fetchTmdbExtras, parseTmdbKey, TMDB_ENABLED, TMDB_REGIONS, getPreferredRegion, setPreferredRegion } from '../../services/tmdbService';
 
 const ProviderRow = ({ label, items, link }) => (
@@ -180,12 +180,13 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                     : <p>{translatedSynopsis || a.synopsis || 'Sin sinopsis.'}</p>}
                 </div>
 
-                {airing && (
+                {/* For schedule items this info lives inside "Episodio actual" below. */}
+                {airing && !isSchedule && (
                     <div className={`detail-section detail-airing ${airing.hasAired ? 'aired' : airing.isToday ? 'today' : ''}`}>
                         <h4>{airing.hasAired ? '🆕 ¡Episodio disponible!' : airing.isToday ? '🔴 Sale hoy' : airing.isTomorrow ? '📢 Sale mañana' : '📡 Próximamente'}</h4>
                         <div className="detail-airing-info">
                             <span className="detail-airing-ep">Episodio {airing.episode}</span>
-                            <span className="detail-airing-date">{new Date(airing.airingAt * 1000).toLocaleString()}</span>
+                            <span className="detail-airing-date">{formatAiringDate(airing.airingAt)}</span>
                         </div>
                     </div>
                 )}
@@ -250,6 +251,13 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                             <span className="ep-number">{localEp}</span>
                             <button className="ep-control-btn" onClick={() => { updateEpisode(a.id, 1); setLocalEp(p => p + 1); }}>+</button>
                         </div>
+                        {airing && (
+                            <p className={`detail-next-ep ${airing.hasAired ? 'aired' : airing.isToday ? 'today' : ''}`}>
+                                {airing.hasAired
+                                    ? <>🆕 Episodio {airing.episode}: ¡ya disponible!</>
+                                    : <>📅 Próximo episodio ({airing.episode}): {formatAiringDate(airing.airingAt)}</>}
+                            </p>
+                        )}
                         {bingeMode && (
                             <div className="binge-panel fade-in">
                                 <div className="binge-quick-btns">
