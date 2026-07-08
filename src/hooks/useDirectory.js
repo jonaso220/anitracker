@@ -13,6 +13,29 @@ export const DIRECTORY_DEFAULT_FILTERS = {
 };
 
 const SEARCH_DEBOUNCE_MS = 450;
+const FILTERS_STORAGE_KEY = 'anitracker-directory-filters';
+
+// Los filtros elegidos persisten entre sesiones; el texto de búsqueda no
+// (una búsqueda vieja al reabrir la app confunde más de lo que ayuda).
+function readStoredFilters() {
+  const filters = { ...DIRECTORY_DEFAULT_FILTERS };
+  try {
+    const parsed = JSON.parse(localStorage.getItem(FILTERS_STORAGE_KEY));
+    for (const key of Object.keys(filters)) {
+      if (key !== 'search' && typeof parsed?.[key] === 'string') filters[key] = parsed[key];
+    }
+    if (!filters.sort) filters.sort = DIRECTORY_DEFAULT_FILTERS.sort;
+  } catch { /* empty */ }
+  return filters;
+}
+
+function writeStoredFilters(filters) {
+  try {
+    const rest = { ...filters };
+    delete rest.search;
+    localStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify(rest));
+  } catch { /* empty */ }
+}
 
 /**
  * Catálogo navegable ("Directorio"): una página de resultados que crece con
@@ -20,7 +43,7 @@ const SEARCH_DEBOUNCE_MS = 450;
  * se debouncea; el resto de los filtros dispara el fetch al instante.
  */
 export function useDirectory() {
-  const [filters, setFilters] = useState(DIRECTORY_DEFAULT_FILTERS);
+  const [filters, setFilters] = useState(readStoredFilters);
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -65,6 +88,7 @@ export function useDirectory() {
   const applyFilters = useCallback((next, { debounce = false } = {}) => {
     filtersRef.current = next;
     setFilters(next);
+    writeStoredFilters(next);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (debounce) {
       debounceRef.current = setTimeout(() => fetchPage(next, 1, false), SEARCH_DEBOUNCE_MS);

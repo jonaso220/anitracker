@@ -1,6 +1,8 @@
 import React, { useMemo } from 'react';
 import { daysOfWeek } from '../constants';
 import DiscoveryCard from './DiscoveryCard';
+import DirectoryListRow from './DirectoryListRow';
+import { usePersistedState } from '../hooks/usePersistedState';
 import { t } from '../i18n';
 
 // Valores tal como los espera AniList; etiquetas en español para la UI.
@@ -44,6 +46,7 @@ const FilterSelect = ({ id, label, value, options, allLabel, onChange }) => (
 
 const DirectorySection = ({ directory, schedule, watchedList, watchLater, setShowDayPicker, addToWatchLater, markAsWatched, onDetail }) => {
   const { filters, results, loading, loadingMore, hasNextPage, updateFilter, resetFilters, loadMore } = directory;
+  const [viewMode, setViewMode] = usePersistedState('anitracker-directory-view', 'grid');
 
   const allUserIds = useMemo(() => new Set([
     ...daysOfWeek.flatMap(d => (schedule[d] || []).map(a => a.id)),
@@ -61,14 +64,32 @@ const DirectorySection = ({ directory, schedule, watchedList, watchLater, setSho
       </div>
 
       <div className="directory-filters">
-        <input
-          type="search"
-          className="directory-search"
-          placeholder={t('directory.searchPlaceholder', '🔍 Filtrar anime...')}
-          value={filters.search}
-          onChange={(e) => updateFilter('search', e.target.value)}
-          aria-label={t('directory.searchPlaceholder', 'Filtrar anime')}
-        />
+        <div className="directory-toolbar">
+          <input
+            type="search"
+            className="directory-search"
+            placeholder={t('directory.searchPlaceholder', '🔍 Filtrar anime...')}
+            value={filters.search}
+            onChange={(e) => updateFilter('search', e.target.value)}
+            aria-label={t('directory.searchPlaceholder', 'Filtrar anime')}
+          />
+          <div className="directory-view-toggle" role="group" aria-label="Modo de vista">
+            <button
+              className={`directory-view-btn ${viewMode === 'grid' ? 'active' : ''}`}
+              onClick={() => setViewMode('grid')}
+              aria-pressed={viewMode === 'grid'}
+              title={t('directory.viewGrid', 'Vista de cuadrícula')}
+              aria-label={t('directory.viewGrid', 'Vista de cuadrícula')}
+            >⊞</button>
+            <button
+              className={`directory-view-btn ${viewMode === 'list' ? 'active' : ''}`}
+              onClick={() => setViewMode('list')}
+              aria-pressed={viewMode === 'list'}
+              title={t('directory.viewList', 'Vista de lista')}
+              aria-label={t('directory.viewList', 'Vista de lista')}
+            >☰</button>
+          </div>
+        </div>
         <div className="directory-selects">
           <FilterSelect id="dir-genre" label={t('directory.genre', 'Género')} value={filters.genre} options={GENRES} allLabel="Todos" onChange={(v) => updateFilter('genre', v)} />
           <FilterSelect id="dir-demography" label={t('directory.demography', 'Demografía')} value={filters.demography} options={DEMOGRAPHIES} allLabel="Todas" onChange={(v) => updateFilter('demography', v)} />
@@ -100,19 +121,35 @@ const DirectorySection = ({ directory, schedule, watchedList, watchLater, setSho
         </div>
       ) : results.length > 0 ? (
         <>
-          <div className="season-grid stagger-in">
-            {results.map(anime => (
-              <DiscoveryCard
-                key={anime.id}
-                anime={anime}
-                alreadyAdded={allUserIds.has(anime.id)}
-                onDetail={onDetail}
-                onAddToSchedule={setShowDayPicker}
-                onAddToWatchLater={addToWatchLater}
-                onMarkWatched={markAsWatched}
-              />
-            ))}
-          </div>
+          {viewMode === 'list' ? (
+            <div className="directory-list stagger-in">
+              {results.map(anime => (
+                <DirectoryListRow
+                  key={anime.id}
+                  anime={anime}
+                  alreadyAdded={allUserIds.has(anime.id)}
+                  onDetail={onDetail}
+                  onAddToSchedule={setShowDayPicker}
+                  onAddToWatchLater={addToWatchLater}
+                  onMarkWatched={markAsWatched}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="season-grid stagger-in">
+              {results.map(anime => (
+                <DiscoveryCard
+                  key={anime.id}
+                  anime={anime}
+                  alreadyAdded={allUserIds.has(anime.id)}
+                  onDetail={onDetail}
+                  onAddToSchedule={setShowDayPicker}
+                  onAddToWatchLater={addToWatchLater}
+                  onMarkWatched={markAsWatched}
+                />
+              ))}
+            </div>
+          )}
           {hasNextPage && (
             <button className="directory-load-more" onClick={loadMore} disabled={loadingMore}>
               {loadingMore ? t('directory.loading', 'Cargando…') : t('directory.loadMore', 'Cargar más')}

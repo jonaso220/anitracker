@@ -12,8 +12,44 @@
   -webkit-backdrop-filter: blur(10px);
 }
 
+.directory-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.directory-view-toggle {
+  display: flex;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+.directory-view-btn {
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.directory-view-btn:hover {
+  border-color: var(--border-brand);
+  color: var(--text-primary);
+}
+.directory-view-btn.active {
+  background: var(--gradient-brand);
+  border-color: transparent;
+  color: #fff;
+}
+
 .directory-search {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   padding: 0.6rem 0.9rem;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-subtle);
@@ -80,6 +116,150 @@
   background: var(--gradient-brand);
   color: #fff;
   border-color: transparent;
+}
+
+/* ---- Vista de lista ---- */
+.directory-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.directory-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.8rem;
+  padding: 0.6rem;
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  cursor: pointer;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+.directory-row:hover {
+  border-color: var(--border-brand);
+  background: var(--bg-surface-hover);
+}
+
+.directory-row-thumb {
+  position: relative;
+  flex-shrink: 0;
+  width: 58px;
+  aspect-ratio: 3 / 4;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.1), rgba(78, 205, 196, 0.1));
+}
+.directory-row-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.directory-row-thumb .img-fallback {
+  position: absolute;
+  inset: 0;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: var(--text-muted);
+}
+
+.directory-row-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  justify-content: center;
+}
+.directory-row-title-line {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.directory-row-title {
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.directory-row-score {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+.directory-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.directory-row-meta span {
+  font-size: 0.62rem;
+  font-weight: 600;
+  padding: 0.12rem 0.45rem;
+  border-radius: var(--radius-pill);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.directory-row-meta span.genre {
+  background: var(--gradient-brand-soft);
+  border-color: var(--border-brand);
+}
+.directory-row-synopsis {
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--text-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.directory-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+.directory-row-actions .add-btn {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.directory-row-actions .schedule-btn:hover { background: rgba(168, 85, 247, 0.85); border-color: rgba(168, 85, 247, 0.6); color: #fff; }
+.directory-row-actions .later-btn:hover    { background: rgba(59, 130, 246, 0.85); border-color: rgba(59, 130, 246, 0.6); color: #fff; }
+.directory-row-actions .watched-btn:hover  { background: rgba(34, 197, 94, 0.85); border-color: rgba(34, 197, 94, 0.6); color: #fff; }
+.directory-row-added {
+  font-size: 0.68rem;
+  font-weight: 800;
+  padding: 0.25rem 0.6rem;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.95), rgba(16, 185, 129, 0.92));
+  color: #fff;
+  white-space: nowrap;
+}
+
+@media (max-width: 560px) {
+  .directory-row-synopsis { display: none; }
+  .directory-row-meta span.genre { display: none; }
 }
 
 .directory-load-more {

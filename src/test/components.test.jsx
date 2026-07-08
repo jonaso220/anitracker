@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import AnimeCard from '../components/AnimeCard';
 import StatsPanel from '../components/StatsPanel';
@@ -164,6 +164,7 @@ describe('SeasonSection', () => {
 });
 
 describe('DirectorySection', () => {
+  beforeEach(() => { localStorage.clear(); });
   const noop = () => {};
   const makeDirectory = (over = {}) => ({
     filters: { search: '', genre: '', demography: '', format: '', status: '', year: '', season: '', sort: 'POPULARITY_DESC' },
@@ -193,6 +194,19 @@ describe('DirectorySection', () => {
     expect(directory.updateFilter).toHaveBeenCalledWith('genre', 'Action');
     fireEvent.click(screen.getByText('Cargar más'));
     expect(directory.loadMore).toHaveBeenCalled();
+  });
+
+  it('toggles to list view with rows and remembers the choice', () => {
+    const directory = makeDirectory({ results: [{ id: 1, title: 'Dir Show', image: '', genres: ['Action'], rating: 8, synopsis: 'Una sinopsis.', type: 'TV', year: '2020' }] });
+    const { container } = render(<DirectorySection {...baseProps} directory={directory} />);
+    expect(container.querySelector('.season-grid')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText('Vista de lista'));
+    expect(container.querySelector('.season-grid')).not.toBeInTheDocument();
+    expect(container.querySelector('.directory-list')).toBeInTheDocument();
+    expect(screen.getByText('Dir Show')).toBeInTheDocument();
+    expect(screen.getByText('Una sinopsis.')).toBeInTheDocument();
+    expect(JSON.parse(localStorage.getItem('anitracker-directory-view'))).toBe('list');
   });
 
   it('shows the clear button only with active filters and empty state without results', () => {
