@@ -15,6 +15,7 @@ const WatchLaterView = lazy(() => import('./components/views/WatchLaterView'));
 const WatchedView = lazy(() => import('./components/views/WatchedView'));
 const SeasonSection = lazy(() => import('./components/SeasonSection'));
 const TopAnimeSection = lazy(() => import('./components/TopAnimeSection'));
+const DirectorySection = lazy(() => import('./components/DirectorySection'));
 const CustomListsTab = lazy(() => import('./components/CustomListsTab'));
 const StatsPanel = lazy(() => import('./components/StatsPanel'));
 const SearchModal = lazy(() => import('./components/modals/SearchModal'));
@@ -34,6 +35,7 @@ import { useBulkMode } from './hooks/useBulkMode';
 import { useAnimeActions } from './hooks/useAnimeActions';
 import { useBulkActions } from './hooks/useBulkActions';
 import { useDiscovery } from './hooks/useDiscovery';
+import { useDirectory } from './hooks/useDirectory';
 import { useServiceWorkerUpdate } from './hooks/useServiceWorkerUpdate';
 import { daysOfWeek } from './constants';
 import { buildBackup } from './utils';
@@ -79,6 +81,7 @@ export default function AnimeTracker() {
   const bulk = useBulkMode();
   const { updateAvailable, applyUpdate } = useServiceWorkerUpdate();
   const discovery = useDiscovery();
+  const directory = useDirectory();
 
   const actions = useAnimeActions({
     schedule, setSchedule, scheduleRef,
@@ -106,6 +109,7 @@ export default function AnimeTracker() {
     bulk.exitBulkMode();
     if (tab === 'season') discovery.loadSeasonCurrent();
     if (tab === 'top') discovery.loadTop();
+    if (tab === 'directory') directory.loadInitial();
   };
 
   // --- Backup (export / restore) ---
@@ -240,6 +244,17 @@ export default function AnimeTracker() {
             addToWatchLater={actions.addToWatchLater}
             markAsWatched={actions.markAsWatched}
             onDetail={(a) => setShowAnimeDetail({ ...a, _isWatchLater: false, _isWatched: false, _isSeason: true })}
+          />
+        )}
+
+        {activeTab === 'directory' && (
+          <DirectorySection
+            directory={directory}
+            schedule={schedule} watchedList={watchedList} watchLater={watchLater}
+            setShowDayPicker={setShowDayPicker}
+            addToWatchLater={actions.addToWatchLater}
+            markAsWatched={actions.markAsWatched}
+            onDetail={(a) => setShowAnimeDetail({ ...a, _isWatchLater: false, _isWatched: false, _isSeason: false, _isTop: true })}
           />
         )}
 

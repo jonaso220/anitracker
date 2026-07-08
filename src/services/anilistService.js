@@ -77,6 +77,38 @@ async function fetchAllMediaPages(gql, variables, { signal, maxPages = 4, perPag
   return media;
 }
 
+const DIRECTORY_QUERY = `query ($page: Int, $perPage: Int, $search: String, $genre: String, $tag: String, $format: MediaFormat, $status: MediaStatus, $season: MediaSeason, $seasonYear: Int, $sort: [MediaSort]) {
+    Page(page: $page, perPage: $perPage) {
+      pageInfo { hasNextPage }
+      media(type: ANIME, isAdult: false, search: $search, genre: $genre, tag: $tag, format: $format, status: $status, season: $season, seasonYear: $seasonYear, sort: $sort) {
+        ${DISCOVERY_MEDIA_FIELDS}
+      }
+    }
+  }`;
+
+/**
+ * Browse the full AniList catalog with optional filters. Unset filters are
+ * omitted from the variables object, which GraphQL treats as "argument not
+ * provided" (no filtering). Returns one page plus a has-more flag.
+ */
+export async function fetchDirectory(filters = {}, { signal, page = 1, perPage = 30 } = {}) {
+  const variables = { page, perPage, sort: [filters.sort || 'POPULARITY_DESC'] };
+  if (filters.search?.trim()) variables.search = filters.search.trim();
+  if (filters.genre) variables.genre = filters.genre;
+  if (filters.demography) variables.tag = filters.demography;
+  if (filters.format) variables.format = filters.format;
+  if (filters.status) variables.status = filters.status;
+  if (filters.season) variables.season = filters.season;
+  if (filters.year) variables.seasonYear = Number(filters.year);
+
+  const data = await anilistFetch(DIRECTORY_QUERY, variables, { signal });
+  const pageData = data?.data?.Page;
+  return {
+    results: (pageData?.media || []).map((m) => toAnime(m)).filter(Boolean),
+    hasNextPage: !!pageData?.pageInfo?.hasNextPage,
+  };
+}
+
 /**
  * Latest aired episode per media within a recent window, keyed by AniList id.
  * Uses the airingSchedules feed sorted by time desc, so the first hit per

@@ -10,6 +10,7 @@ export const es = {
   'nav.watched': 'Vistas',
   'nav.lists': 'Listas',
   'nav.season': 'Temporada',
+  'nav.directory': 'Directorio',
   'nav.top': 'Top',
   'nav.stats': 'Stats',
 
@@ -44,6 +45,19 @@ export const es = {
   'season.premiere': 'Estreno',
   'season.continuing': 'Continúa',
   'season.emptyDay': 'Ningún anime se emite este día',
+
+  'directory.searchPlaceholder': '🔍 Filtrar anime...',
+  'directory.genre': 'Género',
+  'directory.demography': 'Demografía',
+  'directory.format': 'Tipo',
+  'directory.status': 'Estado',
+  'directory.year': 'Año',
+  'directory.season': 'Temporada',
+  'directory.sort': 'Ordenar por',
+  'directory.clear': 'Limpiar filtros',
+  'directory.loadMore': 'Cargar más',
+  'directory.loading': 'Cargando…',
+  'directory.empty': 'Sin resultados con esos filtros',
 
   'search.placeholder': 'Buscar anime o serie...',
   'search.partialNotice': 'Algunos resultados pueden faltar',

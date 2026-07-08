@@ -1,9 +1,10 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import AnimeCard from '../components/AnimeCard';
 import StatsPanel from '../components/StatsPanel';
 import DiscoveryCard from '../components/DiscoveryCard';
 import SeasonSection from '../components/SeasonSection';
+import DirectorySection from '../components/DirectorySection';
 
 const mockAnime = {
   id: 1,
@@ -159,6 +160,51 @@ describe('SeasonSection', () => {
     render(<SeasonSection {...baseProps} seasonAnime={[{ id: 3, title: 'Old Show', image: '', genres: [], rating: 7 }]} selectedSeason={{ season: 'WINTER', year: 2020 }} />);
     expect(screen.queryByRole('tab')).not.toBeInTheDocument();
     expect(screen.getByText('Old Show')).toBeInTheDocument();
+  });
+});
+
+describe('DirectorySection', () => {
+  const noop = () => {};
+  const makeDirectory = (over = {}) => ({
+    filters: { search: '', genre: '', demography: '', format: '', status: '', year: '', season: '', sort: 'POPULARITY_DESC' },
+    results: [], loading: false, loadingMore: false, hasNextPage: false,
+    updateFilter: vi.fn(), resetFilters: vi.fn(), loadInitial: noop, loadMore: vi.fn(),
+    ...over,
+  });
+  const baseProps = {
+    schedule: {}, watchedList: [], watchLater: [],
+    setShowDayPicker: noop, addToWatchLater: noop, markAsWatched: noop, onDetail: noop,
+  };
+
+  it('renders the filter controls and results grid', () => {
+    const directory = makeDirectory({ results: [{ id: 1, title: 'Dir Show', image: '', genres: [], rating: 8 }], hasNextPage: true });
+    render(<DirectorySection {...baseProps} directory={directory} />);
+    expect(screen.getByLabelText(/Género/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Estado/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Ordenar por/)).toBeInTheDocument();
+    expect(screen.getByText('Dir Show')).toBeInTheDocument();
+    expect(screen.getByText('Cargar más')).toBeInTheDocument();
+  });
+
+  it('changing a select calls updateFilter and loadMore loads the next page', () => {
+    const directory = makeDirectory({ results: [{ id: 1, title: 'Dir Show', image: '', genres: [], rating: 8 }], hasNextPage: true });
+    render(<DirectorySection {...baseProps} directory={directory} />);
+    fireEvent.change(screen.getByLabelText(/Género/), { target: { value: 'Action' } });
+    expect(directory.updateFilter).toHaveBeenCalledWith('genre', 'Action');
+    fireEvent.click(screen.getByText('Cargar más'));
+    expect(directory.loadMore).toHaveBeenCalled();
+  });
+
+  it('shows the clear button only with active filters and empty state without results', () => {
+    const inactive = makeDirectory();
+    const { rerender } = render(<DirectorySection {...baseProps} directory={inactive} />);
+    expect(screen.queryByText(/Limpiar filtros/)).not.toBeInTheDocument();
+    expect(screen.getByText('Sin resultados con esos filtros')).toBeInTheDocument();
+
+    const active = makeDirectory({ filters: { ...inactive.filters, genre: 'Action' } });
+    rerender(<DirectorySection {...baseProps} directory={active} />);
+    fireEvent.click(screen.getByText(/Limpiar filtros/));
+    expect(active.resetFilters).toHaveBeenCalled();
   });
 });
 

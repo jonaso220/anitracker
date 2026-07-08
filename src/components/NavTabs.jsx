@@ -6,6 +6,7 @@ const TABS = [
   { id: 'watched',    icon: '✓',  labelKey: 'Vistas' },
   { id: 'lists',      icon: '📋', labelKey: 'Listas' },
   { id: 'season',     icon: '🌸', labelKey: 'Temporada' },
+  { id: 'directory',  icon: '📚', labelKey: 'Directorio' },
   { id: 'top',        icon: '🏆', labelKey: 'Top' },
   { id: 'stats',      icon: '📊', labelKey: 'Stats' },
 ];
