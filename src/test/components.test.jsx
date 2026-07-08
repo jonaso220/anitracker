@@ -56,6 +56,28 @@ describe('AnimeCard', () => {
     const badge = container.querySelector('.anime-card-status-pill.dropped');
     expect(badge).toBeInTheDocument();
   });
+
+  it('renders hover strip with the airing day for episodes further out than tomorrow', () => {
+    // Un sábado fijo (2026-07-11 12:00 UTC) para que el nombre del día sea estable.
+    const airingData = {
+      1: { episode: 9, airingAt: 1783771200, timeUntilAiring: 200000, isToday: false, isTomorrow: false, isThisWeek: true, hasAired: false },
+    };
+    const { container } = render(<AnimeCard anime={mockAnime} airingData={airingData} onClick={() => {}} />);
+    const strip = container.querySelector('.anime-card-airing.airing-later');
+    expect(strip).toBeInTheDocument();
+    expect(strip.textContent).toContain('Ep. 9');
+    expect(strip.textContent).toContain('Sábado');
+    expect(container.querySelector('.anime-card.has-airing-later')).toBeInTheDocument();
+  });
+
+  it('keeps the always-visible badge (and no hover strip) when the episode airs today', () => {
+    const airingData = {
+      1: { episode: 9, airingAt: Math.floor(Date.now() / 1000) + 3600, timeUntilAiring: 3600, isToday: true, isTomorrow: false, isThisWeek: true, hasAired: false },
+    };
+    const { container } = render(<AnimeCard anime={mockAnime} airingData={airingData} onClick={() => {}} />);
+    expect(container.querySelector('.anime-card-airing.airing-today')).toBeInTheDocument();
+    expect(container.querySelector('.anime-card-airing.airing-later')).not.toBeInTheDocument();
+  });
 });
 
 describe('StatsPanel', () => {

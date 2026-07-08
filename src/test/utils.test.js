@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { clean, filterByLocalSearch, getFilteredWatched, parseEpisodes, hashString, buildBackup, parseBackup, getPlatformInfo, pickAutoWatchLink } from '../utils';
+import { clean, filterByLocalSearch, getFilteredWatched, parseEpisodes, hashString, buildBackup, parseBackup, getPlatformInfo, pickAutoWatchLink, formatAiringWhen, formatAiringDate } from '../utils';
 
 describe('clean', () => {
   it('removes internal flags from anime object', () => {
@@ -237,5 +237,39 @@ describe('parseBackup', () => {
 
   it('throws on a non-object payload', () => {
     expect(() => parseBackup(JSON.stringify([1, 2, 3]))).toThrow();
+  });
+});
+
+describe('formatAiringWhen', () => {
+  const base = { episode: 9, airingAt: 1783771200, timeUntilAiring: 0, isToday: false, isTomorrow: false, hasAired: false };
+
+  it('returns empty string without airing info', () => {
+    expect(formatAiringWhen(null)).toBe('');
+  });
+
+  it('prioritizes "ya disponible" for aired episodes', () => {
+    expect(formatAiringWhen({ ...base, hasAired: true, isToday: true })).toBe('¡Ya disponible!');
+  });
+
+  it('shows countdown for today', () => {
+    expect(formatAiringWhen({ ...base, isToday: true, timeUntilAiring: 2 * 3600 + 15 * 60 })).toBe('En 2h 15m');
+    expect(formatAiringWhen({ ...base, isToday: true, timeUntilAiring: 40 * 60 })).toBe('En 40m');
+  });
+
+  it('shows "Mañana" for tomorrow', () => {
+    expect(formatAiringWhen({ ...base, isTomorrow: true })).toBe('Mañana');
+  });
+
+  it('shows the weekday name for later episodes', () => {
+    // 1783771200 = sábado 11 de julio de 2026, 12:00 UTC
+    expect(formatAiringWhen(base)).toBe('Sábado');
+  });
+});
+
+describe('formatAiringDate', () => {
+  it('formats the full air date in Spanish with capitalized weekday', () => {
+    const text = formatAiringDate(1783771200);
+    expect(text).toMatch(/^Sábado, 11 de julio/);
+    expect(text).toMatch(/\d{1,2}:\d{2}$/);
   });
 });

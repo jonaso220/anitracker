@@ -1,6 +1,5 @@
-import React, { useRef, useCallback } from 'react';
+import React from 'react';
 import AnimeCard from '../AnimeCard';
-import AiringSection from '../AiringSection';
 import { daysOfWeek, dayEmojis } from '../../constants';
 
 // Maps JS Date.getDay() (0=Sun…6=Sat) to our daysOfWeek index (0=Mon…6=Sun)
@@ -15,27 +14,10 @@ const ScheduleView = ({
   handleDragStart, handleDragEnd, handleDragOverRow, handleDragOverCard,
   handleDrop, handleTouchStart, handleTouchMove, handleTouchEnd, touchRef,
 }) => {
-  const dayRowRefs = useRef({});
   const today = todayDayName();
-
-  const scrollToDay = useCallback((day) => {
-    const el = dayRowRefs.current[day];
-    if (!el) return;
-    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    el.classList.add('day-row-flash');
-    setTimeout(() => el.classList.remove('day-row-flash'), 1400);
-  }, []);
 
   return (
     <div className="schedule-rows" role="region" aria-label="Horario semanal">
-      {Object.keys(airingData).length > 0 && (
-        <AiringSection
-          schedule={schedule}
-          airingData={airingData}
-          onDetail={(a) => setShowAnimeDetail({ ...a, _day: a._day, _isWatchLater: false, _isWatched: false, _isSeason: false })}
-          onScrollToDay={scrollToDay}
-        />
-      )}
       {daysOfWeek.map((day, i) => {
         const items = schedule[day] || [];
         const isEmpty = items.length === 0;
@@ -43,7 +25,6 @@ const ScheduleView = ({
         return (
           <section
             key={day}
-            ref={(el) => { dayRowRefs.current[day] = el; }}
             className={`day-row fade-in ${isToday ? 'is-today' : ''} ${isEmpty ? 'is-empty' : ''} ${dropTarget === day ? 'drop-target' : ''} ${isDragging && dragState.fromDay === day ? 'drag-source' : ''}`}
             onDragOver={(e) => handleDragOverRow(e, day)}
             onDrop={(e) => handleDrop(e, day)}
