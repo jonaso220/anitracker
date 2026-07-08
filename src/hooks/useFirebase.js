@@ -52,7 +52,12 @@ const parseCloudField = (value, fallback) => {
 // edit apart from the state change produced by applying a cloud snapshot: we
 // always set `lastSyncedRef` from the very data we put into state, so an echo
 // compares equal and never gets saved back (no loop), while a real edit differs.
-const serializeData = (d) => JSON.stringify({
+// It's also the exact payload we send to Firestore (via JSON.parse): the
+// round-trip drops `undefined` values — normalizeAnime emits
+// `finishedDate/droppedDate: undefined` on fresh search results, and Firestore
+// rejects any document containing `undefined` ("Unsupported field value"), so
+// saving the state objects directly made every save of the session fail.
+export const serializeData = (d) => JSON.stringify({
   schedule: d.schedule,
   watchedList: d.watchedList,
   watchLater: d.watchLater,
@@ -60,9 +65,34 @@ const serializeData = (d) => JSON.stringify({
 });
 const EMPTY_SYNC_JSON = serializeData({ schedule: {}, watchedList: [], watchLater: [], customLists: [] });
 
+// Timestamp (ISO) of the last local user edit. Lets a load tell a *stale*
+// cloud doc (older than our own edits, e.g. because previous saves failed)
+// apart from *newer* edits made on another device. Without it, the cloud
+// snapshot always wins on app open and a stale doc silently wipes local data.
+const LOCAL_REV_KEY = 'anitracker-local-rev';
+
+const SAVE_DEBOUNCE_MS = 2000;
+const RETRY_BASE_MS = 5000;
+const RETRY_MAX_MS = 60000;
+
+/**
+ * Decide whether an incoming cloud snapshot should be ignored in favor of the
+ * local data (and the local data pushed up instead). Pure — exported for tests.
+ * ISO timestamps compare correctly as strings. Missing timestamps (legacy docs
+ * or first run after this feature shipped) fall back to "cloud wins".
+ */
+export function shouldKeepLocal({ cloudJson, localJson, cloudRev, localRev }) {
+  if (cloudJson === localJson) return false;
+  if (!cloudRev || !localRev) return false;
+  return localRev > cloudRev;
+}
+
 export function useFirebase(schedule, watchedList, watchLater, customLists, setSchedule, setWatchedList, setWatchLater, setCustomLists) {
   const [user, setUser] = useState(null);
   const [syncing, setSyncing] = useState(false);
+  // True while saves are failing (rules, red, datos inválidos). Surfaced in the
+  // header so a broken sync is visible instead of dying in la consola.
+  const [syncError, setSyncError] = useState(false);
   const hasLoadedUser = useRef(null);
   const syncTimer = useRef(null);
   const cloudUnsub = useRef(null);
@@ -70,6 +100,11 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
   // completed save). `null` means we haven't seen the cloud state yet, so we
   // must not push local data up (it could clobber newer cloud data).
   const lastSyncedRef = useRef(null);
+  // Serialization of the previous render's data, to detect genuine local edits
+  // (vs. mount / login-state changes / cloud-apply echoes) for LOCAL_REV_KEY.
+  const prevJsonRef = useRef(null);
+  const saveAttempts = useRef(0);
+  const flushSaveRef = useRef(null);
 
   // Refs para que saveToCloud siempre lea los valores más recientes.
   const dataRef = useRef({ schedule, watchedList, watchLater, customLists });
@@ -77,23 +112,61 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
     dataRef.current = { schedule, watchedList, watchLater, customLists };
   }, [schedule, watchedList, watchLater, customLists]);
 
-  const saveToCloud = useCallback(async (uid) => {
-    if (!firebaseDb || !db || !uid) return;
+  const saveToCloud = useCallback(async (uid, json) => {
+    if (!firebaseDb || !db || !uid) return false;
     setSyncing(true);
     try {
-      const latest = dataRef.current;
+      // Parse the canonical JSON instead of sending the state objects: the
+      // round-trip strips `undefined` values that Firestore rejects outright.
+      const fields = JSON.parse(json);
       await firebaseDb.setDoc(firebaseDb.doc(db, 'users', uid), {
         schemaVersion: 2,
-        schedule: latest.schedule,
-        watchedList: latest.watchedList,
-        watchLater: latest.watchLater,
-        customLists: latest.customLists,
+        schedule: fields.schedule,
+        watchedList: fields.watchedList,
+        watchLater: fields.watchLater,
+        customLists: fields.customLists,
         updatedAt: firebaseDb.serverTimestamp(),
         updatedAtIso: new Date().toISOString(),
       }, { merge: true });
-    } catch (e) { console.error('Save error:', e); }
-    setSyncing(false);
+      lastSyncedRef.current = json;
+      setSyncing(false);
+      return true;
+    } catch (e) {
+      console.error('Save error:', e);
+      setSyncing(false);
+      return false;
+    }
   }, []);
+
+  const scheduleSave = useCallback((delay) => {
+    if (syncTimer.current) clearTimeout(syncTimer.current);
+    syncTimer.current = setTimeout(() => {
+      syncTimer.current = null;
+      flushSaveRef.current?.();
+    }, delay);
+  }, []);
+
+  // Save the freshest local state if it differs from the last synced state.
+  // On failure `lastSyncedRef` stays untouched and we retry with backoff — a
+  // failed save used to be marked as synced and never retried, so the cloud
+  // doc went stale and clobbered local data on the next app open.
+  const flushSave = useCallback(async () => {
+    const uid = hasLoadedUser.current;
+    if (!uid || lastSyncedRef.current === null) return;
+    const json = serializeData(dataRef.current);
+    if (json === lastSyncedRef.current) return;
+    const ok = await saveToCloud(uid, json);
+    if (ok) {
+      saveAttempts.current = 0;
+      setSyncError(false);
+    } else {
+      saveAttempts.current += 1;
+      setSyncError(true);
+      const delay = Math.min(RETRY_MAX_MS, RETRY_BASE_MS * 2 ** Math.min(saveAttempts.current - 1, 4));
+      scheduleSave(delay);
+    }
+  }, [saveToCloud, scheduleSave]);
+  useEffect(() => { flushSaveRef.current = flushSave; }, [flushSave]);
 
   // Apply a cloud snapshot to local state. We compute the exact object we put
   // into state and record its serialization in `lastSyncedRef`, so the
@@ -108,12 +181,24 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
       watchLater:  data.watchLater  != null ? parseCloudField(data.watchLater, [])  : latest.watchLater,
       customLists: data.customLists != null ? parseCloudField(data.customLists, []) : latest.customLists,
     };
-    lastSyncedRef.current = serializeData(next);
+    const nextJson = serializeData(next);
+    let localRev = null;
+    try { localRev = localStorage.getItem(LOCAL_REV_KEY); } catch { /* best-effort */ }
+    const cloudRev = typeof data.updatedAtIso === 'string' ? data.updatedAtIso : '';
+    if (shouldKeepLocal({ cloudJson: nextJson, localJson: serializeData(latest), cloudRev, localRev })) {
+      // The cloud doc is OLDER than our last local edit (typically because
+      // earlier saves failed): applying it would wipe those edits. Keep the
+      // local data and push it up instead.
+      lastSyncedRef.current = nextJson;
+      scheduleSave(0);
+      return;
+    }
+    lastSyncedRef.current = nextJson;
     setSchedule(next.schedule);
     setWatchedList(next.watchedList);
     setWatchLater(next.watchLater);
     setCustomLists(next.customLists);
-  }, [setSchedule, setWatchedList, setWatchLater, setCustomLists]);
+  }, [setSchedule, setWatchedList, setWatchLater, setCustomLists, scheduleSave]);
 
   // Subscribe to the user's cloud doc in real time. The first snapshot acts as
   // the initial load; every later snapshot keeps this device in sync with
@@ -136,20 +221,23 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
         if (snap.exists()) {
           applyCloudData(snap.data());
         } else if (lastSyncedRef.current === null) {
-          // No cloud doc yet (new account): unlock saving so local data gets
-          // pushed up on first edit instead of being held back forever.
+          // No cloud doc yet (new account): unlock saving and push any
+          // existing local data up right away (no-op if local is empty).
           lastSyncedRef.current = EMPTY_SYNC_JSON;
+          scheduleSave(0);
         }
         setSyncing(false);
       },
       (e) => { console.error('Snapshot error:', e); setSyncing(false); }
     );
-  }, [applyCloudData]);
+  }, [applyCloudData, scheduleSave]);
 
   const unsubscribeFromCloud = useCallback(() => {
     if (cloudUnsub.current) { cloudUnsub.current(); cloudUnsub.current = null; }
     hasLoadedUser.current = null;
     lastSyncedRef.current = null;
+    saveAttempts.current = 0;
+    setSyncError(false);
   }, []);
 
   // Inicializar Auth
@@ -194,26 +282,32 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
 
   // Auto-sync: save local edits to the cloud, debounced.
   useEffect(() => {
+    const currentJson = serializeData({ schedule, watchedList, watchLater, customLists });
+    // Record when the user last actually edited the data. Mounts and
+    // login-state changes keep the same JSON, and cloud applies pre-set
+    // `lastSyncedRef` to the exact data they load, so neither counts as an
+    // edit. Runs even logged-out so edits made before logging in are dated.
+    const prevJson = prevJsonRef.current;
+    prevJsonRef.current = currentJson;
+    if (prevJson !== null && currentJson !== prevJson && currentJson !== lastSyncedRef.current) {
+      try { localStorage.setItem(LOCAL_REV_KEY, new Date().toISOString()); } catch { /* best-effort */ }
+    }
+
     if (!user) return;
     // Don't push anything until we've seen the cloud state at least once —
     // otherwise we could overwrite newer cloud data we haven't loaded yet.
     if (lastSyncedRef.current === null) return;
 
-    const currentJson = serializeData({ schedule, watchedList, watchLater, customLists });
     // Equal to the last synced state ⇒ this render is the echo of a load/save,
-    // not a user edit. Drop any stale timer and do nothing.
+    // not a user edit. Drop any stale timer (including pending retries — the
+    // data now matches the cloud, so there's nothing left to push).
     if (currentJson === lastSyncedRef.current) {
       if (syncTimer.current) { clearTimeout(syncTimer.current); syncTimer.current = null; }
       return;
     }
 
-    if (syncTimer.current) clearTimeout(syncTimer.current);
-    syncTimer.current = setTimeout(() => {
-      syncTimer.current = null;
-      lastSyncedRef.current = currentJson;
-      saveToCloud(user.uid);
-    }, 2000);
-  }, [schedule, watchedList, watchLater, customLists, user, saveToCloud]);
+    scheduleSave(SAVE_DEBOUNCE_MS);
+  }, [schedule, watchedList, watchLater, customLists, user, scheduleSave]);
 
   // Flush a pending save when the tab is hidden or unloaded. The 2s debounce
   // above can be lost on mobile (iOS suspends timers when the app is
@@ -223,12 +317,8 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
   useEffect(() => {
     if (!user) return;
     const flush = () => {
-      if (syncTimer.current) {
-        clearTimeout(syncTimer.current);
-        syncTimer.current = null;
-        lastSyncedRef.current = serializeData(dataRef.current);
-        saveToCloud(user.uid);
-      }
+      if (syncTimer.current) { clearTimeout(syncTimer.current); syncTimer.current = null; }
+      flushSaveRef.current?.(); // no-op if already in sync
     };
     const onVisibility = () => { if (document.visibilityState === 'hidden') flush(); };
     document.addEventListener('visibilitychange', onVisibility);
@@ -237,7 +327,7 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('pagehide', flush);
     };
-  }, [user, saveToCloud]);
+  }, [user]);
 
   const loginWithGoogle = async () => {
     if (!FIREBASE_ENABLED) { alert('Firebase no está configurado.'); return; }
@@ -273,9 +363,13 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
     if (!firebaseAuth || !auth) return;
     unsubscribeFromCloud();
     if (syncTimer.current) { clearTimeout(syncTimer.current); syncTimer.current = null; }
+    // Drop the local edit timestamp: it dates *this* account's edits, and if
+    // another account logs in next it must not shield this data from that
+    // account's cloud snapshot.
+    try { localStorage.removeItem(LOCAL_REV_KEY); } catch { /* best-effort */ }
     await firebaseAuth.signOut(auth);
     setUser(null);
   };
 
-  return { user, syncing, loginWithGoogle, logout, FIREBASE_ENABLED };
+  return { user, syncing, syncError, loginWithGoogle, logout, FIREBASE_ENABLED };
 }

@@ -1,0 +1,25 @@
+rules_version = '2';
+
+// Reglas de seguridad de Firestore para AniTracker.
+//
+// Este archivo es la referencia de lo que debe estar deployado en el proyecto
+// de Firebase (consola → Firestore → Reglas, o `firebase deploy --only
+// firestore:rules`). No se aplica solo por estar en el repo.
+//
+// El cliente escribe UN documento por usuario en `users/{uid}` con todo el
+// estado (schedule, watchedList, watchLater, customLists, schemaVersion,
+// updatedAt, updatedAtIso). A propósito NO se valida la forma interna del
+// documento: reglas que enumeran claves o tipos rompen el sync en silencio
+// cuando el esquema del cliente evoluciona (los animes ganan campos nuevos,
+// p. ej. trailerUrl/streamingLinks), y el documento solo lo lee y escribe su
+// propio dueño.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

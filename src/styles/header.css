@@ -313,6 +313,10 @@
   font-size: 0.72rem;
   opacity: 0.65;
 }
+.user-menu-sync-error {
+  color: #fbbf24;
+  opacity: 1;
+}
 
 .user-menu-item {
   display: flex;

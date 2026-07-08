@@ -71,7 +71,7 @@ export default function AnimeTracker() {
 
   // --- Hooks ---
   const { toast, showToast, dismissToast, undoToast } = useToast();
-  const { user, syncing, loginWithGoogle, logout, FIREBASE_ENABLED } = useFirebase(
+  const { user, syncing, syncError, loginWithGoogle, logout, FIREBASE_ENABLED } = useFirebase(
     schedule, watchedList, watchLater, customLists, setSchedule, setWatchedList, setWatchLater, setCustomLists
   );
   const { searchQuery, setSearchQuery, searchResults, setSearchResults, isSearching, searchPartial, airingData, handleSearch } = useAnimeData(schedule);
@@ -168,7 +168,7 @@ export default function AnimeTracker() {
     <div className={`anime-tracker ${darkMode ? 'dark' : 'light'}`}>
       <Header
         darkMode={darkMode} setDarkMode={setDarkMode}
-        user={user} syncing={syncing} loginWithGoogle={loginWithGoogle} logout={logout} firebaseEnabled={FIREBASE_ENABLED}
+        user={user} syncing={syncing} syncError={syncError} loginWithGoogle={loginWithGoogle} logout={logout} firebaseEnabled={FIREBASE_ENABLED}
         onOpenSearch={() => setShowSearch(true)} onOpenImport={() => setShowImport(true)}
         onOpenBackup={() => setShowBackup(true)}
       />
