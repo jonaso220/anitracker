@@ -65,6 +65,8 @@ store global ni context; el estado vive en `App.jsx` y baja por props.
 | `anitracker-theme-v2` | booleano de tema (dark = true) |
 | `anitracker-directory-filters` | filtros elegidos en Directorio (sin el texto de búsqueda) |
 | `anitracker-directory-view` | modo de vista de Directorio (`'grid'` / `'list'`) |
+| `anitracker-season-cache` | copia de la temporada vigente (TTL 15 min, para abrir al instante) |
+| `anitracker-directory-cache` | primera página del Directorio por filtros (TTL 30 min) |
 | `anitracker-local-rev` | ISO de la última edición local (guardia anti-pisado en `useFirebase`) |
 
 Los IDs de anime codifican la fuente: MAL `< 100000`, Kitsu `+100000`, AniList

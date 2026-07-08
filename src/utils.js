@@ -113,6 +113,27 @@ export const formatTimeUntil = (unixSeconds, nowMs = Date.now()) => {
   return label(Math.floor(days / 7), 'semana', 'semanas');
 };
 
+/**
+ * Read a JSON cache entry written by `writeCache`. Returns null when the key
+ * is missing, malformed, or older than `maxAgeMs`.
+ */
+export const readCache = (key, maxAgeMs) => {
+  try {
+    const raw = JSON.parse(localStorage.getItem(key));
+    if (!raw || typeof raw.at !== 'number') return null;
+    if (Date.now() - raw.at > maxAgeMs) return null;
+    return raw.data ?? null;
+  } catch {
+    return null;
+  }
+};
+
+export const writeCache = (key, data) => {
+  try {
+    localStorage.setItem(key, JSON.stringify({ at: Date.now(), data }));
+  } catch { /* quota exceeded or serialization error */ }
+};
+
 const ES_STOPWORDS = /\b(que|los|las|una|del|por|con|para|como|pero|más|también|esta|este|sobre|tiene|hace|puede|entre|desde|hasta|cuando|donde|porque|aunque|mientras|después|antes|durante|hacia|según|mediante|ser|está|son|han|fue|muy|sin|hay|todo|cada|otro|ella|ellos|quien|cual|esto|eso|sus|nos|al|lo)\b/gi;
 const EN_STOPWORDS = /\b(the|and|but|with|for|that|this|from|are|was|were|been|have|has|had|will|would|could|should|their|they|them|which|when|where|who|what|into|about|after|before|between|through|during|being|each|other|than|then|some|only|also|very|just|over|such|more)\b/gi;
 
