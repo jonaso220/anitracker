@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { toAnime as jikanToAnime, searchJikan } from '../services/jikanService';
 import { toAnime as kitsuToAnime, searchKitsu, mapIncludedStreamingLinks, siteNameFromUrl } from '../services/kitsuService';
-import { toAnime as anilistToAnime, fetchAiringInfo, fetchAnilistUserAnimeLists } from '../services/anilistService';
+import { toAnime as anilistToAnime, fetchAiringInfo, fetchAnilistUserAnimeLists, fetchSeason, fetchLatestAired } from '../services/anilistService';
 import { toAnime as tvmazeToAnime } from '../services/tvmazeService';
 import { toAnime as itunesToAnime } from '../services/itunesService';
 import { toAnime as tmdbToAnime, parseTmdbKey, extractExtras, TMDB_MOVIE_ID_BASE, TMDB_TV_ID_BASE } from '../services/tmdbService';
@@ -299,6 +299,92 @@ describe('adapter: itunesService.toAnime', () => {
   });
   it('returns null for items with no title', () => {
     expect(itunesToAnime({ trackId: 1 })).toBeNull();
+  });
+});
+
+describe('anilistService.fetchSeason', () => {
+  beforeEach(() => { vi.spyOn(globalThis, 'fetch'); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  const mediaPage = (media, hasNextPage = false) => ({
+    ok: true,
+    json: () => Promise.resolve({ data: { Page: { pageInfo: { hasNextPage }, media } } }),
+  });
+  const media = (id, title, extra = {}) => ({ id, idMal: id, title: { romaji: title }, coverImage: {}, ...extra });
+
+  it('paginates until hasNextPage is false', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce(mediaPage([media(1, 'A')], true))
+      .mockResolvedValueOnce(mediaPage([media(2, 'B')], false));
+    const res = await fetchSeason('WINTER', 2020);
+    expect(res.map((a) => a.title)).toEqual(['A', 'B']);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('with current: true merges continuing shows and attaches _airing', async () => {
+    globalThis.fetch.mockImplementation((url, opts) => {
+      const { query } = JSON.parse(opts.body);
+      if (query.includes('airingSchedules')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            data: { Page: { pageInfo: { hasNextPage: false }, airingSchedules: [{ mediaId: 111, episode: 5, airingAt: 1000 }] } },
+          }),
+        });
+      }
+      if (query.includes('$season')) {
+        return Promise.resolve(mediaPage([media(111, 'Seasonal', { nextAiringEpisode: { airingAt: 2000, episode: 6 } })]));
+      }
+      // Query de RELEASING: incluye un duplicado de la temporada y una continuación.
+      return Promise.resolve(mediaPage([media(111, 'Seasonal dup'), media(222, 'Continuing')]));
+    });
+
+    const res = await fetchSeason('SUMMER', 2026, { current: true });
+    expect(res).toHaveLength(2);
+
+    const seasonal = res.find((a) => a.id === 111);
+    expect(seasonal._continuing).toBeUndefined();
+    expect(seasonal._airing).toEqual({ lastEpisode: 5, lastAiredAt: 1000, nextEpisode: 6, nextAiringAt: 2000 });
+
+    const continuing = res.find((a) => a.id === 222);
+    expect(continuing._continuing).toBe(true);
+    expect(continuing.title).toBe('Continuing');
+  });
+
+  it('without current does not fetch continuing shows nor airing schedules', async () => {
+    globalThis.fetch.mockResolvedValueOnce(mediaPage([media(1, 'A')]));
+    await fetchSeason('WINTER', 2020);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    const { query } = JSON.parse(globalThis.fetch.mock.calls[0][1].body);
+    expect(query).toContain('$season');
+  });
+});
+
+describe('anilistService.fetchLatestAired', () => {
+  beforeEach(() => { vi.spyOn(globalThis, 'fetch'); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it('returns empty map without ids and keeps the first (latest) entry per media', async () => {
+    expect(await fetchLatestAired([])).toEqual({});
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+
+    globalThis.fetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({
+        data: {
+          Page: {
+            pageInfo: { hasNextPage: false },
+            airingSchedules: [
+              { mediaId: 1, episode: 8, airingAt: 5000 },
+              { mediaId: 1, episode: 7, airingAt: 4000 },
+              { mediaId: 2, episode: 3, airingAt: 4500 },
+            ],
+          },
+        },
+      }),
+    });
+    const res = await fetchLatestAired([1, 2]);
+    expect(res).toEqual({ 1: { episode: 8, airingAt: 5000 }, 2: { episode: 3, airingAt: 4500 } });
   });
 });
 

@@ -65,12 +65,96 @@
   box-shadow: var(--shadow-glow-brand);
 }
 
+/* ============ DAY TABS (horario de emisión de la temporada actual) ============ */
+.season-day-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+}
+.season-day-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.9rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.season-day-tab:hover {
+  border-color: var(--border-brand);
+  color: var(--text-primary);
+}
+.season-day-tab.active {
+  background: var(--gradient-brand);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: var(--shadow-glow-brand);
+}
+.season-day-tab .day-tab-today {
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  padding: 0.12rem 0.4rem;
+  border-radius: var(--radius-pill);
+  background: var(--gradient-brand-soft);
+  border: 1px solid var(--border-brand);
+}
+.season-day-tab.active .day-tab-today {
+  background: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.season-day-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.9rem;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
 /* ============ DISCOVERY GRID (Season + Top) ============ */
 .season-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: 1rem;
 }
+
+/* Card + optional airing footer ("Último capítulo: 3 · hace 2 horas") */
+.season-card-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-width: 0;
+}
+.season-card-airing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+  text-align: center;
+  padding: 0 0.2rem 0.15rem;
+}
+.season-airing-ep {
+  font-size: 0.77rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.season-airing-ep strong { font-weight: 800; }
+.season-airing-when {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+.season-card-airing.upcoming .season-airing-ep { color: var(--color-airing-tomorrow); }
 
 /* ============ DISCOVERY CARD (Netflix-style) ============ */
 .season-card {
@@ -203,6 +287,10 @@
   white-space: nowrap;
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
+}
+.season-card-tags .meta-tag.continuing {
+  background: rgba(78, 205, 196, 0.28);
+  border-color: rgba(78, 205, 196, 0.45);
 }
 
 .season-card-actions {
