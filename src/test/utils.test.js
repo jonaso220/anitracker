@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { clean, filterByLocalSearch, getFilteredWatched, parseEpisodes, hashString, buildBackup, parseBackup, getPlatformInfo, pickAutoWatchLink, formatAiringWhen, formatAiringDate } from '../utils';
+import { clean, filterByLocalSearch, getFilteredWatched, parseEpisodes, hashString, buildBackup, parseBackup, getPlatformInfo, pickAutoWatchLink, formatAiringWhen, formatAiringDate, formatTimeAgo, formatTimeUntil, getAiringDayIndex, groupSeasonByDay } from '../utils';
 
 describe('clean', () => {
   it('removes internal flags from anime object', () => {
-    const anime = { id: 1, title: 'Test', _day: 'Lunes', _isWatchLater: true, _isWatched: false, _isSeason: true, _isTop: true, _isCustomList: true, _customListId: 'abc' };
+    const anime = { id: 1, title: 'Test', _day: 'Lunes', _isWatchLater: true, _isWatched: false, _isSeason: true, _isTop: true, _isCustomList: true, _customListId: 'abc', _airing: { lastEpisode: 3 }, _continuing: true };
     const result = clean(anime);
     expect(result).toEqual({ id: 1, title: 'Test' });
     expect(result._day).toBeUndefined();
@@ -13,11 +13,87 @@ describe('clean', () => {
     expect(result._isTop).toBeUndefined();
     expect(result._isCustomList).toBeUndefined();
     expect(result._customListId).toBeUndefined();
+    expect(result._airing).toBeUndefined();
+    expect(result._continuing).toBeUndefined();
   });
 
   it('preserves all non-flag properties', () => {
     const anime = { id: 1, title: 'Naruto', genres: ['Action'], rating: 8.5, currentEp: 5 };
     expect(clean(anime)).toEqual(anime);
+  });
+});
+
+describe('formatTimeAgo', () => {
+  const nowMs = new Date(2026, 6, 8, 12, 0, 0).getTime();
+  const secondsAgo = (s) => Math.floor(nowMs / 1000) - s;
+
+  it('formats recent moments', () => {
+    expect(formatTimeAgo(secondsAgo(30), nowMs)).toBe('hace un momento');
+  });
+  it('formats minutes with singular/plural', () => {
+    expect(formatTimeAgo(secondsAgo(60), nowMs)).toBe('hace 1 minuto');
+    expect(formatTimeAgo(secondsAgo(45 * 60), nowMs)).toBe('hace 45 minutos');
+  });
+  it('formats hours', () => {
+    expect(formatTimeAgo(secondsAgo(3 * 3600), nowMs)).toBe('hace 3 horas');
+  });
+  it('formats days and weeks', () => {
+    expect(formatTimeAgo(secondsAgo(2 * 86400), nowMs)).toBe('hace 2 días');
+    expect(formatTimeAgo(secondsAgo(21 * 86400), nowMs)).toBe('hace 3 semanas');
+  });
+  it('formats months', () => {
+    expect(formatTimeAgo(secondsAgo(70 * 86400), nowMs)).toBe('hace 2 meses');
+  });
+  it('clamps future timestamps to "hace un momento"', () => {
+    expect(formatTimeAgo(secondsAgo(-500), nowMs)).toBe('hace un momento');
+  });
+});
+
+describe('formatTimeUntil', () => {
+  const nowMs = new Date(2026, 6, 8, 12, 0, 0).getTime();
+  const secondsAhead = (s) => Math.floor(nowMs / 1000) + s;
+
+  it('formats minutes, hours, days and weeks', () => {
+    expect(formatTimeUntil(secondsAhead(40 * 60), nowMs)).toBe('en 40 minutos');
+    expect(formatTimeUntil(secondsAhead(5 * 3600), nowMs)).toBe('en 5 horas');
+    expect(formatTimeUntil(secondsAhead(3 * 86400), nowMs)).toBe('en 3 días');
+    expect(formatTimeUntil(secondsAhead(15 * 86400), nowMs)).toBe('en 2 semanas');
+  });
+  it('returns "ya disponible" for past timestamps', () => {
+    expect(formatTimeUntil(secondsAhead(-10), nowMs)).toBe('¡ya disponible!');
+  });
+});
+
+describe('groupSeasonByDay', () => {
+  // Timestamps locales: 2026-07-06 es lunes, 2026-07-12 es domingo.
+  const ts = (day, hour) => Math.floor(new Date(2026, 6, day, hour, 0, 0).getTime() / 1000);
+
+  it('computes Monday-first day index from airing info', () => {
+    expect(getAiringDayIndex({ nextAiringAt: ts(6, 20) })).toBe(0);   // lunes
+    expect(getAiringDayIndex({ lastAiredAt: ts(12, 10) })).toBe(6);   // domingo
+    expect(getAiringDayIndex(null)).toBeNull();
+    expect(getAiringDayIndex({})).toBeNull();
+  });
+
+  it('groups by local weekday, sorts by broadcast hour, and collects undated', () => {
+    const list = [
+      { id: 1, _airing: { nextAiringAt: ts(6, 22) } },                 // lunes 22:00
+      { id: 2, _airing: { lastAiredAt: ts(12, 10) } },                 // domingo (sin próximo ep)
+      { id: 3 },                                                       // sin info de emisión
+      { id: 4, _airing: { nextAiringAt: ts(6, 9) } },                  // lunes 09:00
+    ];
+    const { days, undated } = groupSeasonByDay(list);
+    expect(days[0].map((a) => a.id)).toEqual([4, 1]);
+    expect(days[6].map((a) => a.id)).toEqual([2]);
+    expect(days[1]).toEqual([]);
+    expect(undated.map((a) => a.id)).toEqual([3]);
+  });
+
+  it('prefers the next episode day over the last aired one', () => {
+    const anime = { id: 1, _airing: { lastAiredAt: ts(6, 20), nextAiringAt: ts(8, 20) } }; // último lunes, próximo miércoles
+    const { days } = groupSeasonByDay([anime]);
+    expect(days[2].map((a) => a.id)).toEqual([1]);
+    expect(days[0]).toEqual([]);
   });
 });
 

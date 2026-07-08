@@ -37,6 +37,14 @@ export const es = {
   'bulk.markWatched': '✓ Marcar vistos',
   'bulk.moveToWeek': '📅 Mover a semana',
 
+  'season.today': 'HOY',
+  'season.all': 'Todos',
+  'season.lastEpisode': 'Último capítulo',
+  'season.episode': 'Episodio',
+  'season.premiere': 'Estreno',
+  'season.continuing': 'Continúa',
+  'season.emptyDay': 'Ningún anime se emite este día',
+
   'search.placeholder': 'Buscar anime o serie...',
   'search.partialNotice': 'Algunos resultados pueden faltar',
   'search.noResultsFor': 'Sin resultados para',

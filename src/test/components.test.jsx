@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import AnimeCard from '../components/AnimeCard';
 import StatsPanel from '../components/StatsPanel';
+import DiscoveryCard from '../components/DiscoveryCard';
+import SeasonSection from '../components/SeasonSection';
 
 const mockAnime = {
   id: 1,
@@ -77,6 +79,86 @@ describe('AnimeCard', () => {
     const { container } = render(<AnimeCard anime={mockAnime} airingData={airingData} onClick={() => {}} />);
     expect(container.querySelector('.anime-card-airing.airing-today')).toBeInTheDocument();
     expect(container.querySelector('.anime-card-airing.airing-later')).not.toBeInTheDocument();
+  });
+});
+
+describe('DiscoveryCard', () => {
+  const noop = () => {};
+  const baseProps = { onDetail: noop, onAddToSchedule: noop, onAddToWatchLater: noop, onMarkWatched: noop };
+  const discoveryAnime = { id: 7, title: 'Seasonal Show', image: 'https://example.com/x.jpg', genres: [], rating: 7.5 };
+
+  it('renders the last aired episode footer', () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const { container } = render(
+      <DiscoveryCard {...baseProps} anime={discoveryAnime} airing={{ lastEpisode: 3, lastAiredAt: nowSec - 3 * 3600 }} />
+    );
+    expect(container.querySelector('.season-card-airing')).toBeInTheDocument();
+    expect(screen.getByText(/Último capítulo/)).toBeInTheDocument();
+    expect(screen.getByText('3')).toBeInTheDocument();
+    expect(screen.getByText('hace 3 horas')).toBeInTheDocument();
+  });
+
+  it('renders a premiere countdown when nothing has aired yet', () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    render(
+      <DiscoveryCard {...baseProps} anime={discoveryAnime} airing={{ nextEpisode: 1, nextAiringAt: nowSec + 3 * 86400 + 60 }} />
+    );
+    expect(screen.getByText('Estreno')).toBeInTheDocument();
+    expect(screen.getByText('en 3 días')).toBeInTheDocument();
+  });
+
+  it('renders no footer without airing info', () => {
+    const { container } = render(<DiscoveryCard {...baseProps} anime={discoveryAnime} />);
+    expect(container.querySelector('.season-card-airing')).not.toBeInTheDocument();
+  });
+
+  it('shows the "Continúa" tag for shows carried over from previous seasons', () => {
+    render(<DiscoveryCard {...baseProps} anime={{ ...discoveryAnime, _continuing: true }} />);
+    expect(screen.getByText('Continúa')).toBeInTheDocument();
+  });
+});
+
+describe('SeasonSection', () => {
+  const noop = () => {};
+  const now = new Date();
+  const month = now.getMonth() + 1;
+  const currentSeason = {
+    season: month <= 3 ? 'WINTER' : month <= 6 ? 'SPRING' : month <= 9 ? 'SUMMER' : 'FALL',
+    year: now.getFullYear(),
+  };
+  const nowSec = Math.floor(now.getTime() / 1000);
+  const baseProps = {
+    seasonLoading: false, schedule: {}, watchedList: [], watchLater: [],
+    onChangeSeason: noop, setShowDayPicker: noop, addToWatchLater: noop, markAsWatched: noop, onDetail: noop,
+  };
+  // nextAiringAt = ahora → cae siempre en el día local de hoy.
+  const airingToday = {
+    id: 1, title: 'Today Show', image: '', genres: [], rating: 8,
+    _airing: { lastEpisode: 2, lastAiredAt: nowSec - 2 * 3600, nextEpisode: 3, nextAiringAt: nowSec },
+  };
+
+  it('shows day tabs with HOY marker for the current season, defaulting to today', () => {
+    render(<SeasonSection {...baseProps} seasonAnime={[airingToday]} selectedSeason={currentSeason} />);
+    expect(screen.getAllByRole('tab')).toHaveLength(8); // 7 días + "Todos"
+    expect(screen.getByText('HOY')).toBeInTheDocument();
+    expect(screen.getByText('Today Show')).toBeInTheDocument();
+    expect(screen.getByText('hace 2 horas')).toBeInTheDocument();
+  });
+
+  it('switching to the "Todos" tab hides continuing shows', () => {
+    const continuing = { ...airingToday, id: 2, title: 'Continuing Show', _continuing: true };
+    render(<SeasonSection {...baseProps} seasonAnime={[airingToday, continuing]} selectedSeason={currentSeason} />);
+    // En la pestaña de hoy aparecen ambos.
+    expect(screen.getByText('Continuing Show')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'Todos' }));
+    expect(screen.getByText('Today Show')).toBeInTheDocument();
+    expect(screen.queryByText('Continuing Show')).not.toBeInTheDocument();
+  });
+
+  it('renders a plain grid without day tabs for past seasons', () => {
+    render(<SeasonSection {...baseProps} seasonAnime={[{ id: 3, title: 'Old Show', image: '', genres: [], rating: 7 }]} selectedSeason={{ season: 'WINTER', year: 2020 }} />);
+    expect(screen.queryByRole('tab')).not.toBeInTheDocument();
+    expect(screen.getByText('Old Show')).toBeInTheDocument();
   });
 });
 

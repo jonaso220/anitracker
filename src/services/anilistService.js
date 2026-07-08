@@ -41,20 +41,125 @@ export async function searchAnilist(query, { signal, limit = 12 } = {}) {
   return (data?.data?.Page?.media || []).map(toAnime).filter(Boolean);
 }
 
-export async function fetchSeason(season, year, { signal, perPage = 30 } = {}) {
-  const gql = `query ($season: MediaSeason, $year: Int, $perPage: Int) {
-    Page(page: 1, perPage: $perPage) {
-      media(season: $season, seasonYear: $year, type: ANIME, sort: POPULARITY_DESC, isAdult: false) {
-        id idMal title { romaji english native } coverImage { extraLarge large medium }
+const DISCOVERY_MEDIA_FIELDS = `id idMal title { romaji english native } coverImage { extraLarge large medium }
         genres averageScore episodes format status seasonYear
         description(asHtml: false) siteUrl
         externalLinks { url site type language }
         trailer { id site }
+        nextAiringEpisode { airingAt episode }`;
+
+const SEASON_PAGE_QUERY = `query ($season: MediaSeason, $year: Int, $page: Int, $perPage: Int) {
+    Page(page: $page, perPage: $perPage) {
+      pageInfo { hasNextPage }
+      media(season: $season, seasonYear: $year, type: ANIME, sort: POPULARITY_DESC, isAdult: false) {
+        ${DISCOVERY_MEDIA_FIELDS}
       }
     }
   }`;
-  const data = await anilistFetch(gql, { season, year, perPage }, { signal });
-  return (data?.data?.Page?.media || []).map((m) => toAnime(m, { fallbackYear: year })).filter(Boolean);
+
+const RELEASING_PAGE_QUERY = `query ($page: Int, $perPage: Int) {
+    Page(page: $page, perPage: $perPage) {
+      pageInfo { hasNextPage }
+      media(status: RELEASING, type: ANIME, sort: POPULARITY_DESC, isAdult: false) {
+        ${DISCOVERY_MEDIA_FIELDS}
+      }
+    }
+  }`;
+
+async function fetchAllMediaPages(gql, variables, { signal, maxPages = 4, perPage = 50 } = {}) {
+  const media = [];
+  for (let page = 1; page <= maxPages; page++) {
+    const data = await anilistFetch(gql, { ...variables, page, perPage }, { signal });
+    const pageData = data?.data?.Page;
+    media.push(...(pageData?.media || []));
+    if (!pageData?.pageInfo?.hasNextPage) break;
+  }
+  return media;
+}
+
+/**
+ * Latest aired episode per media within a recent window, keyed by AniList id.
+ * Uses the airingSchedules feed sorted by time desc, so the first hit per
+ * media is its most recent episode with the exact air timestamp.
+ */
+export async function fetchLatestAired(mediaIds, { signal, nowSec = Math.floor(Date.now() / 1000), windowDays = 8, maxPages = 4 } = {}) {
+  if (!mediaIds || mediaIds.length === 0) return {};
+  const gql = `query ($ids: [Int], $from: Int, $to: Int, $page: Int) {
+    Page(page: $page, perPage: 50) {
+      pageInfo { hasNextPage }
+      airingSchedules(mediaId_in: $ids, airingAt_greater: $from, airingAt_lesser: $to, sort: TIME_DESC) {
+        mediaId episode airingAt
+      }
+    }
+  }`;
+  const from = nowSec - windowDays * 24 * 3600;
+  const latest = {};
+  for (let page = 1; page <= maxPages; page++) {
+    const data = await anilistFetch(gql, { ids: mediaIds, from, to: nowSec, page }, { signal });
+    const pageData = data?.data?.Page;
+    for (const s of pageData?.airingSchedules || []) {
+      if (latest[s.mediaId] == null) latest[s.mediaId] = { episode: s.episode, airingAt: s.airingAt };
+    }
+    if (!pageData?.pageInfo?.hasNextPage) break;
+  }
+  return latest;
+}
+
+/**
+ * Full season list, paginated (the old single page of 30 left out the less
+ * popular half of every season). With `current: true` (the on-air season) it
+ * additionally merges shows still airing from previous seasons (marked with
+ * `_continuing`) and attaches `_airing` — last aired episode + next episode —
+ * so the UI can group by broadcast day and show "hace X horas".
+ */
+export async function fetchSeason(season, year, { signal, current = false } = {}) {
+  const media = await fetchAllMediaPages(SEASON_PAGE_QUERY, { season, year }, { signal, maxPages: 4 });
+
+  const continuingIds = new Set();
+  if (current) {
+    try {
+      const releasing = await fetchAllMediaPages(RELEASING_PAGE_QUERY, {}, { signal, maxPages: 3 });
+      const seen = new Set(media.map((m) => m.id));
+      for (const m of releasing) {
+        if (seen.has(m.id)) continue;
+        seen.add(m.id);
+        continuingIds.add(m.id);
+        media.push(m);
+      }
+    } catch (err) {
+      if (err?.name === 'AbortError') throw err;
+      console.error('[AniTracker] Continuing anime fetch failed:', err);
+    }
+  }
+
+  let latestAired = {};
+  if (current && media.length > 0) {
+    try {
+      latestAired = await fetchLatestAired(media.map((m) => m.id), { signal });
+    } catch (err) {
+      if (err?.name === 'AbortError') throw err;
+      console.error('[AniTracker] Latest aired fetch failed:', err);
+    }
+  }
+
+  return media
+    .map((m) => {
+      const anime = toAnime(m, { fallbackYear: year });
+      if (!anime) return null;
+      const last = latestAired[m.id];
+      const next = m.nextAiringEpisode;
+      if (last || next) {
+        anime._airing = {
+          lastEpisode: last?.episode ?? null,
+          lastAiredAt: last?.airingAt ?? null,
+          nextEpisode: next?.episode ?? null,
+          nextAiringAt: next?.airingAt ?? null,
+        };
+      }
+      if (continuingIds.has(m.id)) anime._continuing = true;
+      return anime;
+    })
+    .filter(Boolean);
 }
 
 export async function fetchTopAnime({ signal, perPage = 50 } = {}) {

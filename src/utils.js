@@ -10,6 +10,8 @@ export const clean = (anime) => {
   delete rest._isTop;
   delete rest._isCustomList;
   delete rest._customListId;
+  delete rest._airing;
+  delete rest._continuing;
   return rest;
 };
 
@@ -72,6 +74,80 @@ export const formatAiringDate = (airingAt) => {
   const date = d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
   const time = d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
   return `${date.charAt(0).toUpperCase()}${date.slice(1)}, ${time}`;
+};
+
+/**
+ * Relative "time ago" label in Spanish for a unix timestamp in seconds:
+ * 'hace un momento', 'hace 5 minutos', 'hace 3 horas', 'hace 2 días',
+ * 'hace 3 semanas', 'hace 2 meses'. `nowMs` is injectable for tests.
+ */
+export const formatTimeAgo = (unixSeconds, nowMs = Date.now()) => {
+  const diff = Math.max(0, Math.floor(nowMs / 1000 - unixSeconds));
+  const label = (n, one, many) => `hace ${n} ${n === 1 ? one : many}`;
+  if (diff < 60) return 'hace un momento';
+  const mins = Math.floor(diff / 60);
+  if (mins < 60) return label(mins, 'minuto', 'minutos');
+  const hours = Math.floor(diff / 3600);
+  if (hours < 24) return label(hours, 'hora', 'horas');
+  const days = Math.floor(diff / 86400);
+  if (days < 7) return label(days, 'día', 'días');
+  const weeks = Math.floor(days / 7);
+  if (weeks < 5) return label(weeks, 'semana', 'semanas');
+  return label(Math.floor(days / 30), 'mes', 'meses');
+};
+
+/**
+ * Relative "time until" label in Spanish for a unix timestamp in seconds:
+ * 'en 45 minutos', 'en 3 horas', 'en 2 días', 'en 3 semanas'.
+ */
+export const formatTimeUntil = (unixSeconds, nowMs = Date.now()) => {
+  const diff = Math.floor(unixSeconds - nowMs / 1000);
+  if (diff <= 0) return '¡ya disponible!';
+  const label = (n, one, many) => `en ${n} ${n === 1 ? one : many}`;
+  const mins = Math.floor(diff / 60);
+  if (mins < 60) return label(Math.max(1, mins), 'minuto', 'minutos');
+  const hours = Math.floor(diff / 3600);
+  if (hours < 24) return label(hours, 'hora', 'horas');
+  const days = Math.floor(diff / 86400);
+  if (days < 7) return label(days, 'día', 'días');
+  return label(Math.floor(days / 7), 'semana', 'semanas');
+};
+
+/**
+ * Whether a unix timestamp (seconds) is still in the future.
+ */
+export const isFutureTimestamp = (unixSeconds, nowMs = Date.now()) =>
+  !!unixSeconds && unixSeconds * 1000 > nowMs;
+
+/**
+ * Monday-first weekday index (0=Lunes … 6=Domingo) of an anime's airing time,
+ * in the user's local timezone. Prefers the upcoming episode and falls back to
+ * the last aired one. Returns null when there's no airing data.
+ */
+export const getAiringDayIndex = (airing) => {
+  const ts = airing?.nextAiringAt ?? airing?.lastAiredAt;
+  if (!ts) return null;
+  return (new Date(ts * 1000).getDay() + 6) % 7;
+};
+
+/**
+ * Group a season list into the 7 local weekdays by airing time (Monday-first),
+ * each day sorted by broadcast hour. Anime without airing info go to `undated`.
+ */
+export const groupSeasonByDay = (list) => {
+  const days = Array.from({ length: 7 }, () => []);
+  const undated = [];
+  for (const a of list || []) {
+    const idx = getAiringDayIndex(a._airing);
+    if (idx == null) undated.push(a);
+    else days[idx].push(a);
+  }
+  const minuteOfDay = (airing) => {
+    const d = new Date((airing.nextAiringAt ?? airing.lastAiredAt) * 1000);
+    return d.getHours() * 60 + d.getMinutes();
+  };
+  days.forEach((bucket) => bucket.sort((a, b) => minuteOfDay(a._airing) - minuteOfDay(b._airing)));
+  return { days, undated };
 };
 
 /**
