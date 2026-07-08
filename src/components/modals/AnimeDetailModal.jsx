@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import StarRating from '../StarRating';
 import { sanitizeUrl, pruneTranslationCache } from '../../constants';
 import { translateEnToEs } from '../../services/translationService';
-import { getPlatformInfo, formatAiringDate } from '../../utils';
+import { getPlatformInfo, formatAiringDate, looksSpanish } from '../../utils';
 import { fetchTmdbExtras, parseTmdbKey, TMDB_ENABLED, TMDB_REGIONS, getPreferredRegion, setPreferredRegion } from '../../services/tmdbService';
 
 const ProviderRow = ({ label, items, link }) => (
@@ -27,12 +27,7 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
     const getInitialSynopsis = () => {
         const syn = showAnimeDetail?.synopsis;
         if (!syn || syn.length < 10) return { text: null, needsFetch: false };
-        const esPattern = /\b(que|los|las|una|del|por|con|para|como|pero|más|también|esta|este|sobre|tiene|hace|puede|entre|desde|hasta|cuando|donde|porque|aunque|mientras|después|antes|durante|hacia|según|mediante|ser|está|son|han|fue|muy|sin|hay|todo|cada|otro|ella|ellos|quien|cual|esto|eso|sus|nos|al|lo)\b/gi;
-        const enPattern = /\b(the|and|but|with|for|that|this|from|are|was|were|been|have|has|had|will|would|could|should|their|they|them|which|when|where|who|what|into|about|after|before|between|through|during|being|each|other|than|then|some|only|also|very|just|over|such|more)\b/gi;
-        const esMatches = (syn.match(esPattern) || []).length;
-        const enMatches = (syn.match(enPattern) || []).length;
-        const wordCount = syn.split(/\s+/).length;
-        if (esMatches > enMatches && esMatches / wordCount > 0.06) return { text: syn, needsFetch: false };
+        if (looksSpanish(syn)) return { text: syn, needsFetch: false };
         try { const cached = localStorage.getItem(`anitracker-tr-${showAnimeDetail.id}`); if (cached) return { text: cached, needsFetch: false }; } catch { /* empty */ }
         return { text: null, needsFetch: true };
     };

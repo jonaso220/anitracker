@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { clean, filterByLocalSearch, getFilteredWatched, parseEpisodes, hashString, buildBackup, parseBackup, getPlatformInfo, pickAutoWatchLink, formatAiringWhen, formatAiringDate, formatTimeAgo, formatTimeUntil, getAiringDayIndex, groupSeasonByDay } from '../utils';
+import { clean, filterByLocalSearch, getFilteredWatched, parseEpisodes, hashString, buildBackup, parseBackup, getPlatformInfo, pickAutoWatchLink, formatAiringWhen, formatAiringDate, formatTimeAgo, formatTimeUntil, getAiringDayIndex, groupSeasonByDay, looksSpanish } from '../utils';
 
 describe('clean', () => {
   it('removes internal flags from anime object', () => {
@@ -94,6 +94,19 @@ describe('groupSeasonByDay', () => {
     const { days } = groupSeasonByDay([anime]);
     expect(days[2].map((a) => a.id)).toEqual([1]);
     expect(days[0]).toEqual([]);
+  });
+});
+
+describe('looksSpanish', () => {
+  it('detects Spanish text', () => {
+    expect(looksSpanish('Una historia sobre un chico que quiere ser el héroe más grande de todos, pero no tiene poderes.')).toBe(true);
+  });
+  it('rejects English text', () => {
+    expect(looksSpanish('A story about a boy who wants to become the greatest hero of them all, but he has no powers.')).toBe(false);
+  });
+  it('handles empty input', () => {
+    expect(looksSpanish('')).toBe(false);
+    expect(looksSpanish(null)).toBe(false);
   });
 });
 

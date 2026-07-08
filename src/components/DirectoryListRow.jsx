@@ -1,8 +1,9 @@
 import React from 'react';
+import { useTranslatedSynopsis } from '../hooks/useTranslatedSynopsis';
 
 /**
- * Fila compacta del Directorio en modo lista: miniatura, título + metadatos,
- * sinopsis recortada y las mismas acciones que la card de descubrimiento.
+ * Fila del Directorio en modo lista: miniatura, título + metadatos, sinopsis
+ * (traducida al español) y las mismas acciones que la card de descubrimiento.
  */
 const DirectoryListRow = ({
   anime,
@@ -12,6 +13,7 @@ const DirectoryListRow = ({
   onAddToWatchLater,
   onMarkWatched,
 }) => {
+  const synopsis = useTranslatedSynopsis(anime);
   const handleImgError = (e) => {
     e.target.style.display = 'none';
     const fb = e.target.nextSibling;
@@ -35,7 +37,7 @@ const DirectoryListRow = ({
           {anime.episodes && <span>{anime.episodes} eps</span>}
           {(anime.genres || []).slice(0, 3).map((g) => <span key={g} className="genre">{g}</span>)}
         </div>
-        <p className="directory-row-synopsis">{anime.synopsis}</p>
+        <p className="directory-row-synopsis">{synopsis}</p>
       </div>
       <div className="directory-row-actions">
         {alreadyAdded ? (

@@ -4,6 +4,12 @@ import { useBulkMode } from '../hooks/useBulkMode';
 import { useToast } from '../hooks/useToast';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { useDirectory } from '../hooks/useDirectory';
+import { useTranslatedSynopsis } from '../hooks/useTranslatedSynopsis';
+import { translateEnToEs } from '../services/translationService';
+
+vi.mock('../services/translationService', () => ({
+  translateEnToEs: vi.fn(),
+}));
 
 describe('useBulkMode', () => {
   it('toggles selection on an id', () => {
@@ -151,6 +157,44 @@ describe('useDirectory', () => {
     const vars = JSON.parse(globalThis.fetch.mock.calls[0][1].body).variables;
     expect(vars.search).toBe('naru');
     vi.useRealTimers();
+  });
+});
+
+describe('useTranslatedSynopsis', () => {
+  const EN_SYNOPSIS = 'A story about a boy who wants to become the greatest hero of them all, but he has no powers.';
+  beforeEach(() => { localStorage.clear(); translateEnToEs.mockReset(); });
+
+  it('returns Spanish synopses as-is without calling the translator', () => {
+    const anime = { id: 1, synopsis: 'Una historia sobre un chico que quiere ser el héroe más grande de todos.' };
+    const { result } = renderHook(() => useTranslatedSynopsis(anime));
+    expect(result.current).toBe(anime.synopsis);
+    expect(translateEnToEs).not.toHaveBeenCalled();
+  });
+
+  it('returns the cached translation synchronously', () => {
+    localStorage.setItem('anitracker-tr-2', 'Traducción cacheada.');
+    const { result } = renderHook(() => useTranslatedSynopsis({ id: 2, synopsis: EN_SYNOPSIS }));
+    expect(result.current).toBe('Traducción cacheada.');
+    expect(translateEnToEs).not.toHaveBeenCalled();
+  });
+
+  it('translates English synopses, caches the result, and shows the original meanwhile', async () => {
+    let resolveTr;
+    translateEnToEs.mockReturnValue(new Promise((res) => { resolveTr = res; }));
+    const { result } = renderHook(() => useTranslatedSynopsis({ id: 3, synopsis: EN_SYNOPSIS }));
+    // Mientras traduce muestra el original
+    expect(result.current).toBe(EN_SYNOPSIS);
+    await act(async () => { resolveTr('Una historia traducida.'); });
+    expect(result.current).toBe('Una historia traducida.');
+    expect(localStorage.getItem('anitracker-tr-3')).toBe('Una historia traducida.');
+  });
+
+  it('falls back to the original text when every provider fails', async () => {
+    translateEnToEs.mockResolvedValue(null);
+    const { result } = renderHook(() => useTranslatedSynopsis({ id: 4, synopsis: EN_SYNOPSIS }));
+    await waitFor(() => expect(translateEnToEs).toHaveBeenCalled());
+    await waitFor(() => expect(result.current).toBe(EN_SYNOPSIS));
+    expect(localStorage.getItem('anitracker-tr-4')).toBeNull();
   });
 });
 
