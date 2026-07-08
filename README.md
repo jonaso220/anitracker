@@ -16,7 +16,11 @@ opcional en la nube.
   fecha, rating o título.
 - **📋 Listas personalizadas** — agrupá animes como quieras.
 - **🔍 Búsqueda multi-fuente** — consulta en paralelo a MyAnimeList (Jikan),
-  Kitsu, AniList, TVMaze e iTunes, con deduplicado y *fallback* vía Wikipedia.
+  Kitsu, AniList, TVMaze, iTunes y TMDB (opcional), con deduplicado,
+  cache de búsquedas recientes y *fallback* vía Wikipedia.
+- **📺 Dónde ver** — links de streaming (Crunchyroll, Netflix, etc.) desde
+  AniList/Kitsu, y con TMDB configurado, disponibilidad por país de películas
+  y series (datos de JustWatch) + trailers de YouTube.
 - **🌸 Descubrimiento** — animes de la temporada actual y top histórico.
 - **📊 Estadísticas** — composición de tu biblioteca, distribución de tus
   puntuaciones y géneros favoritos.
@@ -35,6 +39,7 @@ opcional en la nube.
 | Lint | ESLint 9 |
 | Backend opcional | Firebase (Auth + Firestore) |
 | Datos de anime | AniList, Jikan (MAL), Kitsu, TVMaze, iTunes |
+| Películas y series | TMDB (opcional, con disponibilidad por país vía JustWatch) |
 
 ## Cómo empezar
 
@@ -70,6 +75,20 @@ cp .env.example .env.local
 > Las claves Web de Firebase **no son secretas** — la seguridad se hace con
 > Firebase Security Rules, no ocultando estos valores. Aun así, `.env*` está en
 > `.gitignore`.
+
+### TMDB (películas y series)
+
+Para que la búsqueda incluya películas y series con metadatos en español,
+disponibilidad por país (Netflix, Disney+, Max…) y trailers, registrate gratis
+en [TMDB](https://www.themoviedb.org/settings/api) y agregá a tu `.env.local`:
+
+```bash
+VITE_TMDB_API_KEY=tu_api_key_o_token_v4
+```
+
+Sin la clave, la app funciona igual pero la búsqueda de películas/series queda
+limitada a TVMaze e iTunes. La disponibilidad por plataforma la provee
+JustWatch vía TMDB.
 
 ## Estructura del proyecto
 

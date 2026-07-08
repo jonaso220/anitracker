@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { clean, filterByLocalSearch, getFilteredWatched, parseEpisodes, hashString, buildBackup, parseBackup } from '../utils';
+import { clean, filterByLocalSearch, getFilteredWatched, parseEpisodes, hashString, buildBackup, parseBackup, getPlatformInfo, pickAutoWatchLink } from '../utils';
 
 describe('clean', () => {
   it('removes internal flags from anime object', () => {
@@ -111,6 +111,45 @@ describe('getFilteredWatched', () => {
     const result = getFilteredWatched(watchedList, 'all', 'date', 'Anime B');
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe(2);
+  });
+});
+
+describe('getPlatformInfo', () => {
+  it('returns null without a URL', () => {
+    expect(getPlatformInfo('')).toBeNull();
+    expect(getPlatformInfo(null)).toBeNull();
+  });
+
+  it('recognizes known platforms', () => {
+    expect(getPlatformInfo('https://www.netflix.com/title/1').name).toBe('Netflix');
+    expect(getPlatformInfo('https://www.crunchyroll.com/x').name).toBe('Crunchyroll');
+    expect(getPlatformInfo('https://www.primevideo.com/x').name).toBe('Prime Video');
+    expect(getPlatformInfo('https://play.max.com/x').name).toBe('Max');
+  });
+
+  it('falls back to a generic badge for unknown URLs', () => {
+    expect(getPlatformInfo('https://example.com/x')).toMatchObject({ label: '▶', name: 'Ver' });
+  });
+});
+
+describe('pickAutoWatchLink', () => {
+  it('keeps an existing manual link', () => {
+    expect(pickAutoWatchLink({ watchLink: 'https://manual.com', streamingLinks: [{ url: 'https://auto.com' }] })).toBe('https://manual.com');
+  });
+
+  it('prefers Spanish-language streaming links', () => {
+    const anime = { streamingLinks: [
+      { site: 'Crunchyroll', url: 'https://cr.com/en', language: 'English' },
+      { site: 'Crunchyroll', url: 'https://cr.com/es', language: 'Spanish' },
+    ] };
+    expect(pickAutoWatchLink(anime)).toBe('https://cr.com/es');
+  });
+
+  it('falls back to the first link and to empty string', () => {
+    expect(pickAutoWatchLink({ streamingLinks: [{ url: 'https://first.com' }, { url: 'https://second.com' }] })).toBe('https://first.com');
+    expect(pickAutoWatchLink({ streamingLinks: [] })).toBe('');
+    expect(pickAutoWatchLink({})).toBe('');
+    expect(pickAutoWatchLink(null)).toBe('');
   });
 });
 

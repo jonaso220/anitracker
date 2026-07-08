@@ -622,6 +622,101 @@
 }
 .platform-btn.watch:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(34, 197, 94, 0.4); }
 
+.platform-btn.trailer {
+  margin-top: 0.6rem;
+  background: var(--gradient-danger);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}
+.platform-btn.trailer:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(239, 68, 68, 0.4); }
+
+/* --- Dónde ver (streaming links + TMDB providers) --- */
+.streaming-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+.streaming-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid color-mix(in srgb, var(--platform-color, #22c55e) 55%, transparent);
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--platform-color, #22c55e) 12%, transparent);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all var(--transition-fast);
+}
+.streaming-chip:hover {
+  background: color-mix(in srgb, var(--platform-color, #22c55e) 24%, transparent);
+  transform: translateY(-1px);
+}
+.provider-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.5rem;
+}
+.provider-row-label {
+  flex-shrink: 0;
+  min-width: 4.5rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.provider-row-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.provider-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all var(--transition-fast);
+}
+a.provider-chip:hover { border-color: var(--border-brand-strong); transform: translateY(-1px); }
+.provider-chip img {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+.streaming-status {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.tmdb-attribution {
+  margin-top: 0.6rem;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  opacity: 0.8;
+}
+.region-select {
+  padding: 0.3rem 0.5rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+.region-select:focus { outline: none; border-color: var(--border-brand-strong); }
+
 .detail-action-sm {
   padding: 0.35rem 0.75rem;
   background: transparent;

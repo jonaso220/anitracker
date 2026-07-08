@@ -2,8 +2,27 @@ import React, { useState, useEffect, useCallback } from 'react';
 import StarRating from '../StarRating';
 import { sanitizeUrl, pruneTranslationCache } from '../../constants';
 import { translateEnToEs } from '../../services/translationService';
+import { getPlatformInfo } from '../../utils';
+import { fetchTmdbExtras, parseTmdbKey, TMDB_ENABLED, TMDB_REGIONS, getPreferredRegion, setPreferredRegion } from '../../services/tmdbService';
 
-const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, updateEpisode, updateUserRating, updateAnimeLink, updateAnimeNotes, markAsFinished, dropAnime, deleteAnime, addToWatchLater, markAsWatched, setShowMoveDayPicker, setShowDayPicker, resumeAnime, customLists = [], addToCustomList, removeFromCustomList }) => {
+const ProviderRow = ({ label, items, link }) => (
+    <div className="provider-row">
+        <span className="provider-row-label">{label}</span>
+        <div className="provider-row-items">
+            {items.map((p, i) => {
+                const chip = <>
+                    {p.logo && <img src={p.logo} alt="" loading="lazy" decoding="async" />}
+                    <span>{p.name}</span>
+                </>;
+                return link
+                    ? <a key={i} className="provider-chip" href={sanitizeUrl(link)} target="_blank" rel="noopener noreferrer" title={`Ver disponibilidad de ${p.name}`}>{chip}</a>
+                    : <span key={i} className="provider-chip">{chip}</span>;
+            })}
+        </div>
+    </div>
+);
+
+const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, updateEpisode, updateUserRating, updateAnimeLink, updateAnimeNotes, mergeAnimeExtras, markAsFinished, dropAnime, deleteAnime, addToWatchLater, markAsWatched, setShowMoveDayPicker, setShowDayPicker, resumeAnime, customLists = [], addToCustomList, removeFromCustomList }) => {
     // Compute initial synopsis synchronously (Spanish detection + cache check)
     const getInitialSynopsis = () => {
         const syn = showAnimeDetail?.synopsis;
@@ -70,12 +89,50 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
         setRetryNonce((n) => n + 1);
     }, []);
 
+    // --- TMDB "where to watch" + trailer (lazy, cached in the service) ---
+    const isTmdbItem = TMDB_ENABLED && !!parseTmdbKey(showAnimeDetail?.sourceKey);
+    const [tmdbExtras, setTmdbExtras] = useState(null);
+    const [tmdbLoading, setTmdbLoading] = useState(isTmdbItem);
+    const [region, setRegion] = useState(getPreferredRegion);
+
+    // Loading starts true for TMDB items (the modal remounts per anime via
+    // key={id}); region changes re-arm it from the change handler below.
+    useEffect(() => {
+        if (!isTmdbItem) return undefined;
+        const ctrl = new AbortController();
+        fetchTmdbExtras(showAnimeDetail.sourceKey, { region, signal: ctrl.signal })
+            .then((extras) => {
+                if (ctrl.signal.aborted || !extras) return;
+                setTmdbExtras(extras);
+                // Persist the trailer on the saved copy (no-op for discovery items).
+                if (extras.trailerUrl && mergeAnimeExtras) {
+                    mergeAnimeExtras(showAnimeDetail.id, { trailerUrl: extras.trailerUrl });
+                }
+            })
+            .catch((e) => { if (e?.name !== 'AbortError') console.error('TMDB extras error:', e); })
+            .finally(() => { if (!ctrl.signal.aborted) setTmdbLoading(false); });
+        return () => ctrl.abort();
+    }, [isTmdbItem, showAnimeDetail?.sourceKey, showAnimeDetail?.id, region, mergeAnimeExtras]);
+
+    const changeRegion = (code) => {
+        setPreferredRegion(code);
+        setTmdbExtras(null);
+        setTmdbLoading(true);
+        setRegion(code);
+    };
+
     if (!showAnimeDetail) return null;
     const a = showAnimeDetail;
     const isDiscovery = a._isSeason || a._isTop;
     const isSchedule = !a._isWatchLater && !a._isWatched && !isDiscovery;
     const closeAndDo = (fn) => { setShowAnimeDetail(null); fn(); };
     const airing = airingData[a.id];
+
+    const streamingLinks = a.streamingLinks || [];
+    const trailerUrl = a.trailerUrl || tmdbExtras?.trailerUrl || '';
+    const providers = tmdbExtras?.providers;
+    const hasProviders = !!providers && (providers.flatrate.length > 0 || providers.rent.length > 0 || providers.buy.length > 0);
+    const showWhereToWatch = streamingLinks.length > 0 || isTmdbItem || trailerUrl;
 
     return (
         <div
@@ -130,6 +187,53 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                             <span className="detail-airing-ep">Episodio {airing.episode}</span>
                             <span className="detail-airing-date">{new Date(airing.airingAt * 1000).toLocaleString()}</span>
                         </div>
+                    </div>
+                )}
+
+                {showWhereToWatch && (
+                    <div className="detail-section">
+                        <div className="detail-section-header">
+                            <h4>📺 Dónde ver</h4>
+                            {isTmdbItem && (
+                                <select
+                                    className="region-select"
+                                    value={region}
+                                    onChange={(e) => changeRegion(e.target.value)}
+                                    aria-label="País para ver disponibilidad"
+                                >
+                                    {TMDB_REGIONS.map((r) => <option key={r.code} value={r.code}>{r.label}</option>)}
+                                </select>
+                            )}
+                        </div>
+                        {streamingLinks.length > 0 && (
+                            <div className="streaming-links">
+                                {streamingLinks.map((l, i) => {
+                                    const info = getPlatformInfo(l.url);
+                                    return (
+                                        <a key={i} href={sanitizeUrl(l.url)} target="_blank" rel="noopener noreferrer"
+                                            className="streaming-chip" style={{ '--platform-color': info.color }}>
+                                            ▶ {l.site}{l.language ? ` · ${l.language}` : ''}
+                                        </a>
+                                    );
+                                })}
+                            </div>
+                        )}
+                        {isTmdbItem && (
+                            tmdbLoading ? <p className="streaming-status">Buscando plataformas…</p>
+                            : hasProviders ? <>
+                                {providers.flatrate.length > 0 && <ProviderRow label="Streaming" items={providers.flatrate} link={providers.link} />}
+                                {providers.rent.length > 0 && <ProviderRow label="Alquiler" items={providers.rent} link={providers.link} />}
+                                {providers.buy.length > 0 && <ProviderRow label="Compra" items={providers.buy} link={providers.link} />}
+                                <p className="tmdb-attribution">Disponibilidad por JustWatch, vía TMDB</p>
+                            </>
+                            : tmdbExtras ? <p className="streaming-status">Sin plataformas conocidas en este país.</p>
+                            : null
+                        )}
+                        {trailerUrl && (
+                            <a className="platform-btn trailer" href={sanitizeUrl(trailerUrl)} target="_blank" rel="noopener noreferrer">
+                                🎬 Ver trailer
+                            </a>
+                        )}
                     </div>
                 )}
 

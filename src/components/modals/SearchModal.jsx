@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { SEARCH_SOURCE_NAMES } from '../../services/searchAnime';
 
 const Highlight = ({ text, query }) => {
     if (!query || query.length < 2 || !text) return <>{text}</>;
@@ -168,7 +169,7 @@ const SearchModal = ({ setShowSearch, searchQuery, handleSearch, searchResults, 
           ))}</>
           : searchResults.length > 0 && hasActiveFilters ? <div className="no-results"><span>🔍</span><p>Ningún resultado coincide con los filtros</p><button className="clear-filters-btn" onClick={clearFilters}>Limpiar filtros</button></div>
           : searchQuery.length > 1 ? <div className="no-results"><span>😢</span><p>Sin resultados para "{searchQuery}"</p></div>
-          : <div className="search-placeholder"><span>🎌</span><p>Buscá anime, series o películas</p><p className="search-hint">MAL · Kitsu · AniList · TVMaze · iTunes</p></div>}
+          : <div className="search-placeholder"><span>🎌</span><p>Buscá anime, series o películas</p><p className="search-hint">{SEARCH_SOURCE_NAMES.join(' · ')}</p></div>}
         </div>
       </div>
     </div>

@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v6';
+const CACHE_VERSION = 'v7';
 const STATIC_CACHE = `anitracker-static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `anitracker-runtime-${CACHE_VERSION}`;
 const IMAGE_CACHE = `anitracker-images-${CACHE_VERSION}`;
@@ -21,6 +21,8 @@ const NO_CACHE_HOSTS = [
   'api.tvmaze.com',
   'itunes.apple.com',
   'api.mymemory.translated.net',
+  'translate.googleapis.com',
+  'api.themoviedb.org',
   'es.wikipedia.org',
   'en.wikipedia.org',
   'firestore.googleapis.com',
@@ -32,6 +34,7 @@ const NO_CACHE_HOSTS = [
 // Image hosts for optimized caching
 const IMAGE_HOSTS = [
   'cdn.myanimelist.net',
+  'image.tmdb.org',
   'media.kitsu.app',
   's4.anilist.co',
   'static.tvmaze.com',
