@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { toAnime as jikanToAnime, searchJikan } from '../services/jikanService';
 import { toAnime as kitsuToAnime, searchKitsu, mapIncludedStreamingLinks, siteNameFromUrl } from '../services/kitsuService';
-import { toAnime as anilistToAnime, fetchAiringInfo, fetchAnilistUserAnimeLists, fetchSeason, fetchLatestAired } from '../services/anilistService';
+import { toAnime as anilistToAnime, fetchAiringInfo, fetchAnilistUserAnimeLists, fetchSeason, fetchLatestAired, fetchDirectory } from '../services/anilistService';
 import { toAnime as tvmazeToAnime } from '../services/tvmazeService';
 import { toAnime as itunesToAnime } from '../services/itunesService';
 import { toAnime as tmdbToAnime, parseTmdbKey, extractExtras, TMDB_MOVIE_ID_BASE, TMDB_TV_ID_BASE } from '../services/tmdbService';
@@ -357,6 +357,35 @@ describe('anilistService.fetchSeason', () => {
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
     const { query } = JSON.parse(globalThis.fetch.mock.calls[0][1].body);
     expect(query).toContain('$season');
+  });
+});
+
+describe('anilistService.fetchDirectory', () => {
+  beforeEach(() => { vi.spyOn(globalThis, 'fetch'); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  const okPage = (media, hasNextPage = false) => ({
+    ok: true,
+    json: () => Promise.resolve({ data: { Page: { pageInfo: { hasNextPage }, media } } }),
+  });
+
+  it('omits unset filters from variables and applies the set ones', async () => {
+    globalThis.fetch.mockResolvedValueOnce(okPage([]));
+    await fetchDirectory({ genre: 'Action', year: '2020', demography: 'Shounen', search: '  ', format: '', status: '', season: '' });
+    const { variables } = JSON.parse(globalThis.fetch.mock.calls[0][1].body);
+    expect(variables).toEqual({ page: 1, perPage: 30, sort: ['POPULARITY_DESC'], genre: 'Action', seasonYear: 2020, tag: 'Shounen' });
+  });
+
+  it('passes search, custom sort and page, and maps results', async () => {
+    globalThis.fetch.mockResolvedValueOnce(okPage([{ id: 5, idMal: 5, title: { romaji: 'Naruto' }, coverImage: {} }], true));
+    const res = await fetchDirectory({ search: 'naru', sort: 'SCORE_DESC' }, { page: 3 });
+    const { variables } = JSON.parse(globalThis.fetch.mock.calls[0][1].body);
+    expect(variables.search).toBe('naru');
+    expect(variables.sort).toEqual(['SCORE_DESC']);
+    expect(variables.page).toBe(3);
+    expect(res.hasNextPage).toBe(true);
+    expect(res.results).toHaveLength(1);
+    expect(res.results[0].title).toBe('Naruto');
   });
 });
 

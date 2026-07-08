@@ -34,6 +34,9 @@ store global ni context; el estado vive en `App.jsx` y baja por props.
     (cache en localStorage con TTL).
   - `useFirebase` — auth con Google + auto-sync a Firestore con cuidado de
     races (flags de carga, versionado de loads).
+  - `useDirectory` — catálogo navegable ("Directorio") con filtros de AniList
+    (género, demografía, formato, estado, año, temporada, orden) y paginado
+    acumulativo con "cargar más".
   - `useDragDrop`, `useBulkMode`, `useBulkActions`, `useDiscovery`,
     `useToast`, `useServiceWorkerUpdate`.
 - **`services/`** — una API por archivo (`jikanService`, `kitsuService`,

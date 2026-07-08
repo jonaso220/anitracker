@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import { useBulkMode } from '../hooks/useBulkMode';
 import { useToast } from '../hooks/useToast';
 import { usePersistedState } from '../hooks/usePersistedState';
+import { useDirectory } from '../hooks/useDirectory';
 
 describe('useBulkMode', () => {
   it('toggles selection on an id', () => {
@@ -60,6 +61,71 @@ describe('useToast', () => {
     act(() => { result.current.dismissToast(); });
     expect(undoFn).not.toHaveBeenCalled();
     expect(result.current.toast).toBeNull();
+  });
+});
+
+describe('useDirectory', () => {
+  const okPage = (media, hasNextPage = false) => ({
+    ok: true,
+    json: () => Promise.resolve({ data: { Page: { pageInfo: { hasNextPage }, media } } }),
+  });
+  const media = (id, title) => ({ id, idMal: id, title: { romaji: title }, coverImage: {} });
+
+  beforeEach(() => { vi.spyOn(globalThis, 'fetch'); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it('loadInitial fetches page 1 once and keeps results on re-entry', async () => {
+    globalThis.fetch.mockResolvedValue(okPage([media(1, 'A')], true));
+    const { result } = renderHook(() => useDirectory());
+    act(() => { result.current.loadInitial(); });
+    await waitFor(() => expect(result.current.results).toHaveLength(1));
+    expect(result.current.hasNextPage).toBe(true);
+    act(() => { result.current.loadInitial(); });
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('loadMore appends the next page deduplicating by id', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce(okPage([media(1, 'A'), media(2, 'B')], true))
+      .mockResolvedValueOnce(okPage([media(2, 'B dup'), media(3, 'C')], false));
+    const { result } = renderHook(() => useDirectory());
+    act(() => { result.current.loadInitial(); });
+    await waitFor(() => expect(result.current.results).toHaveLength(2));
+    act(() => { result.current.loadMore(); });
+    await waitFor(() => expect(result.current.results).toHaveLength(3));
+    expect(result.current.results.map((a) => a.id)).toEqual([1, 2, 3]);
+    expect(result.current.hasNextPage).toBe(false);
+    const page2Vars = JSON.parse(globalThis.fetch.mock.calls[1][1].body).variables;
+    expect(page2Vars.page).toBe(2);
+  });
+
+  it('updateFilter resets results and refetches with the new filter', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce(okPage([media(1, 'A')]))
+      .mockResolvedValueOnce(okPage([media(9, 'Filtered')]));
+    const { result } = renderHook(() => useDirectory());
+    act(() => { result.current.loadInitial(); });
+    await waitFor(() => expect(result.current.results).toHaveLength(1));
+    act(() => { result.current.updateFilter('genre', 'Action'); });
+    await waitFor(() => expect(result.current.results[0]?.id).toBe(9));
+    expect(result.current.filters.genre).toBe('Action');
+    const vars = JSON.parse(globalThis.fetch.mock.calls[1][1].body).variables;
+    expect(vars.genre).toBe('Action');
+    expect(vars.page).toBe(1);
+  });
+
+  it('debounces text search', async () => {
+    vi.useFakeTimers();
+    globalThis.fetch.mockResolvedValue(okPage([media(1, 'A')]));
+    const { result } = renderHook(() => useDirectory());
+    act(() => { result.current.updateFilter('search', 'na'); });
+    act(() => { result.current.updateFilter('search', 'naru'); });
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    act(() => { vi.advanceTimersByTime(500); });
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    const vars = JSON.parse(globalThis.fetch.mock.calls[0][1].body).variables;
+    expect(vars.search).toBe('naru');
+    vi.useRealTimers();
   });
 });
 
