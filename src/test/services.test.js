@@ -312,13 +312,37 @@ describe('anilistService.fetchSeason', () => {
   });
   const media = (id, title, extra = {}) => ({ id, idMal: id, title: { romaji: title }, coverImage: {}, ...extra });
 
-  it('paginates until hasNextPage is false', async () => {
-    globalThis.fetch
-      .mockResolvedValueOnce(mediaPage([media(1, 'A')], true))
-      .mockResolvedValueOnce(mediaPage([media(2, 'B')], false));
+  it('fetches page 1, then the remaining pages in parallel, keeping order', async () => {
+    globalThis.fetch.mockImplementation((url, opts) => {
+      const { variables } = JSON.parse(opts.body);
+      if (variables.page === 1) return Promise.resolve(mediaPage([media(1, 'A')], true));
+      if (variables.page === 2) return Promise.resolve(mediaPage([media(2, 'B')], true));
+      if (variables.page === 3) return Promise.resolve(mediaPage([media(3, 'C')], false));
+      return Promise.resolve(mediaPage([], false));
+    });
     const res = await fetchSeason('WINTER', 2020);
-    expect(res.map((a) => a.title)).toEqual(['A', 'B']);
-    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+    expect(res.map((a) => a.title)).toEqual(['A', 'B', 'C']);
+    // 1 secuencial + las 3 restantes en paralelo (maxPages 4)
+    expect(globalThis.fetch).toHaveBeenCalledTimes(4);
+  });
+
+  it('does not fetch extra pages when page 1 is the last one', async () => {
+    globalThis.fetch.mockResolvedValueOnce(mediaPage([media(1, 'A')], false));
+    const res = await fetchSeason('WINTER', 2020);
+    expect(res.map((a) => a.title)).toEqual(['A']);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('tolerates a failed extra page and keeps the rest', async () => {
+    globalThis.fetch.mockImplementation((url, opts) => {
+      const { variables } = JSON.parse(opts.body);
+      if (variables.page === 1) return Promise.resolve(mediaPage([media(1, 'A')], true));
+      if (variables.page === 2) return Promise.reject(new Error('network'));
+      if (variables.page === 3) return Promise.resolve(mediaPage([media(3, 'C')], false));
+      return Promise.resolve(mediaPage([], false));
+    });
+    const res = await fetchSeason('WINTER', 2020);
+    expect(res.map((a) => a.title)).toEqual(['A', 'C']);
   });
 
   it('with current: true merges continuing shows and attaches _airing', async () => {

@@ -4,6 +4,7 @@ import { useBulkMode } from '../hooks/useBulkMode';
 import { useToast } from '../hooks/useToast';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { useDirectory } from '../hooks/useDirectory';
+import { useDiscovery } from '../hooks/useDiscovery';
 import { useTranslatedSynopsis } from '../hooks/useTranslatedSynopsis';
 import { translateEnToEs } from '../services/translationService';
 
@@ -145,6 +146,31 @@ describe('useDirectory', () => {
     expect(result.current.filters.genre).toBe('');
   });
 
+  it('loadInitial paints from the persisted cache without network', () => {
+    const filters = { search: '', genre: '', demography: '', format: '', status: '', year: '', season: '', sort: 'POPULARITY_DESC' };
+    localStorage.setItem('anitracker-directory-cache', JSON.stringify({
+      at: Date.now(),
+      data: { filtersKey: JSON.stringify(filters), results: [{ id: 7, title: 'Cacheado' }], hasNextPage: true },
+    }));
+    const { result } = renderHook(() => useDirectory());
+    act(() => { result.current.loadInitial(); });
+    expect(result.current.results.map((a) => a.title)).toEqual(['Cacheado']);
+    expect(result.current.hasNextPage).toBe(true);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it('ignores the persisted cache when the filters differ', async () => {
+    localStorage.setItem('anitracker-directory-cache', JSON.stringify({
+      at: Date.now(),
+      data: { filtersKey: JSON.stringify({ genre: 'Action' }), results: [{ id: 7, title: 'Viejo' }], hasNextPage: false },
+    }));
+    globalThis.fetch.mockResolvedValue(okPage([media(1, 'Fresco')]));
+    const { result } = renderHook(() => useDirectory());
+    act(() => { result.current.loadInitial(); });
+    await waitFor(() => expect(result.current.results.map((a) => a.title)).toEqual(['Fresco']));
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+
   it('debounces text search', async () => {
     vi.useFakeTimers();
     globalThis.fetch.mockResolvedValue(okPage([media(1, 'A')]));
@@ -157,6 +183,46 @@ describe('useDirectory', () => {
     const vars = JSON.parse(globalThis.fetch.mock.calls[0][1].body).variables;
     expect(vars.search).toBe('naru');
     vi.useRealTimers();
+  });
+});
+
+describe('useDiscovery (cache y precarga de temporada)', () => {
+  const currentKey = () => {
+    const m = new Date().getMonth() + 1;
+    const season = m <= 3 ? 'WINTER' : m <= 6 ? 'SPRING' : m <= 9 ? 'SUMMER' : 'FALL';
+    return `${season}-${new Date().getFullYear()}`;
+  };
+
+  beforeEach(() => { localStorage.clear(); vi.spyOn(globalThis, 'fetch'); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it('paints the current season from the persisted cache without network', () => {
+    localStorage.setItem('anitracker-season-cache', JSON.stringify({
+      at: Date.now(),
+      data: { key: currentKey(), results: [{ id: 1, title: 'Cacheado' }] },
+    }));
+    const { result } = renderHook(() => useDiscovery());
+    act(() => { result.current.loadSeasonCurrent(); });
+    expect(result.current.seasonAnime.map((a) => a.title)).toEqual(['Cacheado']);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it('prefetch and a later tab open share the in-flight fetch', async () => {
+    let resolveFetch;
+    globalThis.fetch.mockReturnValue(new Promise((res) => { resolveFetch = res; }));
+    const { result } = renderHook(() => useDiscovery());
+    act(() => { result.current.prefetchCurrentSeason(); });
+    // La temporada actual dispara temporada + "en emisión" en paralelo: 2 requests.
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+    act(() => { result.current.loadSeasonCurrent(); });
+    // El clic en la pestaña NO arranca otra tanda: reusa la que está en vuelo.
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      resolveFetch({ ok: true, json: () => Promise.resolve({ data: { Page: { pageInfo: { hasNextPage: false }, media: [{ id: 5, idMal: 5, title: { romaji: 'Único' }, coverImage: {} }] } } }) });
+    });
+    await waitFor(() => expect(result.current.seasonAnime.map((a) => a.title)).toEqual(['Único']));
+    // Y dejó la copia persistente lista para la próxima sesión.
+    expect(JSON.parse(localStorage.getItem('anitracker-season-cache')).data.key).toBe(currentKey());
   });
 });
 

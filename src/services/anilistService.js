@@ -66,11 +66,25 @@ const RELEASING_PAGE_QUERY = `query ($page: Int, $perPage: Int) {
     }
   }`;
 
+// Página 1 primero (para saber si hay más) y el resto en paralelo: en serie,
+// una temporada de 4 páginas costaba 4 round-trips encadenados.
 async function fetchAllMediaPages(gql, variables, { signal, maxPages = 4, perPage = 50 } = {}) {
-  const media = [];
-  for (let page = 1; page <= maxPages; page++) {
-    const data = await anilistFetch(gql, { ...variables, page, perPage }, { signal });
-    const pageData = data?.data?.Page;
+  const first = await anilistFetch(gql, { ...variables, page: 1, perPage }, { signal });
+  const firstPage = first?.data?.Page;
+  const media = [...(firstPage?.media || [])];
+  if (!firstPage?.pageInfo?.hasNextPage || maxPages < 2) return media;
+
+  const rest = await Promise.all(
+    Array.from({ length: maxPages - 1 }, (_, i) =>
+      anilistFetch(gql, { ...variables, page: i + 2, perPage }, { signal }).catch((err) => {
+        if (err?.name === 'AbortError') throw err;
+        return null; // una página caída no tira todo el resultado
+      })
+    )
+  );
+  for (const data of rest) {
+    if (!data) continue; // página caída: seguir con las siguientes
+    const pageData = data.data?.Page;
     media.push(...(pageData?.media || []));
     if (!pageData?.pageInfo?.hasNextPage) break;
   }
@@ -145,23 +159,25 @@ export async function fetchLatestAired(mediaIds, { signal, nowSec = Math.floor(D
  * so the UI can group by broadcast day and show "hace X horas".
  */
 export async function fetchSeason(season, year, { signal, current = false } = {}) {
-  const media = await fetchAllMediaPages(SEASON_PAGE_QUERY, { season, year }, { signal, maxPages: 4 });
+  // La temporada y los "en emisión" no dependen entre sí: en paralelo.
+  const [media, releasing] = await Promise.all([
+    fetchAllMediaPages(SEASON_PAGE_QUERY, { season, year }, { signal, maxPages: 4 }),
+    current
+      ? fetchAllMediaPages(RELEASING_PAGE_QUERY, {}, { signal, maxPages: 3 }).catch((err) => {
+          if (err?.name === 'AbortError') throw err;
+          console.error('[AniTracker] Continuing anime fetch failed:', err);
+          return [];
+        })
+      : Promise.resolve([]),
+  ]);
 
   const continuingIds = new Set();
-  if (current) {
-    try {
-      const releasing = await fetchAllMediaPages(RELEASING_PAGE_QUERY, {}, { signal, maxPages: 3 });
-      const seen = new Set(media.map((m) => m.id));
-      for (const m of releasing) {
-        if (seen.has(m.id)) continue;
-        seen.add(m.id);
-        continuingIds.add(m.id);
-        media.push(m);
-      }
-    } catch (err) {
-      if (err?.name === 'AbortError') throw err;
-      console.error('[AniTracker] Continuing anime fetch failed:', err);
-    }
+  const seen = new Set(media.map((m) => m.id));
+  for (const m of releasing) {
+    if (seen.has(m.id)) continue;
+    seen.add(m.id);
+    continuingIds.add(m.id);
+    media.push(m);
   }
 
   let latestAired = {};

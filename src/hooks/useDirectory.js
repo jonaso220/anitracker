@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchDirectory } from '../services/anilistService';
+import { readCache, writeCache } from '../utils';
 
 export const DIRECTORY_DEFAULT_FILTERS = {
   search: '',
@@ -14,6 +15,9 @@ export const DIRECTORY_DEFAULT_FILTERS = {
 
 const SEARCH_DEBOUNCE_MS = 450;
 const FILTERS_STORAGE_KEY = 'anitracker-directory-filters';
+// Primera página cacheada (por combinación de filtros) para abrir al instante.
+const RESULTS_CACHE_KEY = 'anitracker-directory-cache';
+const RESULTS_CACHE_TTL_MS = 30 * 60 * 1000;
 
 // Los filtros elegidos persisten entre sesiones; el texto de búsqueda no
 // (una búsqueda vieja al reabrir la app confunde más de lo que ayuda).
@@ -71,6 +75,9 @@ export function useDirectory() {
       if (ctrl.signal.aborted) return;
       pageRef.current = page;
       setHasNextPage(more);
+      if (page === 1 && !append) {
+        writeCache(RESULTS_CACHE_KEY, { filtersKey: JSON.stringify(f), results: fetched, hasNextPage: more });
+      }
       setResults((prev) => {
         if (!append) return fetched;
         // AniList puede repetir items entre páginas si el orden cambió entre requests
@@ -106,9 +113,18 @@ export function useDirectory() {
   }, [applyFilters]);
 
   // Primera visita a la pestaña; las siguientes reusan lo ya cargado.
+  // Si la primera página de estos mismos filtros está cacheada, pinta al
+  // instante sin red. También sirve como precarga en segundo plano.
   const loadInitial = useCallback(() => {
     if (loadedRef.current) return;
     loadedRef.current = true;
+    const stored = readCache(RESULTS_CACHE_KEY, RESULTS_CACHE_TTL_MS);
+    if (stored?.filtersKey === JSON.stringify(filtersRef.current) && Array.isArray(stored.results)) {
+      pageRef.current = 1;
+      setResults(stored.results);
+      setHasNextPage(!!stored.hasNextPage);
+      return;
+    }
     fetchPage(filtersRef.current, 1, false);
   }, [fetchPage]);
 

@@ -140,6 +140,19 @@ export default function AnimeTracker() {
     document.documentElement.dataset.theme = darkMode ? 'dark' : 'light';
   }, [darkMode]);
 
+  // Precalienta Temporada y Directorio en segundo plano después del primer
+  // paint: cuando el usuario abre esas pestañas, los datos ya están (o vienen
+  // del cache persistente y no se dispara nada).
+  const prefetchSeason = discovery.prefetchCurrentSeason;
+  const prefetchDirectory = directory.loadInitial;
+  useEffect(() => {
+    const id = setTimeout(() => {
+      prefetchSeason();
+      prefetchDirectory();
+    }, 2000);
+    return () => clearTimeout(id);
+  }, [prefetchSeason, prefetchDirectory]);
+
   // --- Stats ---
   const stats = useMemo(() => {
     const allSchedule = daysOfWeek.flatMap((d) => schedule[d] || []);
