@@ -60,6 +60,7 @@ store global ni context; el estado vive en `App.jsx` y baja por props.
 | `watchLater` | array de pendientes |
 | `anitracker-custom-lists` | listas personalizadas |
 | `anitracker-theme-v2` | booleano de tema (dark = true) |
+| `anitracker-local-rev` | ISO de la última edición local (guardia anti-pisado en `useFirebase`) |
 
 Los IDs de anime codifican la fuente: MAL `< 100000`, Kitsu `+100000`, AniList
 `300000–400000`, TVMaze `+400000`, iTunes `+500000`, TMDB película

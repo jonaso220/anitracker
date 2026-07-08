@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 
 const Header = ({
   darkMode, setDarkMode,
-  user, syncing, loginWithGoogle, logout, firebaseEnabled,
+  user, syncing, syncError, loginWithGoogle, logout, firebaseEnabled,
   onOpenSearch, onOpenImport, onOpenBackup,
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -141,7 +141,11 @@ const Header = ({
                   {user?.displayName?.charAt(0) || '👤'}
                 </span>
               )}
-              {syncing && <span className="user-menu-sync" aria-hidden="true">☁️</span>}
+              {syncError ? (
+                <span className="user-menu-warn" title="No se pudo sincronizar con la nube" aria-hidden="true">⚠️</span>
+              ) : (
+                syncing && <span className="user-menu-sync" aria-hidden="true">☁️</span>
+              )}
             </button>
             {menuOpen && (
               <div className="user-menu-dropdown" role="menu">
@@ -150,7 +154,11 @@ const Header = ({
                     {user.photoURL && <img src={user.photoURL} alt="" />}
                     <div className="user-menu-name">
                       <strong>{user.displayName || 'Usuario'}</strong>
-                      {syncing && <span className="user-menu-syncing">☁️ Sincronizando...</span>}
+                      {syncError ? (
+                        <span className="user-menu-syncing user-menu-sync-error">⚠️ No se pudo guardar en la nube — reintentando</span>
+                      ) : (
+                        syncing && <span className="user-menu-syncing">☁️ Sincronizando...</span>
+                      )}
                     </div>
                   </div>
                 )}
