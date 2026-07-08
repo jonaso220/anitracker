@@ -1,13 +1,41 @@
 import React from 'react';
+import { formatTimeAgo, formatAiringWhen } from '../utils';
+
+// jkanime-style footer: what aired last (and when), or when the show premieres.
+const AiringFooter = ({ airing }) => {
+  if (airing.lastAiredAt) {
+    return (
+      <div className="season-card-footer">
+        <span className="season-card-last">Último capítulo: {airing.lastEpisode}</span>
+        <span className="season-card-ago">{formatTimeAgo(airing.lastAiredAt)}</span>
+      </div>
+    );
+  }
+  if (airing.airingAt) {
+    return (
+      <div className="season-card-footer">
+        <span className="season-card-last">Estreno · Ep. {airing.episode}</span>
+        <span className="season-card-ago upcoming">{formatAiringWhen(airing)}</span>
+      </div>
+    );
+  }
+  return (
+    <div className="season-card-footer">
+      <span className="season-card-ago">{airing.status === 'FINISHED' ? 'Finalizado' : 'Próximamente'}</span>
+    </div>
+  );
+};
 
 /**
  * Card used in Temporada and Top anime grids — image-first overlay style with
  * actions revealed on hover. The "already in your list" state takes precedence
- * over the action buttons.
+ * over the action buttons. With `airing` set (Temporada actual) a footer under
+ * the cover shows the latest/next episode info.
  */
 const DiscoveryCard = ({
   anime,
   rank,
+  airing,
   alreadyAdded,
   onDetail,
   onAddToSchedule,
@@ -55,6 +83,7 @@ const DiscoveryCard = ({
           </div>
         </div>
       </div>
+      {airing && <AiringFooter airing={airing} />}
     </div>
   );
 };

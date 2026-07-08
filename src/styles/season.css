@@ -75,13 +75,14 @@
 /* ============ DISCOVERY CARD (Netflix-style) ============ */
 .season-card {
   position: relative;
+  display: flex;
+  flex-direction: column;
   border-radius: var(--radius-lg);
   overflow: hidden;
   cursor: pointer;
   border: 1px solid var(--border-subtle);
   background: #0a0a14;
   box-shadow: var(--shadow-xs);
-  aspect-ratio: 3 / 4;
   transition: transform var(--transition-med), box-shadow var(--transition-med),
               border-color var(--transition-med);
   isolation: isolate;
@@ -103,8 +104,9 @@
 .season-card.already-added:hover { opacity: 0.95; }
 
 .season-card-image {
-  position: absolute;
-  inset: 0;
+  position: relative;
+  aspect-ratio: 3 / 4;
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -227,6 +229,85 @@
 .season-card-actions .later-btn:hover    { background: rgba(59, 130, 246, 0.85); border-color: rgba(59, 130, 246, 0.6); }
 .season-card-actions .watched-btn:hover  { background: rgba(34, 197, 94, 0.85); border-color: rgba(34, 197, 94, 0.6); }
 .season-card-actions .add-btn:hover { transform: translateY(-1px); }
+
+/* jkanime-style footer under the cover: latest/next episode info */
+.season-card-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+  padding: 0.45rem 0.5rem 0.55rem;
+  text-align: center;
+  border-top: 1px solid var(--border-subtle);
+}
+.season-card-last {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.season-card-ago {
+  font-size: 0.66rem;
+  color: var(--text-secondary);
+}
+.season-card-ago.upcoming { color: #4ecdc4; font-weight: 600; }
+
+/* ============ EMISSION-DAY TABS (jkanime-style) ============ */
+.season-days {
+  display: flex;
+  gap: 0.4rem;
+  overflow-x: auto;
+  padding: 0.15rem 0.15rem 0.5rem;
+  margin-bottom: 0.75rem;
+  scrollbar-width: thin;
+}
+.season-day-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.8rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.season-day-pill:hover {
+  border-color: var(--border-brand);
+  background: var(--gradient-brand-soft);
+}
+.season-day-pill.active {
+  background: var(--gradient-brand);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: var(--shadow-glow-brand);
+}
+.season-day-hoy {
+  font-size: 0.55rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  padding: 0.1rem 0.35rem;
+  border-radius: var(--radius-pill);
+  background: rgba(78, 205, 196, 0.25);
+  color: #4ecdc4;
+}
+.season-day-pill.active .season-day-hoy { background: rgba(255, 255, 255, 0.25); color: #fff; }
+.season-day-count {
+  font-size: 0.62rem;
+  font-weight: 700;
+  min-width: 1.15rem;
+  text-align: center;
+  padding: 0.08rem 0.3rem;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+}
+.light .season-day-count { background: rgba(0, 0, 0, 0.07); }
+.season-day-pill.active .season-day-count { background: rgba(255, 255, 255, 0.22); color: #fff; }
 
 /* Rank badge (top anime) */
 .rank-badge {

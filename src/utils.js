@@ -75,6 +75,25 @@ export const formatAiringDate = (airingAt) => {
 };
 
 /**
+ * Relative "time since" label in Spanish: 'hace 3 min', 'hace 2 horas',
+ * 'hace 5 días', 'hace 3 semanas', 'hace 2 meses'.
+ * `unixSec` is a unix timestamp in seconds (AniList format).
+ */
+export const formatTimeAgo = (unixSec) => {
+  const diff = Math.max(0, Math.floor(Date.now() / 1000 - unixSec));
+  const mins = Math.floor(diff / 60);
+  if (mins < 60) return `hace ${Math.max(1, mins)} min`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `hace ${hours} hora${hours > 1 ? 's' : ''}`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `hace ${days} día${days > 1 ? 's' : ''}`;
+  const weeks = Math.floor(days / 7);
+  if (days < 30) return `hace ${weeks} semana${weeks > 1 ? 's' : ''}`;
+  const months = Math.floor(days / 30);
+  return `hace ${months} mes${months > 1 ? 'es' : ''}`;
+};
+
+/**
  * Filter a list of anime by local search query (accent-insensitive, case-insensitive).
  */
 export const filterByLocalSearch = (list, localSearch) => {

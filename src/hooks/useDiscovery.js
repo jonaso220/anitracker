@@ -13,6 +13,7 @@ function currentSeason() {
 export function useDiscovery() {
   const [selectedSeason, setSelectedSeason] = useState(currentSeason);
   const [seasonAnime, setSeasonAnime] = useState([]);
+  const [seasonAiring, setSeasonAiring] = useState({});
   const [seasonLoading, setSeasonLoading] = useState(false);
   const [topAnime, setTopAnime] = useState([]);
   const [topLoading, setTopLoading] = useState(false);
@@ -30,17 +31,20 @@ export function useDiscovery() {
 
   const loadSeason = useCallback(async (s, y) => {
     const key = `${s}-${y}`;
-    if (seasonCacheRef.current[key]) { setSeasonAnime(seasonCacheRef.current[key]); return; }
+    const cached = seasonCacheRef.current[key];
+    if (cached) { setSeasonAnime(cached.list); setSeasonAiring(cached.airing); return; }
     seasonAbortRef.current?.abort();
     const ctrl = new AbortController();
     seasonAbortRef.current = ctrl;
     setSeasonLoading(true);
     setSeasonAnime([]);
+    setSeasonAiring({});
     try {
-      const results = await fetchSeason(s, y, { signal: ctrl.signal });
+      const { list, airing } = await fetchSeason(s, y, { signal: ctrl.signal });
       if (ctrl.signal.aborted) return;
-      seasonCacheRef.current[key] = results;
-      setSeasonAnime(results);
+      seasonCacheRef.current[key] = { list, airing };
+      setSeasonAnime(list);
+      setSeasonAiring(airing);
     } catch (err) {
       if (err?.name === 'AbortError') return;
       console.error('[AniTracker] Season fetch failed:', err);
@@ -77,6 +81,7 @@ export function useDiscovery() {
   return {
     selectedSeason,
     seasonAnime,
+    seasonAiring,
     seasonLoading,
     topAnime,
     topLoading,

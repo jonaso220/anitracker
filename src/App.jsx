@@ -233,7 +233,7 @@ export default function AnimeTracker() {
 
         {activeTab === 'season' && (
           <SeasonSection
-            seasonAnime={discovery.seasonAnime} seasonLoading={discovery.seasonLoading}
+            seasonAnime={discovery.seasonAnime} seasonAiring={discovery.seasonAiring} seasonLoading={discovery.seasonLoading}
             schedule={schedule} watchedList={watchedList} watchLater={watchLater}
             selectedSeason={discovery.selectedSeason} onChangeSeason={discovery.changeSeason}
             setShowDayPicker={setShowDayPicker}
@@ -277,7 +277,7 @@ export default function AnimeTracker() {
       {showAnimeDetail && (
         <AnimeDetailModal
           key={showAnimeDetail.id} showAnimeDetail={showAnimeDetail} setShowAnimeDetail={setShowAnimeDetail}
-          airingData={airingData}
+          airingData={{ ...discovery.seasonAiring, ...airingData }}
           updateEpisode={actions.updateEpisode} updateUserRating={actions.updateUserRating}
           updateAnimeLink={actions.updateAnimeLink} updateAnimeNotes={actions.updateAnimeNotes}
           mergeAnimeExtras={actions.mergeAnimeExtras}

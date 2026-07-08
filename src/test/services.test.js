@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { toAnime as jikanToAnime, searchJikan } from '../services/jikanService';
 import { toAnime as kitsuToAnime, searchKitsu, mapIncludedStreamingLinks, siteNameFromUrl } from '../services/kitsuService';
-import { toAnime as anilistToAnime, fetchAiringInfo, fetchAnilistUserAnimeLists } from '../services/anilistService';
+import { toAnime as anilistToAnime, fetchAiringInfo, fetchAnilistUserAnimeLists, fetchSeason } from '../services/anilistService';
 import { toAnime as tvmazeToAnime } from '../services/tvmazeService';
 import { toAnime as itunesToAnime } from '../services/itunesService';
 import { toAnime as tmdbToAnime, parseTmdbKey, extractExtras, TMDB_MOVIE_ID_BASE, TMDB_TV_ID_BASE } from '../services/tmdbService';
@@ -324,6 +324,79 @@ describe('anilistService.fetchAiringInfo', () => {
     expect(res[10]).toBeDefined();
     expect(res[10].episode).toBe(5);
     expect(res[10].hasAired).toBe(true);
+  });
+});
+
+describe('anilistService.fetchSeason', () => {
+  beforeEach(() => { vi.spyOn(globalThis, 'fetch'); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  const media = (id, idMal, title, extra = {}) => ({
+    id, idMal, title: { romaji: title, english: title }, coverImage: { large: 'https://x/i.jpg' },
+    genres: ['Acción'], averageScore: 80, episodes: 12, format: 'TV', status: 'RELEASING',
+    seasonYear: 2026, description: 'Sinopsis.', siteUrl: '', externalLinks: [], trailer: null,
+    nextAiringEpisode: null, ...extra,
+  });
+
+  const mockAnilist = ({ pages, schedules }) => {
+    let mediaCall = 0;
+    globalThis.fetch.mockImplementation((url, opts) => {
+      const body = JSON.parse(opts.body);
+      if (body.query.includes('airingSchedules')) {
+        if (schedules instanceof Error) return Promise.reject(schedules);
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({
+          data: { Page: { pageInfo: { hasNextPage: false }, airingSchedules: schedules(body.variables) } },
+        }) });
+      }
+      const page = pages[Math.min(mediaCall++, pages.length - 1)];
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({
+        data: { Page: { pageInfo: { hasNextPage: mediaCall < pages.length }, media: page } },
+      }) });
+    });
+  };
+
+  it('paginates the season and builds the airing map with last aired episodes', async () => {
+    const nextAt = Math.floor(Date.now() / 1000) + 3 * 86400;
+    const lastAt = Math.floor(Date.now() / 1000) - 4 * 3600;
+    mockAnilist({
+      pages: [
+        [media(111, 10, 'Frieren', { nextAiringEpisode: { airingAt: nextAt, episode: 9, timeUntilAiring: 3 * 86400 } })],
+        [media(222, null, 'Only AniList', { status: 'FINISHED' })],
+      ],
+      schedules: (vars) => {
+        expect(vars.ids).toEqual([111]); // only RELEASING media get queried
+        return [{ mediaId: 111, episode: 8, airingAt: lastAt }];
+      },
+    });
+
+    const { list, airing } = await fetchSeason('SUMMER', 2026);
+    expect(list.map((a) => a.id)).toEqual([10, 300222]); // both pages, app ids
+    expect(airing[10].episode).toBe(9);
+    expect(airing[10].airingAt).toBe(nextAt);
+    expect(airing[10].lastEpisode).toBe(8);
+    expect(airing[10].lastAiredAt).toBe(lastAt);
+    expect(airing[300222]).toEqual({ status: 'FINISHED', totalEpisodes: 12 });
+  });
+
+  it('keeps only the most recent schedule per media (TIME_DESC)', async () => {
+    const t = Math.floor(Date.now() / 1000);
+    mockAnilist({
+      pages: [[media(111, 10, 'Frieren')]],
+      schedules: () => [
+        { mediaId: 111, episode: 8, airingAt: t - 3600 },
+        { mediaId: 111, episode: 7, airingAt: t - 8 * 86400 },
+      ],
+    });
+    const { airing } = await fetchSeason('SUMMER', 2026);
+    expect(airing[10].lastEpisode).toBe(8);
+  });
+
+  it('still returns the season list when the last-aired fetch fails', async () => {
+    mockAnilist({ pages: [[media(111, 10, 'Frieren')]], schedules: new Error('boom') });
+    const { list, airing } = await fetchSeason('SUMMER', 2026);
+    expect(list).toHaveLength(1);
+    expect(airing[10].status).toBe('RELEASING');
+    expect(airing[10].lastEpisode).toBeUndefined();
   });
 });
 

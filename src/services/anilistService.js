@@ -41,20 +41,114 @@ export async function searchAnilist(query, { signal, limit = 12 } = {}) {
   return (data?.data?.Page?.media || []).map(toAnime).filter(Boolean);
 }
 
-export async function fetchSeason(season, year, { signal, perPage = 30 } = {}) {
-  const gql = `query ($season: MediaSeason, $year: Int, $perPage: Int) {
-    Page(page: 1, perPage: $perPage) {
+// Airing entry with the shape the whole app understands (cards, detail modal):
+// same flags fetchAiringInfo produces for the weekly schedule.
+function toAiringEntry(next, totalEpisodes = null, title = '') {
+  const now = new Date();
+  const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate() + 1);
+  const airingDate = new Date(next.airingAt * 1000);
+  const diffHours = (airingDate - now) / (1000 * 60 * 60);
+  return {
+    episode: next.episode,
+    airingAt: next.airingAt,
+    timeUntilAiring: next.timeUntilAiring,
+    isToday: airingDate.toDateString() === now.toDateString(),
+    isTomorrow: airingDate.toDateString() === tomorrow.toDateString(),
+    isThisWeek: diffHours > 0 && diffHours <= 7 * 24,
+    hasAired: diffHours <= 0 && diffHours > -24,
+    totalEpisodes,
+    title,
+  };
+}
+
+// Latest aired episode for a set of AniList media ids, from the public
+// airingSchedules feed. Window-bounded so hiatus shows don't force paging
+// through months of history.
+const LAST_AIRED_WINDOW_DAYS = 21;
+export async function fetchLastAired(mediaIds, { signal } = {}) {
+  if (!mediaIds || mediaIds.length === 0) return {};
+  const gql = `query ($ids: [Int], $from: Int, $page: Int) {
+    Page(page: $page, perPage: 50) {
+      pageInfo { hasNextPage }
+      airingSchedules(mediaId_in: $ids, airingAt_greater: $from, notYetAired: false, sort: TIME_DESC) {
+        mediaId episode airingAt
+      }
+    }
+  }`;
+  const from = Math.floor(Date.now() / 1000) - LAST_AIRED_WINDOW_DAYS * 86400;
+  const result = {};
+  for (let page = 1; page <= 4; page++) {
+    const data = await anilistFetch(gql, { ids: mediaIds, from, page }, { signal });
+    const p = data?.data?.Page;
+    for (const s of p?.airingSchedules || []) {
+      // TIME_DESC ⇒ the first schedule seen per media is its latest episode.
+      if (!result[s.mediaId]) result[s.mediaId] = { episode: s.episode, airingAt: s.airingAt };
+    }
+    if (!p?.pageInfo?.hasNextPage) break;
+  }
+  return result;
+}
+
+/**
+ * Full season catalog plus airing info. Returns `{ list, airing }`:
+ * - `list`: every anime of the season (paginated — a single page of 30 was
+ *   why titles visible on other sites were missing here).
+ * - `airing`: map keyed by app id → next episode (same shape as
+ *   fetchAiringInfo) plus `status`, and `lastEpisode`/`lastAiredAt` for
+ *   "Último capítulo: N · hace X".
+ */
+export async function fetchSeason(season, year, { signal } = {}) {
+  const gql = `query ($season: MediaSeason, $year: Int, $page: Int) {
+    Page(page: $page, perPage: 50) {
+      pageInfo { hasNextPage }
       media(season: $season, seasonYear: $year, type: ANIME, sort: POPULARITY_DESC, isAdult: false) {
         id idMal title { romaji english native } coverImage { extraLarge large medium }
         genres averageScore episodes format status seasonYear
         description(asHtml: false) siteUrl
         externalLinks { url site type language }
         trailer { id site }
+        nextAiringEpisode { airingAt episode timeUntilAiring }
       }
     }
   }`;
-  const data = await anilistFetch(gql, { season, year, perPage }, { signal });
-  return (data?.data?.Page?.media || []).map((m) => toAnime(m, { fallbackYear: year })).filter(Boolean);
+  const media = [];
+  for (let page = 1; page <= 4; page++) {
+    const data = await anilistFetch(gql, { season, year, page }, { signal });
+    const p = data?.data?.Page;
+    media.push(...(p?.media || []));
+    if (!p?.pageInfo?.hasNextPage) break;
+  }
+
+  const list = [];
+  const airing = {};
+  const releasing = [];
+  for (const m of media) {
+    const anime = toAnime(m, { fallbackYear: year });
+    if (!anime) continue;
+    list.push(anime);
+    const entry = { status: m.status || '', totalEpisodes: m.episodes ?? null };
+    if (m.nextAiringEpisode) Object.assign(entry, toAiringEntry(m.nextAiringEpisode, m.episodes));
+    airing[anime.id] = entry;
+    if (m.status === 'RELEASING') releasing.push({ appId: anime.id, mediaId: m.id });
+  }
+
+  // "hace cuánto salió el último episodio" — best effort: the season list is
+  // useful without it, so a failure here must not blank the whole tab.
+  try {
+    const lastAired = await fetchLastAired(releasing.map((r) => r.mediaId), { signal });
+    for (const { appId, mediaId } of releasing) {
+      const last = lastAired[mediaId];
+      if (last) {
+        airing[appId].lastEpisode = last.episode;
+        airing[appId].lastAiredAt = last.airingAt;
+      }
+    }
+  } catch (err) {
+    if (err?.name === 'AbortError') throw err;
+    console.error('[AniTracker] Last aired fetch failed:', err);
+  }
+
+  return { list, airing };
 }
 
 export async function fetchTopAnime({ signal, perPage = 50 } = {}) {
@@ -154,28 +248,13 @@ export async function fetchAiringInfo({ malIds = [], anilistIds = [], signal } =
   const query = `query { ${parts.join('\n')} }`;
   const data = await anilistFetch(query, undefined, { signal });
 
-  const now = new Date();
-  const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate() + 1);
   const result = {};
   const processMedia = (media) => {
     if (!media) return;
     for (const m of media) {
       const appId = m.idMal && m.idMal < 100000 ? m.idMal : (m.id + 300000);
-      const airing = m.nextAiringEpisode;
-      if (!airing) continue;
-      const airingDate = new Date(airing.airingAt * 1000);
-      const diffHours = (airingDate - now) / (1000 * 60 * 60);
-      result[appId] = {
-        episode: airing.episode,
-        airingAt: airing.airingAt,
-        timeUntilAiring: airing.timeUntilAiring,
-        isToday: airingDate.toDateString() === now.toDateString(),
-        isTomorrow: airingDate.toDateString() === tomorrow.toDateString(),
-        isThisWeek: diffHours > 0 && diffHours <= 7 * 24,
-        hasAired: diffHours <= 0 && diffHours > -24,
-        totalEpisodes: m.episodes,
-        title: m.title?.english || m.title?.romaji || '',
-      };
+      if (!m.nextAiringEpisode) continue;
+      result[appId] = toAiringEntry(m.nextAiringEpisode, m.episodes, m.title?.english || m.title?.romaji || '');
     }
   };
   processMedia(data?.data?.malQuery?.media);

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { clean, filterByLocalSearch, getFilteredWatched, parseEpisodes, hashString, buildBackup, parseBackup, getPlatformInfo, pickAutoWatchLink, formatAiringWhen, formatAiringDate } from '../utils';
+import { clean, filterByLocalSearch, getFilteredWatched, parseEpisodes, hashString, buildBackup, parseBackup, getPlatformInfo, pickAutoWatchLink, formatAiringWhen, formatAiringDate, formatTimeAgo } from '../utils';
 
 describe('clean', () => {
   it('removes internal flags from anime object', () => {
@@ -271,5 +271,23 @@ describe('formatAiringDate', () => {
     const text = formatAiringDate(1783771200);
     expect(text).toMatch(/^Sábado, 11 de julio/);
     expect(text).toMatch(/\d{1,2}:\d{2}$/);
+  });
+});
+
+describe('formatTimeAgo', () => {
+  const now = Math.floor(Date.now() / 1000);
+
+  it('formats minutes, hours, days, weeks and months in Spanish', () => {
+    expect(formatTimeAgo(now - 30)).toBe('hace 1 min');
+    expect(formatTimeAgo(now - 45 * 60)).toBe('hace 45 min');
+    expect(formatTimeAgo(now - 3 * 3600)).toBe('hace 3 horas');
+    expect(formatTimeAgo(now - 1 * 3600)).toBe('hace 1 hora');
+    expect(formatTimeAgo(now - 2 * 86400)).toBe('hace 2 días');
+    expect(formatTimeAgo(now - 21 * 86400)).toBe('hace 3 semanas');
+    expect(formatTimeAgo(now - 65 * 86400)).toBe('hace 2 meses');
+  });
+
+  it('never goes negative for future timestamps', () => {
+    expect(formatTimeAgo(now + 500)).toBe('hace 1 min');
   });
 });

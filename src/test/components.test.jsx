@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import AnimeCard from '../components/AnimeCard';
+import DiscoveryCard from '../components/DiscoveryCard';
 import StatsPanel from '../components/StatsPanel';
 
 const mockAnime = {
@@ -77,6 +78,40 @@ describe('AnimeCard', () => {
     const { container } = render(<AnimeCard anime={mockAnime} airingData={airingData} onClick={() => {}} />);
     expect(container.querySelector('.anime-card-airing.airing-today')).toBeInTheDocument();
     expect(container.querySelector('.anime-card-airing.airing-later')).not.toBeInTheDocument();
+  });
+});
+
+describe('DiscoveryCard footer (Temporada)', () => {
+  const seasonAnime = { id: 5, title: 'Dandadan', image: 'https://x/i.jpg', genres: [], rating: 8, episodes: 12 };
+  const noop = () => {};
+  const renderCard = (airing) => render(
+    <DiscoveryCard anime={seasonAnime} airing={airing} alreadyAdded={false}
+      onDetail={noop} onAddToSchedule={noop} onAddToWatchLater={noop} onMarkWatched={noop} />
+  );
+
+  it('shows the latest aired episode and how long ago it aired', () => {
+    const { container } = renderCard({ lastEpisode: 3, lastAiredAt: Math.floor(Date.now() / 1000) - 2 * 3600 });
+    expect(screen.getByText('Último capítulo: 3')).toBeInTheDocument();
+    expect(container.querySelector('.season-card-ago').textContent).toBe('hace 2 horas');
+  });
+
+  it('shows the premiere day when nothing aired yet', () => {
+    const inTwoDays = Math.floor(Date.now() / 1000) + 2 * 86400;
+    renderCard({ episode: 1, airingAt: inTwoDays, timeUntilAiring: 2 * 86400, isToday: false, isTomorrow: false, hasAired: false });
+    expect(screen.getByText('Estreno · Ep. 1')).toBeInTheDocument();
+  });
+
+  it('labels finished and upcoming shows without dates', () => {
+    renderCard({ status: 'FINISHED' });
+    expect(screen.getByText('Finalizado')).toBeInTheDocument();
+  });
+
+  it('renders no footer without airing info (Top anime)', () => {
+    const { container } = render(
+      <DiscoveryCard anime={seasonAnime} alreadyAdded={false}
+        onDetail={noop} onAddToSchedule={noop} onAddToWatchLater={noop} onMarkWatched={noop} />
+    );
+    expect(container.querySelector('.season-card-footer')).not.toBeInTheDocument();
   });
 });
 

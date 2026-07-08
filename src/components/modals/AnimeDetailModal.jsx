@@ -180,8 +180,10 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                     : <p>{translatedSynopsis || a.synopsis || 'Sin sinopsis.'}</p>}
                 </div>
 
-                {/* For schedule items this info lives inside "Episodio actual" below. */}
-                {airing && !isSchedule && (
+                {/* For schedule items this info lives inside "Episodio actual" below.
+                    Season entries without a next episode (finished/upcoming) have
+                    no airingAt and nothing useful to show here. */}
+                {airing?.airingAt && !isSchedule && (
                     <div className={`detail-section detail-airing ${airing.hasAired ? 'aired' : airing.isToday ? 'today' : ''}`}>
                         <h4>{airing.hasAired ? '🆕 ¡Episodio disponible!' : airing.isToday ? '🔴 Sale hoy' : airing.isTomorrow ? '📢 Sale mañana' : '📡 Próximamente'}</h4>
                         <div className="detail-airing-info">
@@ -251,7 +253,7 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                             <span className="ep-number">{localEp}</span>
                             <button className="ep-control-btn" onClick={() => { updateEpisode(a.id, 1); setLocalEp(p => p + 1); }}>+</button>
                         </div>
-                        {airing && (
+                        {airing?.airingAt && (
                             <p className={`detail-next-ep ${airing.hasAired ? 'aired' : airing.isToday ? 'today' : ''}`}>
                                 {airing.hasAired
                                     ? <>🆕 Episodio {airing.episode}: ¡ya disponible!</>
