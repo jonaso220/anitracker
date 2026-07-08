@@ -10,7 +10,9 @@ export const sanitizeUrl = (url) => {
 };
 
 const TR_PREFIX = 'anitracker-tr-';
-const TR_MAX = 50;
+// La vista lista del Directorio traduce ~30 sinopsis por página; con 50 el
+// cache se pisaba solo.
+const TR_MAX = 200;
 
 export const pruneTranslationCache = () => {
   try {

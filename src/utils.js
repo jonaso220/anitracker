@@ -113,6 +113,21 @@ export const formatTimeUntil = (unixSeconds, nowMs = Date.now()) => {
   return label(Math.floor(days / 7), 'semana', 'semanas');
 };
 
+const ES_STOPWORDS = /\b(que|los|las|una|del|por|con|para|como|pero|más|también|esta|este|sobre|tiene|hace|puede|entre|desde|hasta|cuando|donde|porque|aunque|mientras|después|antes|durante|hacia|según|mediante|ser|está|son|han|fue|muy|sin|hay|todo|cada|otro|ella|ellos|quien|cual|esto|eso|sus|nos|al|lo)\b/gi;
+const EN_STOPWORDS = /\b(the|and|but|with|for|that|this|from|are|was|were|been|have|has|had|will|would|could|should|their|they|them|which|when|where|who|what|into|about|after|before|between|through|during|being|each|other|than|then|some|only|also|very|just|over|such|more)\b/gi;
+
+/**
+ * Heuristic: does this text already look like Spanish? Compares stop-word hits
+ * in both languages; used to skip translating synopses that arrive in Spanish.
+ */
+export const looksSpanish = (text) => {
+  if (!text) return false;
+  const esMatches = (text.match(ES_STOPWORDS) || []).length;
+  const enMatches = (text.match(EN_STOPWORDS) || []).length;
+  const wordCount = text.split(/\s+/).length;
+  return esMatches > enMatches && esMatches / wordCount > 0.06;
+};
+
 /**
  * Whether a unix timestamp (seconds) is still in the future.
  */
