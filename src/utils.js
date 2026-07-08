@@ -14,6 +14,39 @@ export const clean = (anime) => {
 };
 
 /**
+ * Map a watch/streaming URL to a brand badge (label + tint) for the UI.
+ */
+export const getPlatformInfo = (url) => {
+  if (!url) return null;
+  const u = url.toLowerCase();
+  if (u.includes('crunchyroll.com')) return { label: 'CR', name: 'Crunchyroll', color: '#f47521' };
+  if (u.includes('netflix.com'))      return { label: 'N',  name: 'Netflix',     color: '#e50914' };
+  if (u.includes('hidive.com'))       return { label: 'HD', name: 'HIDIVE',      color: '#00aeef' };
+  if (u.includes('funimation.com'))   return { label: 'FN', name: 'Funimation',  color: '#5828c2' };
+  if (u.includes('hulu.com'))         return { label: 'H',  name: 'Hulu',        color: '#1ce783' };
+  if (u.includes('disneyplus.com'))   return { label: 'D+', name: 'Disney+',     color: '#0063e5' };
+  if (u.includes('primevideo.com') || u.includes('amazon.')) return { label: 'PV', name: 'Prime Video', color: '#00a8e1' };
+  if (u.includes('hbomax.com') || u.includes('max.com'))     return { label: 'MAX', name: 'Max',        color: '#8b5cf6' };
+  if (u.includes('tv.apple.com'))     return { label: 'TV+', name: 'Apple TV+',   color: '#a6a6a6' };
+  if (u.includes('jkanime.net'))      return { label: 'JK', name: 'JKAnime',     color: '#a855f7' };
+  if (u.includes('animeflv'))         return { label: 'FLV',name: 'AnimeFLV',    color: '#4ecdc4' };
+  if (u.includes('youtube.com') || u.includes('youtu.be')) return { label: 'YT', name: 'YouTube', color: '#ff0000' };
+  return { label: '▶', name: 'Ver', color: '#22c55e' };
+};
+
+/**
+ * Pick a default watch link for an anime from its known streaming links,
+ * preferring Spanish-language ones. Returns '' when there's nothing to pick.
+ */
+export const pickAutoWatchLink = (anime) => {
+  if (anime?.watchLink) return anime.watchLink;
+  const links = (anime?.streamingLinks || []).filter((l) => l && l.url);
+  if (links.length === 0) return '';
+  const spanish = links.find((l) => /spanish|español/i.test(l.language || ''));
+  return (spanish || links[0]).url;
+};
+
+/**
  * Filter a list of anime by local search query (accent-insensitive, case-insensitive).
  */
 export const filterByLocalSearch = (list, localSearch) => {

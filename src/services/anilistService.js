@@ -33,6 +33,7 @@ export async function searchAnilist(query, { signal, limit = 12 } = {}) {
         genres averageScore episodes status seasonYear format
         description(asHtml: false) siteUrl synonyms
         externalLinks { url site type language }
+        trailer { id site }
       }
     }
   }`;
@@ -48,6 +49,7 @@ export async function fetchSeason(season, year, { signal, perPage = 30 } = {}) {
         genres averageScore episodes format status seasonYear
         description(asHtml: false) siteUrl
         externalLinks { url site type language }
+        trailer { id site }
       }
     }
   }`;
@@ -63,6 +65,7 @@ export async function fetchTopAnime({ signal, perPage = 50 } = {}) {
         genres averageScore episodes format status seasonYear
         description(asHtml: false) siteUrl
         externalLinks { url site type language }
+        trailer { id site }
       }
     }
   }`;
@@ -87,6 +90,7 @@ export async function fetchAnilistUserAnimeLists(username, { signal } = {}) {
             genres averageScore episodes format status seasonYear
             description(asHtml: false) siteUrl synonyms
             externalLinks { url site type language }
+            trailer { id site }
           }
         }
       }
@@ -189,6 +193,10 @@ export function toAnime(a, { fallbackYear } = {}) {
   const streamingLinks = (a.externalLinks || [])
     .filter((l) => l && l.type === 'STREAMING' && l.url && l.site)
     .map((l) => ({ site: l.site, url: l.url, language: l.language || '' }));
+  const trailerUrl = a.trailer?.id
+    ? (a.trailer.site === 'youtube' ? `https://www.youtube.com/watch?v=${a.trailer.id}`
+      : a.trailer.site === 'dailymotion' ? `https://www.dailymotion.com/video/${a.trailer.id}` : '')
+    : '';
   return normalizeAnime({
     id: a.idMal || (a.id + 300000),
     source: 'AniList',
@@ -211,5 +219,6 @@ export function toAnime(a, { fallbackYear } = {}) {
     type: FORMAT_MAP[a.format] || a.format || '',
     malUrl: a.siteUrl || `https://anilist.co/anime/${a.id}`,
     streamingLinks,
+    trailerUrl,
   });
 }

@@ -37,9 +37,13 @@ store global ni context; el estado vive en `App.jsx` y baja por props.
   - `useDragDrop`, `useBulkMode`, `useBulkActions`, `useDiscovery`,
     `useToast`, `useServiceWorkerUpdate`.
 - **`services/`** — una API por archivo (`jikanService`, `kitsuService`,
-  `anilistService`, `tvmazeService`, `itunesService`, `wikipediaBridge`).
-  `searchAnime.js` las orquesta en paralelo (`Promise.allSettled`), deduplica y
-  rankea por relevancia, con *fallback* a Wikipedia si no hay buen match.
+  `anilistService`, `tvmazeService`, `itunesService`, `tmdbService`,
+  `wikipediaBridge`). `searchAnime.js` las orquesta en paralelo
+  (`Promise.allSettled`), deduplica (mergeando streaming links / trailer del
+  duplicado descartado), cachea consultas recientes (TTL 10 min) y rankea por
+  relevancia, con *fallback* a Wikipedia si no hay buen match. `tmdbService`
+  solo se activa con `VITE_TMDB_API_KEY` y expone además "dónde ver" por país
+  (providers de JustWatch, cache localStorage 24 h) y trailers.
 - **`components/`** — UI. `views/` = contenido de cada pestaña; `modals/` =
   diálogos.
 - **`utils.js`** — helpers puros y testeables (`clean`, `filterByLocalSearch`,
@@ -57,8 +61,9 @@ store global ni context; el estado vive en `App.jsx` y baja por props.
 | `anitracker-custom-lists` | listas personalizadas |
 | `anitracker-theme-v2` | booleano de tema (dark = true) |
 
-Los IDs de anime codifican la fuente: MAL `< 100000`, AniList `300000–400000`
-(ver `useAnimeData`).
+Los IDs de anime codifican la fuente: MAL `< 100000`, Kitsu `+100000`, AniList
+`300000–400000`, TVMaze `+400000`, iTunes `+500000`, TMDB película
+`+600000000` / serie `+900000000` (ver `useAnimeData` y cada service).
 
 ## Convenciones
 
@@ -90,3 +95,5 @@ Vitest + Testing Library (jsdom), setup en `src/test/setup.js`. Al tocar
   mano (`CACHE_VERSION`).
 - Firebase config admite override por env (`VITE_FIREBASE_*`, ver
   `.env.example`) con *fallback* al proyecto público compartido.
+- TMDB es opcional: sin `VITE_TMDB_API_KEY` la fuente no aparece en la
+  búsqueda ni se consultan providers.

@@ -280,6 +280,7 @@ export default function AnimeTracker() {
           airingData={airingData}
           updateEpisode={actions.updateEpisode} updateUserRating={actions.updateUserRating}
           updateAnimeLink={actions.updateAnimeLink} updateAnimeNotes={actions.updateAnimeNotes}
+          mergeAnimeExtras={actions.mergeAnimeExtras}
           markAsFinished={actions.markAsFinished} dropAnime={actions.dropAnime} deleteAnime={actions.deleteAnime}
           addToWatchLater={actions.addToWatchLater} markAsWatched={actions.markAsWatched}
           setShowMoveDayPicker={setShowMoveDayPicker} setShowDayPicker={setShowDayPicker}

@@ -1,22 +1,7 @@
 import React, { useState } from 'react';
 import StarRating from './StarRating';
 import { sanitizeUrl } from '../constants';
-
-// Map a watchLink URL to a brand badge (label + tint).
-const getPlatformInfo = (url) => {
-  if (!url) return null;
-  const u = url.toLowerCase();
-  if (u.includes('crunchyroll.com')) return { label: 'CR', name: 'Crunchyroll', color: '#f47521' };
-  if (u.includes('netflix.com'))      return { label: 'N',  name: 'Netflix',     color: '#e50914' };
-  if (u.includes('hidive.com'))       return { label: 'HD', name: 'HIDIVE',      color: '#00aeef' };
-  if (u.includes('funimation.com'))   return { label: 'FN', name: 'Funimation',  color: '#5828c2' };
-  if (u.includes('hulu.com'))         return { label: 'H',  name: 'Hulu',        color: '#1ce783' };
-  if (u.includes('disneyplus.com'))   return { label: 'D+', name: 'Disney+',     color: '#0063e5' };
-  if (u.includes('jkanime.net'))      return { label: 'JK', name: 'JKAnime',     color: '#a855f7' };
-  if (u.includes('animeflv'))         return { label: 'FLV',name: 'AnimeFLV',    color: '#4ecdc4' };
-  if (u.includes('youtube.com') || u.includes('youtu.be')) return { label: 'YT', name: 'YouTube', color: '#ff0000' };
-  return { label: '▶', name: 'Ver', color: '#22c55e' };
-};
+import { getPlatformInfo, pickAutoWatchLink } from '../utils';
 
 // Derive a status used for the colored left border.
 const getCardStatus = ({ anime, isWatched, airing, ep, total }) => {
@@ -72,7 +57,10 @@ const AnimeCard = ({
   const pct = total > 0 ? Math.min((ep / total) * 100, 100) : 0;
   const isComplete = total > 0 && ep >= total;
   const status = getCardStatus({ anime, isWatched, airing, ep, total });
-  const platform = getPlatformInfo(anime.watchLink);
+  // Manual link wins; otherwise fall back to a known streaming link so cards
+  // saved before auto-linking existed still get their platform badge.
+  const watchUrl = anime.watchLink || pickAutoWatchLink(anime);
+  const platform = getPlatformInfo(watchUrl);
   const isHighRated = (anime.rating || 0) >= 9;
 
   const showQuickEp = !!onIncrementEpisode && !isWatched && total > 0 && !isComplete;
@@ -128,9 +116,9 @@ const AnimeCard = ({
               +1
             </button>
           )}
-          {platform && anime.watchLink && (
+          {platform && watchUrl && (
             <a
-              href={sanitizeUrl(anime.watchLink)}
+              href={sanitizeUrl(watchUrl)}
               target="_blank"
               rel="noopener noreferrer"
               className="quick-btn quick-watch"

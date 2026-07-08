@@ -2,9 +2,25 @@ import { normalizeAnime } from '../schemas/anime';
 
 const JIKAN_BASE = 'https://api.jikan.moe/v4';
 
-export async function searchJikan(query, { signal, limit = 10 } = {}) {
+// Jikan is rate-limited (~3 req/s); a 429 mid-typing is common. One short,
+// abort-aware retry recovers most of those instead of dropping MAL results.
+const RETRY_DELAY_MS = 1100;
+
+const abortableDelay = (ms, signal) => new Promise((resolve, reject) => {
+  if (signal?.aborted) { reject(new DOMException('Aborted', 'AbortError')); return; }
+  const timer = setTimeout(() => { signal?.removeEventListener('abort', onAbort); resolve(); }, ms);
+  const onAbort = () => { clearTimeout(timer); reject(new DOMException('Aborted', 'AbortError')); };
+  signal?.addEventListener('abort', onAbort, { once: true });
+});
+
+export async function searchJikan(query, { signal, limit = 10, retries = 1, retryDelayMs = RETRY_DELAY_MS } = {}) {
   const url = `${JIKAN_BASE}/anime?q=${encodeURIComponent(query)}&limit=${limit}&sfw=true`;
-  const res = await fetch(url, { signal });
+  let res = await fetch(url, { signal });
+  while (!res.ok && retries > 0 && (res.status === 429 || res.status >= 500)) {
+    retries -= 1;
+    await abortableDelay(retryDelayMs, signal);
+    res = await fetch(url, { signal });
+  }
   if (!res.ok) throw new Error(`Jikan HTTP ${res.status}`);
   const json = await res.json();
   return (json?.data || []).map(toAnime).filter(Boolean);

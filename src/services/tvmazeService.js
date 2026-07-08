@@ -37,7 +37,9 @@ export function toAnime(s) {
     episodes: null,
     status: STATUS_MAP[s.status] || s.status || '',
     year: s.premiered ? s.premiered.split('-')[0] : '',
-    type: s.type || 'Serie',
+    // TVMaze types ('Scripted', 'Animation'…) don't match the app's type filter
+    // vocabulary; everything TVMaze returns is a series.
+    type: 'Serie',
     malUrl: s.url || `https://www.tvmaze.com/shows/${s.id}`,
   });
 }

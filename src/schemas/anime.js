@@ -51,6 +51,7 @@ export function normalizeAnime(raw) {
     type: toStr(raw.type),
     malUrl: toStr(raw.malUrl),
     watchLink: toStr(raw.watchLink),
+    trailerUrl: toStr(raw.trailerUrl),
     streamingLinks: Array.isArray(raw.streamingLinks)
       ? raw.streamingLinks
           .filter((l) => l && typeof l.url === 'string' && typeof l.site === 'string')

@@ -20,6 +20,13 @@
 .season-grid .anime-card {
   min-width: 0;
 }
+/* Long lists (watched / watch-later / discovery): skip painting off-screen
+   cards. aspect-ratio keeps the placeholder size right without a fixed hint. */
+.anime-grid .anime-card,
+.season-grid .anime-card {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 320px;
+}
 .light .anime-card { background: #fff; }
 
 /* Status colored stripe (left edge) */

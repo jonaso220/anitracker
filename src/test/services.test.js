@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { toAnime as jikanToAnime } from '../services/jikanService';
-import { toAnime as kitsuToAnime } from '../services/kitsuService';
+import { toAnime as jikanToAnime, searchJikan } from '../services/jikanService';
+import { toAnime as kitsuToAnime, searchKitsu, mapIncludedStreamingLinks, siteNameFromUrl } from '../services/kitsuService';
 import { toAnime as anilistToAnime, fetchAiringInfo, fetchAnilistUserAnimeLists } from '../services/anilistService';
 import { toAnime as tvmazeToAnime } from '../services/tvmazeService';
 import { toAnime as itunesToAnime } from '../services/itunesService';
-import { searchAnime } from '../services/searchAnime';
+import { toAnime as tmdbToAnime, parseTmdbKey, extractExtras, TMDB_MOVIE_ID_BASE, TMDB_TV_ID_BASE } from '../services/tmdbService';
+import { searchAnime, clearSearchCache } from '../services/searchAnime';
 
 describe('adapter: jikanService.toAnime', () => {
   it('maps Jikan fields into normalized anime', () => {
@@ -144,6 +145,148 @@ describe('adapter: tvmazeService.toAnime', () => {
     expect(a.id).toBe(400001);
     expect(a.source).toBe('TVMaze');
   });
+
+  it('normalizes the type to Serie so the type filter works', () => {
+    const a = tvmazeToAnime({ id: 1, name: 'Show', type: 'Scripted' });
+    expect(a.type).toBe('Serie');
+  });
+});
+
+describe('adapter: tmdbService.toAnime', () => {
+  it('maps a movie into the movie id range with Spanish genre names', () => {
+    const a = tmdbToAnime({
+      media_type: 'movie', id: 603, title: 'Matrix', original_title: 'The Matrix',
+      poster_path: '/p.jpg', overview: 'Neo.', vote_average: 8.216,
+      release_date: '1999-03-30', genre_ids: [28, 878],
+    });
+    expect(a.id).toBe(TMDB_MOVIE_ID_BASE + 603);
+    expect(a.source).toBe('TMDB');
+    expect(a.sourceKey).toBe('tmdb:movie:603');
+    expect(a.type).toBe('Película');
+    expect(a.year).toBe('1999');
+    expect(a.rating).toBe(8.2);
+    expect(a.genres).toEqual(['Acción', 'Ciencia ficción']);
+    expect(a.image).toBe('https://image.tmdb.org/t/p/w500/p.jpg');
+    expect(a.malUrl).toBe('https://www.themoviedb.org/movie/603');
+  });
+
+  it('maps a TV show into the tv id range', () => {
+    const a = tmdbToAnime({ media_type: 'tv', id: 66732, name: 'Stranger Things', first_air_date: '2016-07-15', genre_ids: [10765] });
+    expect(a.id).toBe(TMDB_TV_ID_BASE + 66732);
+    expect(a.sourceKey).toBe('tmdb:tv:66732');
+    expect(a.type).toBe('Serie');
+    expect(a.genres).toEqual(['Ciencia ficción y fantasía']);
+  });
+
+  it('returns null for items with no title', () => {
+    expect(tmdbToAnime({ media_type: 'movie', id: 1 })).toBeNull();
+  });
+});
+
+describe('tmdbService.parseTmdbKey', () => {
+  it('parses valid keys and rejects everything else', () => {
+    expect(parseTmdbKey('tmdb:movie:603')).toEqual({ type: 'movie', id: 603 });
+    expect(parseTmdbKey('tmdb:tv:42')).toEqual({ type: 'tv', id: 42 });
+    expect(parseTmdbKey('anilist:5')).toBeNull();
+    expect(parseTmdbKey('')).toBeNull();
+    expect(parseTmdbKey(undefined)).toBeNull();
+  });
+});
+
+describe('tmdbService.extractExtras', () => {
+  const detail = {
+    'watch/providers': {
+      results: {
+        AR: {
+          link: 'https://www.themoviedb.org/movie/603/watch?locale=AR',
+          flatrate: [{ provider_name: 'Netflix', logo_path: '/n.jpg' }],
+          rent: [{ provider_name: 'Apple TV' }],
+        },
+      },
+    },
+    videos: {
+      results: [
+        { site: 'YouTube', type: 'Teaser', key: 'teaser1' },
+        { site: 'YouTube', type: 'Trailer', key: 'trailer1' },
+      ],
+    },
+  };
+
+  it('extracts providers for the requested region and prefers real trailers', () => {
+    const { providers, trailerUrl } = extractExtras(detail, 'AR');
+    expect(providers.flatrate).toEqual([{ name: 'Netflix', logo: 'https://image.tmdb.org/t/p/w45/n.jpg' }]);
+    expect(providers.rent).toEqual([{ name: 'Apple TV', logo: '' }]);
+    expect(providers.buy).toEqual([]);
+    expect(providers.link).toContain('/watch?locale=AR');
+    expect(trailerUrl).toBe('https://www.youtube.com/watch?v=trailer1');
+  });
+
+  it('returns empty providers for regions without data', () => {
+    const { providers } = extractExtras(detail, 'ES');
+    expect(providers.flatrate).toEqual([]);
+    expect(providers.link).toBe('');
+  });
+
+  it('falls back to any YouTube video when there is no Trailer', () => {
+    const { trailerUrl } = extractExtras({ videos: { results: [{ site: 'YouTube', type: 'Teaser', key: 'k1' }] } }, 'AR');
+    expect(trailerUrl).toBe('https://www.youtube.com/watch?v=k1');
+  });
+});
+
+describe('kitsuService streaming links', () => {
+  it('derives platform names from URLs', () => {
+    expect(siteNameFromUrl('https://www.crunchyroll.com/frieren')).toBe('Crunchyroll');
+    expect(siteNameFromUrl('https://www.netflix.com/title/1')).toBe('Netflix');
+    expect(siteNameFromUrl('https://something.example.com/x')).toBe('Example');
+    expect(siteNameFromUrl('not-a-url')).toBe('Streaming');
+  });
+
+  it('joins included streamingLinks onto the anime via relationships', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({
+        data: [{
+          id: '42',
+          attributes: { canonicalTitle: 'Show', titles: {} },
+          relationships: { streamingLinks: { data: [{ type: 'streamingLinks', id: '7' }] } },
+        }],
+        included: [{ id: '7', type: 'streamingLinks', attributes: { url: 'https://www.crunchyroll.com/show' } }],
+      }),
+    });
+    const [a] = await searchKitsu('show');
+    expect(a.streamingLinks).toEqual([{ site: 'Crunchyroll', url: 'https://www.crunchyroll.com/show', language: '' }]);
+    expect(globalThis.fetch.mock.calls[0][0]).toContain('include=streamingLinks');
+    vi.restoreAllMocks();
+  });
+
+  it('ignores malformed included entries', () => {
+    const map = mapIncludedStreamingLinks([
+      { id: '1', type: 'streamingLinks', attributes: {} },
+      { id: '2', type: 'other', attributes: { url: 'https://x.com' } },
+      null,
+    ]);
+    expect(map.size).toBe(0);
+  });
+});
+
+describe('jikanService retry', () => {
+  beforeEach(() => { vi.spyOn(globalThis, 'fetch'); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it('retries once after a 429 and returns the second response', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce({ ok: false, status: 429 })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ data: [{ mal_id: 1, title: 'Naruto', images: {} }] }) });
+    const results = await searchJikan('naruto', { retryDelayMs: 0 });
+    expect(results).toHaveLength(1);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not retry client errors', async () => {
+    globalThis.fetch.mockResolvedValueOnce({ ok: false, status: 400 });
+    await expect(searchJikan('naruto', { retryDelayMs: 0 })).rejects.toThrow('Jikan HTTP 400');
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('adapter: itunesService.toAnime', () => {
@@ -185,7 +328,7 @@ describe('anilistService.fetchAiringInfo', () => {
 });
 
 describe('searchAnime integration (mocked)', () => {
-  beforeEach(() => { vi.spyOn(globalThis, 'fetch'); });
+  beforeEach(() => { clearSearchCache(); vi.spyOn(globalThis, 'fetch'); });
   afterEach(() => { vi.restoreAllMocks(); });
 
   it('returns empty when query is too short', async () => {
@@ -223,5 +366,59 @@ describe('searchAnime integration (mocked)', () => {
     const { results, failedApis } = await searchAnime('Naruto');
     expect(results.length).toBe(1);
     expect(failedApis).toContain('Kitsu');
+  });
+
+  it('serves repeated queries from cache without refetching', async () => {
+    globalThis.fetch.mockImplementation((url) => {
+      if (url.includes('jikan')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: [{ mal_id: 1, title: 'Naruto', images: {} }] }) });
+      if (url.includes('kitsu')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: [] }) });
+      if (url.includes('anilist')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: { Page: { media: [] } } }) });
+      if (url.includes('tvmaze')) return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+      if (url.includes('itunes')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ results: [] }) });
+      return Promise.reject(new Error(`unexpected ${url}`));
+    });
+    await searchAnime('Naruto');
+    const callsAfterFirst = globalThis.fetch.mock.calls.length;
+    const { results } = await searchAnime('naruto');
+    expect(globalThis.fetch.mock.calls.length).toBe(callsAfterFirst);
+    expect(results[0].title).toBe('Naruto');
+  });
+
+  it('does not cache searches where an API failed', async () => {
+    globalThis.fetch.mockImplementation((url) => {
+      if (url.includes('jikan')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: [{ mal_id: 1, title: 'Naruto', images: {} }] }) });
+      if (url.includes('kitsu')) return Promise.reject(new Error('kitsu down'));
+      if (url.includes('anilist')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: { Page: { media: [] } } }) });
+      if (url.includes('tvmaze')) return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+      if (url.includes('itunes')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ results: [] }) });
+      return Promise.reject(new Error(`unexpected ${url}`));
+    });
+    await searchAnime('Naruto');
+    const callsAfterFirst = globalThis.fetch.mock.calls.length;
+    await searchAnime('Naruto');
+    expect(globalThis.fetch.mock.calls.length).toBeGreaterThan(callsAfterFirst);
+  });
+
+  it('merges streaming links and trailer into the deduped winner', async () => {
+    globalThis.fetch.mockImplementation((url) => {
+      if (url.includes('jikan')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: [{ mal_id: 1, title: 'Naruto', images: {} }] }) });
+      if (url.includes('kitsu')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: [] }) });
+      if (url.includes('anilist')) return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ data: { Page: { media: [{
+          id: 20, idMal: 1, title: { english: 'Naruto' }, coverImage: {},
+          externalLinks: [{ url: 'https://www.crunchyroll.com/naruto', site: 'Crunchyroll', type: 'STREAMING', language: '' }],
+          trailer: { id: 'abc123', site: 'youtube' },
+        }] } } }),
+      });
+      if (url.includes('tvmaze')) return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+      if (url.includes('itunes')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ results: [] }) });
+      return Promise.reject(new Error(`unexpected ${url}`));
+    });
+    const { results } = await searchAnime('Naruto');
+    expect(results).toHaveLength(1);
+    expect(results[0].source).toBe('MAL');
+    expect(results[0].streamingLinks).toEqual([{ site: 'Crunchyroll', url: 'https://www.crunchyroll.com/naruto', language: '' }]);
+    expect(results[0].trailerUrl).toBe('https://www.youtube.com/watch?v=abc123');
   });
 });

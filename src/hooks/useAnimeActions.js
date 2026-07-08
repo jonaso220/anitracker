@@ -1,11 +1,21 @@
 import { useCallback } from 'react';
 import { daysOfWeek } from '../constants';
-import { clean } from '../utils';
+import { clean, pickAutoWatchLink } from '../utils';
 
 const clone = (v) => JSON.parse(JSON.stringify(v));
 
 const updateInList = (list, animeId, updater) =>
   list.map((a) => (a.id === animeId ? { ...a, ...updater(a) } : a));
+
+// Normalize an anime for persistence: strip view flags, default the user
+// fields, and auto-fill the watch link from known streaming links.
+const prepare = (anime) => ({
+  ...clean(anime),
+  currentEp: anime.currentEp || 0,
+  userRating: anime.userRating || 0,
+  notes: anime.notes || '',
+  watchLink: anime.watchLink || pickAutoWatchLink(anime),
+});
 
 /**
  * All mutation handlers for schedule / watched / watchLater / customLists.
@@ -24,7 +34,7 @@ export function useAnimeActions({
   // --- Schedule / watched / watchLater ---
 
   const addToSchedule = useCallback((anime, day) => {
-    const a = { ...clean(anime), currentEp: anime.currentEp || 0, userRating: anime.userRating || 0, notes: anime.notes || '' };
+    const a = prepare(anime);
     setSchedule((prev) => ({ ...prev, [day]: [...prev[day].filter((x) => x.id !== a.id), a] }));
     setShowDayPicker(null);
     setShowSearch(false);
@@ -55,7 +65,7 @@ export function useAnimeActions({
   }, [setSchedule, setWatchedList, scheduleRef, watchedListRef, showToast]);
 
   const addToWatchLater = useCallback((anime) => {
-    const a = { ...clean(anime), currentEp: anime.currentEp || 0, userRating: anime.userRating || 0, notes: anime.notes || '' };
+    const a = prepare(anime);
     setWatchLater((prev) => [...prev.filter((x) => x.id !== a.id), a]);
     setShowSearch(false);
     setSearchQuery('');
@@ -77,7 +87,7 @@ export function useAnimeActions({
   }, [markAsWatched, setShowSearch, setSearchQuery, setSearchResults]);
 
   const moveFromWatchLaterToSchedule = useCallback((anime, day) => {
-    const a = { ...clean(anime), currentEp: anime.currentEp || 0, userRating: anime.userRating || 0, notes: anime.notes || '' };
+    const a = prepare(anime);
     setWatchLater((prev) => prev.filter((x) => x.id !== anime.id));
     setSchedule((prev) => ({ ...prev, [day]: [...prev[day].filter((x) => x.id !== a.id), a] }));
   }, [setSchedule, setWatchLater]);
@@ -141,6 +151,16 @@ export function useAnimeActions({
     updateAnimeField(animeId, () => ({ notes }));
   }, [updateAnimeField]);
 
+  // Persist lazily-fetched extras (trailer, streaming links) without ever
+  // overwriting data the anime already has.
+  const mergeAnimeExtras = useCallback((animeId, extras) => {
+    updateAnimeField(animeId, (a) => ({
+      trailerUrl: a.trailerUrl || extras.trailerUrl || '',
+      streamingLinks: a.streamingLinks?.length ? a.streamingLinks : (extras.streamingLinks || []),
+      watchLink: a.watchLink || extras.watchLink || '',
+    }));
+  }, [updateAnimeField]);
+
   // --- Custom lists ---
 
   const createCustomList = useCallback((name, emoji) => {
@@ -158,7 +178,7 @@ export function useAnimeActions({
   }, [setCustomLists]);
 
   const addToCustomList = useCallback((listId, anime) => {
-    const a = { ...clean(anime), currentEp: anime.currentEp || 0, userRating: anime.userRating || 0, notes: anime.notes || '' };
+    const a = prepare(anime);
     setCustomLists((lists) => lists.map((l) => (l.id === listId ? { ...l, items: [...l.items.filter((x) => x.id !== a.id), a] } : l)));
   }, [setCustomLists]);
 
@@ -236,6 +256,7 @@ export function useAnimeActions({
     updateAnimeLink,
     updateUserRating,
     updateAnimeNotes,
+    mergeAnimeExtras,
     createCustomList,
     deleteCustomList,
     renameCustomList,
