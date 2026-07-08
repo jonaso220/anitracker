@@ -55,6 +55,8 @@ export const es = {
   'directory.season': 'Temporada',
   'directory.sort': 'Ordenar por',
   'directory.clear': 'Limpiar filtros',
+  'directory.viewGrid': 'Vista de cuadrícula',
+  'directory.viewList': 'Vista de lista',
   'directory.loadMore': 'Cargar más',
   'directory.loading': 'Cargando…',
   'directory.empty': 'Sin resultados con esos filtros',

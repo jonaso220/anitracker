@@ -71,7 +71,7 @@ describe('useDirectory', () => {
   });
   const media = (id, title) => ({ id, idMal: id, title: { romaji: title }, coverImage: {} });
 
-  beforeEach(() => { vi.spyOn(globalThis, 'fetch'); });
+  beforeEach(() => { localStorage.clear(); vi.spyOn(globalThis, 'fetch'); });
   afterEach(() => { vi.restoreAllMocks(); });
 
   it('loadInitial fetches page 1 once and keeps results on re-entry', async () => {
@@ -112,6 +112,31 @@ describe('useDirectory', () => {
     const vars = JSON.parse(globalThis.fetch.mock.calls[1][1].body).variables;
     expect(vars.genre).toBe('Action');
     expect(vars.page).toBe(1);
+  });
+
+  it('persists filter changes (except the search text) and restores them', async () => {
+    globalThis.fetch.mockResolvedValue(okPage([media(1, 'A')]));
+    const { result, unmount } = renderHook(() => useDirectory());
+    act(() => { result.current.updateFilter('genre', 'Action'); });
+    await waitFor(() => expect(result.current.filters.genre).toBe('Action'));
+    act(() => { result.current.updateFilter('search', 'naruto'); });
+
+    const stored = JSON.parse(localStorage.getItem('anitracker-directory-filters'));
+    expect(stored.genre).toBe('Action');
+    expect(stored.search).toBeUndefined();
+    unmount();
+
+    // Una sesión nueva arranca con los filtros guardados y el buscador vacío.
+    const { result: fresh } = renderHook(() => useDirectory());
+    expect(fresh.current.filters.genre).toBe('Action');
+    expect(fresh.current.filters.search).toBe('');
+  });
+
+  it('ignores malformed stored filters', () => {
+    localStorage.setItem('anitracker-directory-filters', 'not json');
+    const { result } = renderHook(() => useDirectory());
+    expect(result.current.filters.sort).toBe('POPULARITY_DESC');
+    expect(result.current.filters.genre).toBe('');
   });
 
   it('debounces text search', async () => {
