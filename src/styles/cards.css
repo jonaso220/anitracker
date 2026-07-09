@@ -199,11 +199,6 @@
   letter-spacing: 0.02em;
   line-height: 1;
 }
-.quick-notes {
-  background: rgba(251, 191, 36, 0.85);
-  font-size: 0.75rem;
-}
-
 /* Airing pulse strip (above the title overlay) */
 .anime-card-airing {
   position: absolute;
@@ -394,24 +389,3 @@
   letter-spacing: -0.02em;
 }
 
-/* Notes textarea (used in modals) */
-.notes-input {
-  width: 100%;
-  padding: 0.75rem 1rem;
-  border: 1px solid var(--border-subtle);
-  background: var(--bg-surface);
-  color: var(--text-primary);
-  border-radius: var(--radius-md);
-  font-family: inherit;
-  font-size: 0.9rem;
-  resize: vertical;
-  min-height: 80px;
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
-  line-height: 1.5;
-}
-.notes-input::placeholder { opacity: 0.45; }
-.notes-input:focus {
-  outline: none;
-  border-color: var(--border-brand-strong);
-  box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.15);
-}

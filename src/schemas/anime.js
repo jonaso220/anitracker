@@ -59,7 +59,6 @@ export function normalizeAnime(raw) {
       : [],
     currentEp: toNumber(raw.currentEp, 0),
     userRating: toNumber(raw.userRating, 0),
-    notes: toStr(raw.notes),
     // Optional user-list flags
     finished: raw.finished === true,
     finishedDate: raw.finishedDate || undefined,

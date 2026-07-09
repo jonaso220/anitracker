@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { toAnime as jikanToAnime, searchJikan } from '../services/jikanService';
 import { toAnime as kitsuToAnime, searchKitsu, mapIncludedStreamingLinks, siteNameFromUrl } from '../services/kitsuService';
-import { toAnime as anilistToAnime, fetchAiringInfo, fetchAnilistUserAnimeLists, fetchSeason, fetchLatestAired, fetchDirectory } from '../services/anilistService';
+import { toAnime as anilistToAnime, fetchAiringInfo, fetchAnilistUserAnimeLists, fetchSeason, fetchLatestAired, fetchDirectory, fetchAnilistRelations, clearRelationsCache } from '../services/anilistService';
 import { toAnime as tvmazeToAnime } from '../services/tvmazeService';
 import { toAnime as itunesToAnime } from '../services/itunesService';
 import { toAnime as tmdbToAnime, parseTmdbKey, extractExtras, TMDB_MOVIE_ID_BASE, TMDB_TV_ID_BASE } from '../services/tmdbService';
@@ -438,6 +438,59 @@ describe('anilistService.fetchLatestAired', () => {
     });
     const res = await fetchLatestAired([1, 2]);
     expect(res).toEqual({ 1: { episode: 8, airingAt: 5000 }, 2: { episode: 3, airingAt: 4500 } });
+  });
+});
+
+describe('anilistService.fetchAnilistRelations', () => {
+  beforeEach(() => { clearRelationsCache(); vi.spyOn(globalThis, 'fetch'); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  const relationsResponse = (edges) => ({
+    ok: true,
+    json: () => Promise.resolve({ data: { Media: { relations: { edges } } } }),
+  });
+  const node = (id, title, extra = {}) => ({ id, idMal: id, type: 'ANIME', title: { romaji: title }, coverImage: {}, ...extra });
+
+  it('queries by idMal for MAL items and maps anime relations with Spanish labels', async () => {
+    globalThis.fetch.mockResolvedValueOnce(relationsResponse([
+      { relationType: 'SIDE_STORY', node: node(22, 'The OVA', { format: 'OVA', seasonYear: 2022 }) },
+      { relationType: 'SEQUEL', node: node(21, 'Season 2', { format: 'TV', seasonYear: 2021 }) },
+      { relationType: 'ADAPTATION', node: { ...node(23, 'The Manga'), type: 'MANGA' } },
+      { relationType: 'SEQUEL', node: node(24, 'Theme Song', { format: 'MUSIC' }) },
+      { relationType: 'CHARACTER', node: node(25, 'Cameo Show', { format: 'TV' }) },
+    ]));
+    const rels = await fetchAnilistRelations({ id: 20, sourceKey: 'mal:20', malId: 20 });
+    const { variables } = JSON.parse(globalThis.fetch.mock.calls[0][1].body);
+    expect(variables).toEqual({ idMal: 20 });
+    // Manga, música y relaciones de personaje quedan afuera; secuela ordena antes que historia paralela.
+    expect(rels.map((r) => r.id)).toEqual([21, 22]);
+    expect(rels[0]._relation).toBe('Secuela');
+    expect(rels[0].type).toBe('TV');
+    expect(rels[1]._relation).toBe('Historia paralela');
+  });
+
+  it('queries by AniList id for anilist-sourced items', async () => {
+    globalThis.fetch.mockResolvedValueOnce(relationsResponse([]));
+    const rels = await fetchAnilistRelations({ id: 300005, sourceKey: 'anilist:5', malId: null });
+    const { variables } = JSON.parse(globalThis.fetch.mock.calls[0][1].body);
+    expect(variables).toEqual({ id: 5 });
+    expect(rels).toEqual([]);
+  });
+
+  it('returns [] without fetching for sources with no AniList/MAL mapping', async () => {
+    const rels = await fetchAnilistRelations({ id: 100042, sourceKey: 'kitsu:42', malId: null });
+    expect(rels).toEqual([]);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it('serves repeated lookups from the in-memory cache', async () => {
+    globalThis.fetch.mockResolvedValue(relationsResponse([
+      { relationType: 'SEQUEL', node: node(21, 'Season 2', { format: 'TV' }) },
+    ]));
+    await fetchAnilistRelations({ id: 20, sourceKey: 'mal:20', malId: 20 });
+    const rels = await fetchAnilistRelations({ id: 20, sourceKey: 'mal:20', malId: 20 });
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    expect(rels.map((r) => r.id)).toEqual([21]);
   });
 });
 

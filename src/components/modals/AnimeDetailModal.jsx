@@ -4,6 +4,7 @@ import { sanitizeUrl, pruneTranslationCache } from '../../constants';
 import { translateEnToEs } from '../../services/translationService';
 import { getPlatformInfo, formatAiringDate, looksSpanish } from '../../utils';
 import { fetchTmdbExtras, parseTmdbKey, TMDB_ENABLED, TMDB_REGIONS, getPreferredRegion, setPreferredRegion } from '../../services/tmdbService';
+import { fetchAnilistRelations } from '../../services/anilistService';
 
 const ProviderRow = ({ label, items, link }) => (
     <div className="provider-row">
@@ -22,7 +23,7 @@ const ProviderRow = ({ label, items, link }) => (
     </div>
 );
 
-const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, updateEpisode, updateUserRating, updateAnimeLink, updateAnimeNotes, mergeAnimeExtras, markAsFinished, dropAnime, deleteAnime, addToWatchLater, markAsWatched, setShowMoveDayPicker, setShowDayPicker, resumeAnime, customLists = [], addToCustomList, removeFromCustomList }) => {
+const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, updateEpisode, updateUserRating, updateAnimeLink, mergeAnimeExtras, markAsFinished, dropAnime, deleteAnime, addToWatchLater, markAsWatched, setShowMoveDayPicker, setShowDayPicker, resumeAnime, customLists = [], addToCustomList, removeFromCustomList, libraryIds }) => {
     // Compute initial synopsis synchronously (Spanish detection + cache check)
     const getInitialSynopsis = () => {
         const syn = showAnimeDetail?.synopsis;
@@ -36,7 +37,6 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
     const [localEp, setLocalEp] = useState(showAnimeDetail?.currentEp || 0);
     const [localRating, setLocalRating] = useState(showAnimeDetail?.userRating || 0);
     const [localLink, setLocalLink] = useState(showAnimeDetail?.watchLink || '');
-    const [localNotes, setLocalNotes] = useState(showAnimeDetail?.notes || '');
     const [showLinkInput, setShowLinkInput] = useState(false);
     const [translatedSynopsis, setTranslatedSynopsis] = useState(initialSynopsis.text);
     const [isTranslating, setIsTranslating] = useState(initialSynopsis.needsFetch);
@@ -114,6 +114,25 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
         setTmdbExtras(null);
         setTmdbLoading(true);
         setRegion(code);
+    };
+
+    // --- Obras relacionadas: temporadas, películas, OVAs (vía AniList) ---
+    const animeId = showAnimeDetail?.id;
+    const animeSourceKey = showAnimeDetail?.sourceKey;
+    const animeMalId = showAnimeDetail?.malId;
+    const [related, setRelated] = useState(null);
+
+    useEffect(() => {
+        if (!animeId) return undefined;
+        const ctrl = new AbortController();
+        fetchAnilistRelations({ id: animeId, sourceKey: animeSourceKey, malId: animeMalId }, { signal: ctrl.signal })
+            .then((rels) => { if (!ctrl.signal.aborted) setRelated(rels); })
+            .catch((e) => { if (e?.name !== 'AbortError') console.error('AniList relations error:', e); });
+        return () => ctrl.abort();
+    }, [animeId, animeSourceKey, animeMalId]);
+
+    const openRelated = (rel) => {
+        setShowAnimeDetail({ ...rel, _isWatchLater: false, _isWatched: false, _isSeason: false, _isDirectory: true });
     };
 
     if (!showAnimeDetail) return null;
@@ -301,18 +320,6 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                     )}
                 </div>
 
-                <div className="detail-section">
-                    <h4>📝 Notas</h4>
-                    <textarea
-                        className="notes-input"
-                        placeholder="Escribí notas sobre este anime..."
-                        value={localNotes}
-                        onChange={e => setLocalNotes(e.target.value)}
-                        onBlur={() => updateAnimeNotes(a.id, localNotes)}
-                        rows={3}
-                    />
-                </div>
-
                 {customLists.length > 0 && (
                     <div className="detail-section">
                         <div className="detail-section-header">
@@ -348,6 +355,35 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                                 })}
                             </div>
                         )}
+                    </div>
+                )}
+
+                {related?.length > 0 && (
+                    <div className="detail-section detail-related">
+                        <h4>🎬 Más de este anime</h4>
+                        <div className="related-strip">
+                            {related.map((rel) => (
+                                <button
+                                    key={rel.id}
+                                    type="button"
+                                    className="related-card"
+                                    onClick={() => openRelated(rel)}
+                                    title={rel.title}
+                                >
+                                    <div className="related-cover">
+                                        {(rel.imageSm || rel.image)
+                                            ? <img src={rel.imageSm || rel.image} alt="" loading="lazy" decoding="async" />
+                                            : <span className="related-cover-fallback" aria-hidden="true">🎬</span>}
+                                        <span className="related-relation">{rel._relation}</span>
+                                        {libraryIds?.has(rel.id) && (
+                                            <span className="related-owned" title="Ya está en tu biblioteca" aria-label="Ya está en tu biblioteca">✓</span>
+                                        )}
+                                    </div>
+                                    <span className="related-title">{rel.title}</span>
+                                    <span className="related-meta">{[rel.type, rel.year].filter(Boolean).join(' · ')}</span>
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 )}
 

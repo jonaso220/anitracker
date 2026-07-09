@@ -13,7 +13,6 @@ const prepare = (anime) => ({
   ...clean(anime),
   currentEp: anime.currentEp || 0,
   userRating: anime.userRating || 0,
-  notes: anime.notes || '',
   watchLink: anime.watchLink || pickAutoWatchLink(anime),
 });
 
@@ -75,7 +74,7 @@ export function useAnimeActions({
   const markAsWatched = useCallback((anime) => {
     setWatchedList((prev) => [...prev.filter((a) => a.id !== anime.id), {
       ...clean(anime), finished: true, finishedDate: new Date().toISOString(),
-      currentEp: anime.currentEp || 0, userRating: anime.userRating || 0, notes: anime.notes || '',
+      currentEp: anime.currentEp || 0, userRating: anime.userRating || 0,
     }]);
   }, [setWatchedList]);
 
@@ -145,10 +144,6 @@ export function useAnimeActions({
 
   const updateUserRating = useCallback((animeId, rating) => {
     updateAnimeField(animeId, () => ({ userRating: rating }));
-  }, [updateAnimeField]);
-
-  const updateAnimeNotes = useCallback((animeId, notes) => {
-    updateAnimeField(animeId, () => ({ notes }));
   }, [updateAnimeField]);
 
   // Persist lazily-fetched extras (trailer, streaming links) without ever
@@ -255,7 +250,6 @@ export function useAnimeActions({
     updateEpisode,
     updateAnimeLink,
     updateUserRating,
-    updateAnimeNotes,
     mergeAnimeExtras,
     createCustomList,
     deleteCustomList,

@@ -57,7 +57,7 @@ export function useBulkActions({
         .filter((a) => !existing.has(a.id))
         .map((a) => ({
           ...clean(a), finished: true, finishedDate: new Date().toISOString(),
-          currentEp: a.currentEp || 0, userRating: a.userRating || 0, notes: a.notes || '',
+          currentEp: a.currentEp || 0, userRating: a.userRating || 0,
         }));
       return [...prev, ...newItems];
     });
@@ -78,7 +78,7 @@ export function useBulkActions({
     setSchedule((prev) => {
       const next = { ...prev };
       toMove.forEach((a) => {
-        const cleaned = { ...clean(a), currentEp: a.currentEp || 0, userRating: a.userRating || 0, notes: a.notes || '' };
+        const cleaned = { ...clean(a), currentEp: a.currentEp || 0, userRating: a.userRating || 0 };
         next[day] = [...next[day].filter((x) => x.id !== cleaned.id), cleaned];
       });
       return next;

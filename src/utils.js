@@ -12,6 +12,7 @@ export const clean = (anime) => {
   delete rest._customListId;
   delete rest._airing;
   delete rest._continuing;
+  delete rest._relation;
   return rest;
 };
 

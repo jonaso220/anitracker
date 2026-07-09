@@ -1,10 +1,12 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import AnimeCard from '../components/AnimeCard';
 import StatsPanel from '../components/StatsPanel';
 import DiscoveryCard from '../components/DiscoveryCard';
 import SeasonSection from '../components/SeasonSection';
 import DirectorySection from '../components/DirectorySection';
+import AnimeDetailModal from '../components/modals/AnimeDetailModal';
+import { clearRelationsCache } from '../services/anilistService';
 
 const mockAnime = {
   id: 1,
@@ -18,7 +20,6 @@ const mockAnime = {
   currentEp: 120,
   userRating: 4,
   watchLink: '',
-  notes: '',
 };
 
 describe('AnimeCard', () => {
@@ -219,6 +220,68 @@ describe('DirectorySection', () => {
     rerender(<DirectorySection {...baseProps} directory={active} />);
     fireEvent.click(screen.getByText(/Limpiar filtros/));
     expect(active.resetFilters).toHaveBeenCalled();
+  });
+});
+
+describe('AnimeDetailModal', () => {
+  const noop = () => {};
+  const baseProps = {
+    airingData: {}, updateEpisode: noop, updateUserRating: noop, updateAnimeLink: noop,
+    mergeAnimeExtras: noop, markAsFinished: noop, dropAnime: noop, deleteAnime: noop,
+    addToWatchLater: noop, markAsWatched: noop, setShowMoveDayPicker: noop, setShowDayPicker: noop,
+    resumeAnime: noop, addToCustomList: noop, removeFromCustomList: noop,
+  };
+  const detailAnime = {
+    id: 20, sourceKey: 'mal:20', malId: 20, title: 'Naruto', image: 'x.jpg',
+    genres: [], rating: 8, currentEp: 0, userRating: 0, watchLink: '',
+    synopsis: 'Una historia que sigue a los ninjas de la aldea, con batallas y más aventuras para todos.',
+    _isDirectory: true,
+  };
+
+  beforeEach(() => {
+    localStorage.clear();
+    clearRelationsCache();
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        data: { Media: { relations: { edges: [
+          { relationType: 'SEQUEL', node: { id: 21, idMal: 21, type: 'ANIME', format: 'MOVIE', seasonYear: 2021, title: { romaji: 'Naruto: The Movie' }, coverImage: {} } },
+        ] } } },
+      }),
+    });
+  });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it('recommends related works at the end of the card and opens them on click', async () => {
+    const setShowAnimeDetail = vi.fn();
+    render(<AnimeDetailModal {...baseProps} showAnimeDetail={detailAnime} setShowAnimeDetail={setShowAnimeDetail} />);
+    expect(await screen.findByText('🎬 Más de este anime')).toBeInTheDocument();
+    expect(screen.getByText('Naruto: The Movie')).toBeInTheDocument();
+    expect(screen.getByText('Secuela')).toBeInTheDocument();
+    expect(screen.getByText('Película · 2021')).toBeInTheDocument();
+    fireEvent.click(screen.getByTitle('Naruto: The Movie'));
+    expect(setShowAnimeDetail).toHaveBeenCalledWith(expect.objectContaining({ id: 21, _isDirectory: true }));
+  });
+
+  it('marks related works that are already in the library', async () => {
+    render(<AnimeDetailModal {...baseProps} showAnimeDetail={detailAnime} setShowAnimeDetail={noop} libraryIds={new Set([21])} />);
+    expect(await screen.findByLabelText('Ya está en tu biblioteca')).toBeInTheDocument();
+  });
+
+  it('no longer renders the notes section', async () => {
+    render(<AnimeDetailModal {...baseProps} showAnimeDetail={detailAnime} setShowAnimeDetail={noop} />);
+    expect(screen.queryByText('📝 Notas')).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/notas sobre este anime/i)).not.toBeInTheDocument();
+    await screen.findByText('🎬 Más de este anime'); // dejar asentar el efecto de relacionados
+  });
+
+  it('shows Spanish synopses as-is, querying only AniList (no translators)', async () => {
+    render(<AnimeDetailModal {...baseProps} showAnimeDetail={detailAnime} setShowAnimeDetail={noop} />);
+    expect(screen.getByText(detailAnime.synopsis)).toBeInTheDocument();
+    await screen.findByText('🎬 Más de este anime');
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalled());
+    const urls = globalThis.fetch.mock.calls.map((c) => String(c[0]));
+    expect(urls.every((u) => u.includes('graphql.anilist.co'))).toBe(true);
   });
 });
 

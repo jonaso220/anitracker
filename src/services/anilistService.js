@@ -210,6 +210,81 @@ export async function fetchSeason(season, year, { signal, current = false } = {}
     .filter(Boolean);
 }
 
+// --- Relaciones (temporadas, películas, OVAs, spin-offs...) ---
+
+const RELATION_LABELS = {
+  PREQUEL: 'Precuela',
+  SEQUEL: 'Secuela',
+  PARENT: 'Historia principal',
+  SIDE_STORY: 'Historia paralela',
+  SPIN_OFF: 'Spin-off',
+  ALTERNATIVE: 'Versión alternativa',
+  FULL_STORY: 'Historia completa',
+  SUMMARY: 'Resumen',
+  OTHER: 'Relacionado',
+};
+const RELATION_ORDER = Object.keys(RELATION_LABELS);
+
+const RELATIONS_QUERY = `query ($id: Int, $idMal: Int) {
+    Media(id: $id, idMal: $idMal, type: ANIME) {
+      relations {
+        edges {
+          relationType
+          node {
+            id idMal type format title { romaji english native } coverImage { extraLarge large medium }
+            genres averageScore episodes status seasonYear
+            description(asHtml: false) siteUrl
+            externalLinks { url site type language }
+            trailer { id site }
+          }
+        }
+      }
+    }
+  }`;
+
+// Referencia AniList de un anime guardado: id propio para items de AniList,
+// idMal para items de MAL (id < 100000). Otras fuentes no tienen relaciones.
+function anilistRef(anime) {
+  const m = /^anilist:(\d+)$/.exec(anime?.sourceKey || '');
+  if (m) return { id: Number(m[1]) };
+  const malId = Number(anime?.malId) || (Number(anime?.id) > 0 && Number(anime?.id) < 100000 ? Number(anime.id) : 0);
+  return malId > 0 ? { idMal: malId } : null;
+}
+
+const relationsCache = new Map();
+export const clearRelationsCache = () => relationsCache.clear();
+
+/**
+ * Obras relacionadas de un anime (temporadas, películas, OVAs...) vía las
+ * relations de AniList. Cada resultado es un anime normalizado con `_relation`
+ * (etiqueta en español: "Secuela", "Precuela"...). Devuelve [] para fuentes
+ * sin mapeo a AniList/MAL. Cache en memoria por sesión.
+ */
+export async function fetchAnilistRelations(anime, { signal } = {}) {
+  const ref = anilistRef(anime);
+  if (!ref) return [];
+  const cacheKey = ref.id ? `id:${ref.id}` : `mal:${ref.idMal}`;
+  if (relationsCache.has(cacheKey)) return relationsCache.get(cacheKey);
+
+  const data = await anilistFetch(RELATIONS_QUERY, ref, { signal });
+  const edges = data?.data?.Media?.relations?.edges || [];
+  const seen = new Set([Number(anime?.id) || 0]);
+  const results = edges
+    .filter((e) => e?.node && e.node.type === 'ANIME' && e.node.format !== 'MUSIC' && RELATION_LABELS[e.relationType])
+    .sort((x, y) =>
+      RELATION_ORDER.indexOf(x.relationType) - RELATION_ORDER.indexOf(y.relationType)
+      || (Number(x.node.seasonYear) || 9999) - (Number(y.node.seasonYear) || 9999))
+    .map((e) => {
+      const rel = toAnime(e.node);
+      if (!rel || seen.has(rel.id)) return null;
+      seen.add(rel.id);
+      return { ...rel, _relation: RELATION_LABELS[e.relationType] };
+    })
+    .filter(Boolean);
+  relationsCache.set(cacheKey, results);
+  return results;
+}
+
 export async function fetchAnilistUserAnimeLists(username, { signal } = {}) {
   const trimmed = username?.trim();
   if (!trimmed) return { schedule: [], watchLater: [], watched: [] };
@@ -252,7 +327,6 @@ export async function fetchAnilistUserAnimeLists(username, { signal } = {}) {
         ...anime,
         currentEp: Number(entry.progress) || 0,
         userRating: Number(entry.score) || 0,
-        notes: '',
         _importStatus: entry.status,
         _finished: entry.status === 'COMPLETED',
         _dropped: entry.status === 'DROPPED',

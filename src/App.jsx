@@ -151,6 +151,16 @@ export default function AnimeTracker() {
     return () => clearTimeout(id);
   }, [prefetchSeason, prefetchDirectory]);
 
+  // IDs de toda la biblioteca (semana + vistos + pendientes), para marcar en
+  // el detalle qué obras relacionadas ya están guardadas.
+  const libraryIds = useMemo(() => {
+    const ids = new Set();
+    daysOfWeek.forEach((d) => (schedule[d] || []).forEach((a) => ids.add(a.id)));
+    watchedList.forEach((a) => ids.add(a.id));
+    watchLater.forEach((a) => ids.add(a.id));
+    return ids;
+  }, [schedule, watchedList, watchLater]);
+
   // --- Stats ---
   const stats = useMemo(() => {
     const allSchedule = daysOfWeek.flatMap((d) => schedule[d] || []);
@@ -294,7 +304,7 @@ export default function AnimeTracker() {
           key={showAnimeDetail.id} showAnimeDetail={showAnimeDetail} setShowAnimeDetail={setShowAnimeDetail}
           airingData={airingData}
           updateEpisode={actions.updateEpisode} updateUserRating={actions.updateUserRating}
-          updateAnimeLink={actions.updateAnimeLink} updateAnimeNotes={actions.updateAnimeNotes}
+          updateAnimeLink={actions.updateAnimeLink}
           mergeAnimeExtras={actions.mergeAnimeExtras}
           markAsFinished={actions.markAsFinished} dropAnime={actions.dropAnime} deleteAnime={actions.deleteAnime}
           addToWatchLater={actions.addToWatchLater} markAsWatched={actions.markAsWatched}
@@ -302,6 +312,7 @@ export default function AnimeTracker() {
           resumeAnime={actions.resumeAnime}
           customLists={customLists}
           addToCustomList={actions.addToCustomList} removeFromCustomList={actions.removeFromCustomList}
+          libraryIds={libraryIds}
         />
       )}
 

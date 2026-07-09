@@ -136,9 +136,6 @@ const AnimeCard = ({
               <span className="quick-watch-label">{platform.label}</span>
             </a>
           )}
-          {anime.notes && (
-            <span className="quick-btn quick-notes" aria-hidden="true" title="Tiene notas">📝</span>
-          )}
         </div>
 
         {/* Airing pulse */}

@@ -21,7 +21,6 @@ describe('normalizeAnime', () => {
     expect(a.episodes).toBeNull();
     expect(a.currentEp).toBe(0);
     expect(a.userRating).toBe(0);
-    expect(a.notes).toBe('');
     expect(a.watchLink).toBe('');
     expect(a.sourceId).toBe('1');
     expect(a.sourceKey).toBe('');
