@@ -3,15 +3,14 @@ import { t } from '../i18n';
 import { formatTimeAgo, formatTimeUntil, isFutureTimestamp } from '../utils';
 
 /**
- * Card used in Temporada and Top anime grids — image-first overlay style with
- * actions revealed on hover. The "already in your list" state takes precedence
- * over the action buttons. When `airing` info is provided, a footer under the
- * card shows the latest aired episode ("Último capítulo: 3 · hace 2 horas") or
- * the countdown to the premiere.
+ * Card used in the Temporada and Directorio grids — image-first overlay style
+ * with actions revealed on hover. The "already in your list" state takes
+ * precedence over the action buttons. When `airing` info is provided, a footer
+ * under the card shows the latest aired episode ("Último capítulo: 3 · hace 2
+ * horas") or the countdown to the premiere.
  */
 const DiscoveryCard = ({
   anime,
-  rank,
   airing,
   alreadyAdded,
   onDetail,
@@ -59,7 +58,6 @@ const DiscoveryCard = ({
           <img src={anime.image || anime.imageSm} alt={anime.title} loading="lazy" decoding="async" onError={handleImgError} />
           <div className="img-fallback" style={{ display: 'none' }}>{anime.title?.charAt(0) || '?'}</div>
 
-          {rank != null && <div className="rank-badge">#{rank}</div>}
           {anime.rating > 0 && <div className="anime-card-score">⭐ {Number(anime.rating).toFixed(1)}</div>}
 
           {alreadyAdded && <div className="season-added-pill" title="Ya está en tu lista">✓ En tu lista</div>}

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { fetchSeason, fetchTopAnime } from '../services/anilistService';
+import { fetchSeason } from '../services/anilistService';
 import { readCache, writeCache } from '../utils';
 
 function currentSeason() {
@@ -16,25 +16,20 @@ const CURRENT_SEASON_TTL_MS = 15 * 60 * 1000;
 const SEASON_CACHE_KEY = 'anitracker-season-cache';
 
 /**
- * Lazy-loaded "season" and "top anime" data with in-memory caching.
+ * Lazy-loaded "season" data with in-memory caching.
  */
 export function useDiscovery() {
   const [selectedSeason, setSelectedSeason] = useState(currentSeason);
   const [seasonAnime, setSeasonAnime] = useState([]);
   const [seasonLoading, setSeasonLoading] = useState(false);
-  const [topAnime, setTopAnime] = useState([]);
-  const [topLoading, setTopLoading] = useState(false);
 
   const seasonCacheRef = useRef({});
-  const topCacheRef = useRef(null);
   const seasonAbortRef = useRef(null);
-  const topAbortRef = useRef(null);
   const seasonLoadingKeyRef = useRef(null);
 
   // Cancel any in-flight discovery fetches when the consumer unmounts.
   useEffect(() => () => {
     seasonAbortRef.current?.abort();
-    topAbortRef.current?.abort();
   }, []);
 
   const loadSeason = useCallback(async (s, y) => {
@@ -83,26 +78,6 @@ export function useDiscovery() {
     loadSeason(s, y);
   }, [loadSeason]);
 
-  const loadTop = useCallback(async () => {
-    if (topCacheRef.current) { setTopAnime(topCacheRef.current); return; }
-    topAbortRef.current?.abort();
-    const ctrl = new AbortController();
-    topAbortRef.current = ctrl;
-    setTopLoading(true);
-    setTopAnime([]);
-    try {
-      const results = await fetchTopAnime({ signal: ctrl.signal });
-      if (ctrl.signal.aborted) return;
-      topCacheRef.current = results;
-      setTopAnime(results);
-    } catch (err) {
-      if (err?.name === 'AbortError') return;
-      console.error('[AniTracker] Top anime fetch failed:', err);
-    } finally {
-      if (!ctrl.signal.aborted) setTopLoading(false);
-    }
-  }, []);
-
   // Precarga en segundo plano de la temporada vigente (para que la pestaña
   // abra al toque); idempotente gracias al cache y al dedupe de in-flight.
   const prefetchCurrentSeason = useCallback(() => {
@@ -114,11 +89,8 @@ export function useDiscovery() {
     selectedSeason,
     seasonAnime,
     seasonLoading,
-    topAnime,
-    topLoading,
     changeSeason,
     loadSeasonCurrent: () => loadSeason(selectedSeason.season, selectedSeason.year),
     prefetchCurrentSeason,
-    loadTop,
   };
 }

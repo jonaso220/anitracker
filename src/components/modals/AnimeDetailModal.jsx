@@ -118,7 +118,7 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
 
     if (!showAnimeDetail) return null;
     const a = showAnimeDetail;
-    const isDiscovery = a._isSeason || a._isTop;
+    const isDiscovery = a._isSeason || a._isDirectory;
     const isSchedule = !a._isWatchLater && !a._isWatched && !isDiscovery;
     const closeAndDo = (fn) => { setShowAnimeDetail(null); fn(); };
     const airing = airingData[a.id];

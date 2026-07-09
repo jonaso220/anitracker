@@ -210,22 +210,6 @@ export async function fetchSeason(season, year, { signal, current = false } = {}
     .filter(Boolean);
 }
 
-export async function fetchTopAnime({ signal, perPage = 50 } = {}) {
-  const gql = `query ($perPage: Int) {
-    Page(page: 1, perPage: $perPage) {
-      media(type: ANIME, sort: SCORE_DESC, isAdult: false) {
-        id idMal title { romaji english native } coverImage { extraLarge large medium }
-        genres averageScore episodes format status seasonYear
-        description(asHtml: false) siteUrl
-        externalLinks { url site type language }
-        trailer { id site }
-      }
-    }
-  }`;
-  const data = await anilistFetch(gql, { perPage }, { signal });
-  return (data?.data?.Page?.media || []).map((m) => toAnime(m)).filter(Boolean);
-}
-
 export async function fetchAnilistUserAnimeLists(username, { signal } = {}) {
   const trimmed = username?.trim();
   if (!trimmed) return { schedule: [], watchLater: [], watched: [] };
