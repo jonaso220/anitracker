@@ -30,6 +30,7 @@ export const getPlatformInfo = (url) => {
   if (u.includes('disneyplus.com'))   return { label: 'D+', name: 'Disney+',     color: '#0063e5' };
   if (u.includes('primevideo.com') || u.includes('amazon.')) return { label: 'PV', name: 'Prime Video', color: '#00a8e1' };
   if (u.includes('hbomax.com') || u.includes('max.com'))     return { label: 'MAX', name: 'Max',        color: '#8b5cf6' };
+  if (u.includes('paramountplus.com') || u.includes('paramount.com')) return { label: 'P+', name: 'Paramount+', color: '#0064ff' };
   if (u.includes('tv.apple.com'))     return { label: 'TV+', name: 'Apple TV+',   color: '#a6a6a6' };
   if (u.includes('jkanime.net'))      return { label: 'JK', name: 'JKAnime',     color: '#a855f7' };
   if (u.includes('animeflv'))         return { label: 'FLV',name: 'AnimeFLV',    color: '#4ecdc4' };
@@ -37,15 +38,59 @@ export const getPlatformInfo = (url) => {
   return { label: '▶', name: 'Ver', color: '#22c55e' };
 };
 
+// Plataformas que el usuario realmente usa, de más a menos preferida. Manda
+// sobre el orden en que las APIs devuelven los links ("Dónde ver" y el link
+// automático de "Ver ahora").
+const PLATFORM_PRIORITY = [
+  ['crunchyroll.com'],
+  ['netflix.com'],
+  ['disneyplus.com'],
+  ['jkanime.net'],
+  ['hbomax.com', 'max.com'],
+  ['paramountplus.com', 'paramount.com'],
+  ['primevideo.com', 'amazon.'],
+  ['animeflv'],
+];
+
+// Plataformas caídas (HIDIVE devuelve 404 hace tiempo): van al final de
+// "Dónde ver" y nunca se eligen como link automático.
+const DEAD_PLATFORMS = ['hidive.com'];
+
+export const isDeadPlatformUrl = (url) =>
+  !!url && DEAD_PLATFORMS.some((h) => url.toLowerCase().includes(h));
+
+const UNKNOWN_RANK = PLATFORM_PRIORITY.length;
+const DEAD_RANK = PLATFORM_PRIORITY.length + 1;
+
+const streamingRank = (url) => {
+  if (!url) return DEAD_RANK;
+  const u = url.toLowerCase();
+  if (isDeadPlatformUrl(u)) return DEAD_RANK;
+  const idx = PLATFORM_PRIORITY.findIndex((hosts) => hosts.some((h) => u.includes(h)));
+  return idx === -1 ? UNKNOWN_RANK : idx;
+};
+
 /**
- * Pick a default watch link for an anime from its known streaming links,
- * preferring Spanish-language ones. Returns '' when there's nothing to pick.
+ * Sort streaming links by platform preference: PLATFORM_PRIORITY first (in
+ * order), then unknown platforms, dead platforms last. Stable within a group.
+ */
+export const sortStreamingLinks = (links) =>
+  [...(links || [])].sort((a, b) => streamingRank(a?.url) - streamingRank(b?.url));
+
+/**
+ * Pick a default watch link for an anime. A manual `watchLink` wins unless it
+ * points to a dead platform; otherwise the best-ranked streaming link, with
+ * Spanish-language ones breaking ties within the same platform. Never returns
+ * a dead-platform URL — '' when there's nothing usable to pick.
  */
 export const pickAutoWatchLink = (anime) => {
-  if (anime?.watchLink) return anime.watchLink;
-  const links = (anime?.streamingLinks || []).filter((l) => l && l.url);
+  if (anime?.watchLink && !isDeadPlatformUrl(anime.watchLink)) return anime.watchLink;
+  const links = sortStreamingLinks(
+    (anime?.streamingLinks || []).filter((l) => l && l.url && !isDeadPlatformUrl(l.url))
+  );
   if (links.length === 0) return '';
-  const spanish = links.find((l) => /spanish|español/i.test(l.language || ''));
+  const bestRank = streamingRank(links[0].url);
+  const spanish = links.find((l) => streamingRank(l.url) === bestRank && /spanish|español/i.test(l.language || ''));
   return (spanish || links[0]).url;
 };
 

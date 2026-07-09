@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { clean, filterByLocalSearch, getFilteredWatched, parseEpisodes, hashString, buildBackup, parseBackup, getPlatformInfo, pickAutoWatchLink, formatAiringWhen, formatAiringDate, formatTimeAgo, formatTimeUntil, getAiringDayIndex, groupSeasonByDay, looksSpanish } from '../utils';
+import { clean, filterByLocalSearch, getFilteredWatched, parseEpisodes, hashString, buildBackup, parseBackup, getPlatformInfo, pickAutoWatchLink, sortStreamingLinks, isDeadPlatformUrl, formatAiringWhen, formatAiringDate, formatTimeAgo, formatTimeUntil, getAiringDayIndex, groupSeasonByDay, looksSpanish } from '../utils';
 
 describe('clean', () => {
   it('removes internal flags from anime object', () => {
@@ -214,6 +214,9 @@ describe('getPlatformInfo', () => {
     expect(getPlatformInfo('https://www.crunchyroll.com/x').name).toBe('Crunchyroll');
     expect(getPlatformInfo('https://www.primevideo.com/x').name).toBe('Prime Video');
     expect(getPlatformInfo('https://play.max.com/x').name).toBe('Max');
+    expect(getPlatformInfo('https://www.paramountplus.com/x').name).toBe('Paramount+');
+    expect(getPlatformInfo('https://jkanime.net/x').name).toBe('JKAnime');
+    expect(getPlatformInfo('https://www4.animeflv.net/x').name).toBe('AnimeFLV');
   });
 
   it('falls back to a generic badge for unknown URLs', () => {
@@ -239,6 +242,64 @@ describe('pickAutoWatchLink', () => {
     expect(pickAutoWatchLink({ streamingLinks: [] })).toBe('');
     expect(pickAutoWatchLink({})).toBe('');
     expect(pickAutoWatchLink(null)).toBe('');
+  });
+
+  it('prefers the user\'s platforms over the API order', () => {
+    const anime = { streamingLinks: [
+      { site: 'iQ', url: 'https://www.iq.com/x' },
+      { site: 'Netflix', url: 'https://www.netflix.com/x' },
+      { site: 'Crunchyroll', url: 'https://www.crunchyroll.com/x' },
+    ] };
+    expect(pickAutoWatchLink(anime)).toBe('https://www.crunchyroll.com/x');
+  });
+
+  it('never picks a dead platform (HIDIVE), even as stored watchLink', () => {
+    expect(pickAutoWatchLink({ streamingLinks: [
+      { site: 'HIDIVE', url: 'https://www.hidive.com/x' },
+      { site: 'Netflix', url: 'https://www.netflix.com/x' },
+    ] })).toBe('https://www.netflix.com/x');
+    expect(pickAutoWatchLink({ streamingLinks: [{ site: 'HIDIVE', url: 'https://www.hidive.com/x' }] })).toBe('');
+    expect(pickAutoWatchLink({
+      watchLink: 'https://www.hidive.com/stream/x',
+      streamingLinks: [{ site: 'Crunchyroll', url: 'https://www.crunchyroll.com/x' }],
+    })).toBe('https://www.crunchyroll.com/x');
+  });
+
+  it('breaks platform ties by Spanish language, not across platforms', () => {
+    const anime = { streamingLinks: [
+      { site: 'Crunchyroll', url: 'https://www.crunchyroll.com/en', language: 'English' },
+      { site: 'Netflix', url: 'https://www.netflix.com/es', language: 'Spanish' },
+      { site: 'Crunchyroll', url: 'https://www.crunchyroll.com/es', language: 'Spanish' },
+    ] };
+    expect(pickAutoWatchLink(anime)).toBe('https://www.crunchyroll.com/es');
+  });
+});
+
+describe('sortStreamingLinks / isDeadPlatformUrl', () => {
+  it('sorts preferred platforms first, unknown after, dead ones last', () => {
+    const sorted = sortStreamingLinks([
+      { site: 'HIDIVE', url: 'https://www.hidive.com/x' },
+      { site: 'iQ', url: 'https://www.iq.com/x' },
+      { site: 'Netflix', url: 'https://www.netflix.com/x' },
+      { site: 'Crunchyroll', url: 'https://www.crunchyroll.com/x' },
+      { site: 'AnimeFLV', url: 'https://www4.animeflv.net/x' },
+    ]);
+    expect(sorted.map((l) => l.site)).toEqual(['Crunchyroll', 'Netflix', 'AnimeFLV', 'iQ', 'HIDIVE']);
+  });
+
+  it('keeps API order within the same rank and tolerates empty input', () => {
+    const sorted = sortStreamingLinks([
+      { site: 'A', url: 'https://a.example.com' },
+      { site: 'B', url: 'https://b.example.com' },
+    ]);
+    expect(sorted.map((l) => l.site)).toEqual(['A', 'B']);
+    expect(sortStreamingLinks(null)).toEqual([]);
+  });
+
+  it('flags dead platform URLs', () => {
+    expect(isDeadPlatformUrl('https://www.HIDIVE.com/stream/x')).toBe(true);
+    expect(isDeadPlatformUrl('https://www.crunchyroll.com/x')).toBe(false);
+    expect(isDeadPlatformUrl('')).toBe(false);
   });
 });
 

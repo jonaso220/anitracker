@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import StarRating from '../StarRating';
 import { sanitizeUrl, pruneTranslationCache } from '../../constants';
 import { translateEnToEs } from '../../services/translationService';
-import { getPlatformInfo, formatAiringDate, looksSpanish } from '../../utils';
+import { getPlatformInfo, formatAiringDate, looksSpanish, sortStreamingLinks, pickAutoWatchLink } from '../../utils';
 import { fetchTmdbExtras, parseTmdbKey, TMDB_ENABLED, TMDB_REGIONS, getPreferredRegion, setPreferredRegion } from '../../services/tmdbService';
 import { fetchAnilistRelations } from '../../services/anilistService';
 
@@ -142,7 +142,10 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
     const closeAndDo = (fn) => { setShowAnimeDetail(null); fn(); };
     const airing = airingData[a.id];
 
-    const streamingLinks = a.streamingLinks || [];
+    // Preferred platforms first; dead ones (HIDIVE) last. "Ver ahora" never
+    // points to a dead platform even if it's stored as watchLink.
+    const streamingLinks = sortStreamingLinks(a.streamingLinks || []);
+    const effectiveWatchLink = pickAutoWatchLink(a);
     const trailerUrl = a.trailerUrl || tmdbExtras?.trailerUrl || '';
     const providers = tmdbExtras?.providers;
     const hasProviders = !!providers && (providers.flatrate.length > 0 || providers.rent.length > 0 || providers.buy.length > 0);
@@ -303,9 +306,9 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
 
                 <div className="detail-section">
                     <h4>🔗 Link</h4>
-                    {a.watchLink && !showLinkInput ? (
+                    {effectiveWatchLink && !showLinkInput ? (
                         <div className="detail-link-row">
-                            <a href={sanitizeUrl(a.watchLink)} target="_blank" rel="noopener noreferrer" className="platform-btn watch">▶ Ver ahora</a>
+                            <a href={sanitizeUrl(effectiveWatchLink)} target="_blank" rel="noopener noreferrer" className="platform-btn watch">▶ Ver ahora</a>
                             <button className="detail-action-sm" onClick={() => setShowLinkInput(true)}>✏️ Editar</button>
                         </div>
                     ) : (

@@ -275,6 +275,21 @@ describe('AnimeDetailModal', () => {
     await screen.findByText('🎬 Más de este anime'); // dejar asentar el efecto de relacionados
   });
 
+  it('orders "Dónde ver" by preferred platform and never uses dead ones for "Ver ahora"', async () => {
+    const anime = { ...detailAnime, watchLink: 'https://www.hidive.com/stream/x', streamingLinks: [
+      { site: 'HIDIVE', url: 'https://www.hidive.com/stream/x', language: '' },
+      { site: 'iQ', url: 'https://www.iq.com/x', language: '' },
+      { site: 'Crunchyroll', url: 'https://www.crunchyroll.com/x', language: '' },
+    ] };
+    const { container } = render(<AnimeDetailModal {...baseProps} showAnimeDetail={anime} setShowAnimeDetail={noop} />);
+    const chips = [...container.querySelectorAll('.streaming-chip')].map((el) => el.textContent);
+    expect(chips[0]).toContain('Crunchyroll');
+    expect(chips[chips.length - 1]).toContain('HIDIVE');
+    const verAhora = screen.getByText('▶ Ver ahora').closest('a');
+    expect(verAhora.getAttribute('href')).toBe('https://www.crunchyroll.com/x');
+    await screen.findByText('🎬 Más de este anime'); // dejar asentar el efecto de relacionados
+  });
+
   it('shows Spanish synopses as-is, querying only AniList (no translators)', async () => {
     render(<AnimeDetailModal {...baseProps} showAnimeDetail={detailAnime} setShowAnimeDetail={noop} />);
     expect(screen.getByText(detailAnime.synopsis)).toBeInTheDocument();

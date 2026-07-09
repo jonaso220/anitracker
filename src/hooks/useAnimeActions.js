@@ -13,7 +13,7 @@ const prepare = (anime) => ({
   ...clean(anime),
   currentEp: anime.currentEp || 0,
   userRating: anime.userRating || 0,
-  watchLink: anime.watchLink || pickAutoWatchLink(anime),
+  watchLink: pickAutoWatchLink(anime),
 });
 
 /**

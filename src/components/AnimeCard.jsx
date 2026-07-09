@@ -63,9 +63,10 @@ const AnimeCard = ({
   const pct = total > 0 ? Math.min((ep / total) * 100, 100) : 0;
   const isComplete = total > 0 && ep >= total;
   const status = getCardStatus({ anime, isWatched, airing, ep, total });
-  // Manual link wins; otherwise fall back to a known streaming link so cards
-  // saved before auto-linking existed still get their platform badge.
-  const watchUrl = anime.watchLink || pickAutoWatchLink(anime);
+  // Manual link wins (unless it's a dead platform); otherwise the best-ranked
+  // streaming link, so cards saved before auto-linking existed still get their
+  // platform badge.
+  const watchUrl = pickAutoWatchLink(anime);
   const platform = getPlatformInfo(watchUrl);
   const isHighRated = (anime.rating || 0) >= 9;
 
