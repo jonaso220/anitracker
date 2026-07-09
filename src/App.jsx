@@ -14,7 +14,6 @@ import ScheduleView from './components/views/ScheduleView';
 const WatchLaterView = lazy(() => import('./components/views/WatchLaterView'));
 const WatchedView = lazy(() => import('./components/views/WatchedView'));
 const SeasonSection = lazy(() => import('./components/SeasonSection'));
-const TopAnimeSection = lazy(() => import('./components/TopAnimeSection'));
 const DirectorySection = lazy(() => import('./components/DirectorySection'));
 const CustomListsTab = lazy(() => import('./components/CustomListsTab'));
 const StatsPanel = lazy(() => import('./components/StatsPanel'));
@@ -108,7 +107,6 @@ export default function AnimeTracker() {
     setLocalSearch('');
     bulk.exitBulkMode();
     if (tab === 'season') discovery.loadSeasonCurrent();
-    if (tab === 'top') discovery.loadTop();
     if (tab === 'directory') directory.loadInitial();
   };
 
@@ -267,18 +265,7 @@ export default function AnimeTracker() {
             setShowDayPicker={setShowDayPicker}
             addToWatchLater={actions.addToWatchLater}
             markAsWatched={actions.markAsWatched}
-            onDetail={(a) => setShowAnimeDetail({ ...a, _isWatchLater: false, _isWatched: false, _isSeason: false, _isTop: true })}
-          />
-        )}
-
-        {activeTab === 'top' && (
-          <TopAnimeSection
-            topAnime={discovery.topAnime} topLoading={discovery.topLoading}
-            schedule={schedule} watchedList={watchedList} watchLater={watchLater}
-            setShowDayPicker={setShowDayPicker}
-            addToWatchLater={actions.addToWatchLater}
-            markAsWatched={actions.markAsWatched}
-            onDetail={(a) => setShowAnimeDetail({ ...a, _isWatchLater: false, _isWatched: false, _isSeason: false, _isTop: true })}
+            onDetail={(a) => setShowAnimeDetail({ ...a, _isWatchLater: false, _isWatched: false, _isSeason: false, _isDirectory: true })}
           />
         )}
 

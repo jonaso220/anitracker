@@ -7,7 +7,7 @@ export const clean = (anime) => {
   delete rest._isWatchLater;
   delete rest._isWatched;
   delete rest._isSeason;
-  delete rest._isTop;
+  delete rest._isDirectory;
   delete rest._isCustomList;
   delete rest._customListId;
   delete rest._airing;

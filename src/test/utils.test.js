@@ -3,14 +3,14 @@ import { clean, filterByLocalSearch, getFilteredWatched, parseEpisodes, hashStri
 
 describe('clean', () => {
   it('removes internal flags from anime object', () => {
-    const anime = { id: 1, title: 'Test', _day: 'Lunes', _isWatchLater: true, _isWatched: false, _isSeason: true, _isTop: true, _isCustomList: true, _customListId: 'abc', _airing: { lastEpisode: 3 }, _continuing: true };
+    const anime = { id: 1, title: 'Test', _day: 'Lunes', _isWatchLater: true, _isWatched: false, _isSeason: true, _isDirectory: true, _isCustomList: true, _customListId: 'abc', _airing: { lastEpisode: 3 }, _continuing: true };
     const result = clean(anime);
     expect(result).toEqual({ id: 1, title: 'Test' });
     expect(result._day).toBeUndefined();
     expect(result._isWatchLater).toBeUndefined();
     expect(result._isWatched).toBeUndefined();
     expect(result._isSeason).toBeUndefined();
-    expect(result._isTop).toBeUndefined();
+    expect(result._isDirectory).toBeUndefined();
     expect(result._isCustomList).toBeUndefined();
     expect(result._customListId).toBeUndefined();
     expect(result._airing).toBeUndefined();
