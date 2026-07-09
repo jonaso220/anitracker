@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { clean, filterByLocalSearch, getFilteredWatched, parseEpisodes, hashString, buildBackup, parseBackup, getPlatformInfo, pickAutoWatchLink, sortStreamingLinks, isDeadPlatformUrl, slugify, buildFanStreamingLinks, getDisplayStreamingLinks, formatAiringWhen, formatAiringDate, formatTimeAgo, formatTimeUntil, getAiringDayIndex, groupSeasonByDay, looksSpanish } from '../utils';
+import { clean, filterByLocalSearch, getFilteredWatched, parseEpisodes, hashString, buildBackup, parseBackup, getPlatformInfo, pickAutoWatchLink, sortStreamingLinks, isDeadPlatformUrl, buildFanStreamingLinks, getDisplayStreamingLinks, formatAiringWhen, formatAiringDate, formatTimeAgo, formatTimeUntil, getAiringDayIndex, groupSeasonByDay, looksSpanish } from '../utils';
 
 describe('clean', () => {
   it('removes internal flags from anime object', () => {
@@ -274,35 +274,37 @@ describe('pickAutoWatchLink', () => {
     expect(pickAutoWatchLink(anime)).toBe('https://www.crunchyroll.com/es');
   });
 
-  it('recommends the generated JKAnime link when the APIs only offer unknown or dead platforms', () => {
+  it('recommends the generated JKAnime search when the APIs only offer unknown or dead platforms', () => {
     // Caso real reportado: Hell Mode S2 solo trae HIDIVE (muerto) e iQ.
     const anime = {
       id: 20, source: 'MAL',
-      titleOriginal: 'Hell Mode: Yarikomizuki no Gamer wa Hai Settei no Isekai de Musou suru 2nd Season',
+      titleOriginal: 'Hell Mode: Yarikomi Zuki no Gamer wa Haisettei no Isekai de Musou suru 2nd Season',
       watchLink: 'https://www.hidive.com/season/36239',
       streamingLinks: [
         { site: 'HIDIVE', url: 'https://www.hidive.com/season/36239' },
         { site: 'iQ', url: 'https://www.iq.com/x' },
       ],
     };
-    expect(pickAutoWatchLink(anime)).toBe('https://jkanime.net/hell-mode-yarikomizuki-no-gamer-wa-hai-settei-no-isekai-de-musou-suru-2nd-season/');
+    expect(pickAutoWatchLink(anime)).toBe('https://jkanime.net/buscar/Hell%20Mode/');
   });
 });
 
-describe('slugify / buildFanStreamingLinks', () => {
-  it('slugifies titles the way JKAnime names its URLs', () => {
-    expect(slugify('Hell Mode: Yarikomizuki no Gamer wa Hai Settei no Isekai de Musou suru 2nd Season'))
-      .toBe('hell-mode-yarikomizuki-no-gamer-wa-hai-settei-no-isekai-de-musou-suru-2nd-season');
-    expect(slugify('Shingeki no Kyojin (Final)')).toBe('shingeki-no-kyojin-final');
-    expect(slugify('  ')).toBe('');
-    expect(slugify('ナルト')).toBe('');
+describe('buildFanStreamingLinks', () => {
+  it('generates JKAnime + AnimeFLV search links using the franchise name', () => {
+    // El prefijo antes de ':' esquiva las diferencias de romanización entre
+    // sitios ("Yarikomi Zuki" en MAL vs "Yarikomizuki" en JKAnime).
+    const links = buildFanStreamingLinks({
+      id: 20, source: 'MAL',
+      titleOriginal: 'Hell Mode: Yarikomi Zuki no Gamer wa Haisettei no Isekai de Musou suru 2nd Season',
+      streamingLinks: [],
+    });
+    expect(links[0]).toEqual({ site: 'JKAnime', url: 'https://jkanime.net/buscar/Hell%20Mode/', language: 'buscar' });
+    expect(links[1]).toEqual({ site: 'AnimeFLV', url: 'https://www4.animeflv.net/browse?q=Hell%20Mode', language: 'buscar' });
   });
 
-  it('generates JKAnime (direct) + AnimeFLV (search) links for anime-catalog sources', () => {
-    const links = buildFanStreamingLinks({ id: 20, source: 'MAL', titleOriginal: 'Hell Mode 2nd Season', streamingLinks: [] });
-    expect(links[0]).toEqual({ site: 'JKAnime', url: 'https://jkanime.net/hell-mode-2nd-season/', language: '' });
-    expect(links[1].site).toBe('AnimeFLV');
-    expect(links[1].url).toBe(`https://www4.animeflv.net/browse?q=${encodeURIComponent('Hell Mode 2nd Season')}`);
+  it('falls back to the full title when the franchise prefix is too short', () => {
+    const links = buildFanStreamingLinks({ id: 1, source: 'AniList', title: 'Re:Zero kara Hajimeru Isekai Seikatsu' });
+    expect(links[0].url).toBe(`https://jkanime.net/buscar/${encodeURIComponent('Re:Zero kara Hajimeru Isekai Seikatsu')}/`);
   });
 
   it('skips non-anime sources, empty titles, and platforms already present', () => {

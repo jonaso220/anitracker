@@ -77,40 +77,41 @@ const streamingRank = (url) => {
 export const sortStreamingLinks = (links) =>
   [...(links || [])].sort((a, b) => streamingRank(a?.url) - streamingRank(b?.url));
 
-/**
- * URL-friendly slug of a title ('Hell Mode: Yarikomizuki no Gamer...' →
- * 'hell-mode-yarikomizuki-no-gamer-...'). Empty for non-latin-only titles.
- */
-export const slugify = (text) => (text || '')
-  .toLowerCase()
-  .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-  .replace(/[^a-z0-9]+/g, '-')
-  .replace(/^-+|-+$/g, '');
-
 const FAN_PLATFORM_SOURCES = ['MAL', 'Kitsu', 'AniList'];
 
+// Consulta corta y robusta para las búsquedas fan: el nombre de la franquicia
+// (lo que precede a ':', '~' o '('). Las URLs y títulos exactos fallan porque
+// cada sitio segmenta el romaji a su manera ("Yarikomi Zuki" vs
+// "Yarikomizuki"); el prefijo aguanta esas diferencias. Prefijos muy cortos
+// ("Re:Zero" → "Re") no identifican nada: ahí va el título completo.
+const fanSearchQuery = (title) => {
+  const prefix = title.split(/[:~(]/)[0].trim();
+  return prefix.length >= 4 ? prefix : title.trim();
+};
+
 /**
- * Links generados para las plataformas fan que las APIs nunca devuelven.
- * JKAnime usa el título romaji slugificado como URL de la obra; AnimeFLV va a
- * su búsqueda porque sus slugs no son predecibles. Solo para fuentes de
- * catálogo de anime (nunca TMDB/TVMaze/iTunes, que traen películas y series
- * occidentales), y sin duplicar plataformas que ya vengan en streamingLinks.
+ * Links generados para las plataformas fan que las APIs nunca devuelven,
+ * apuntando a la búsqueda de cada sitio: sus URLs de obra no son predecibles
+ * (un link directo adivinado suele dar 404) y la búsqueda siempre resuelve.
+ * Solo para fuentes de catálogo de anime (nunca TMDB/TVMaze/iTunes, que traen
+ * películas y series occidentales), y sin duplicar plataformas que ya vengan
+ * en streamingLinks.
  */
 export const buildFanStreamingLinks = (anime) => {
   if (!anime) return [];
   const isAnimeSource = FAN_PLATFORM_SOURCES.includes(anime.source)
     || (!anime.source && Number(anime.id) > 0 && Number(anime.id) < 400000);
   if (!isAnimeSource) return [];
-  const title = anime.titleOriginal || anime.title || '';
+  const title = (anime.titleOriginal || anime.title || '').trim();
   if (!title) return [];
+  const query = encodeURIComponent(fanSearchQuery(title));
   const existing = (anime.streamingLinks || []).map((l) => (l?.url || '').toLowerCase());
   const links = [];
-  const slug = slugify(title);
-  if (slug && !existing.some((u) => u.includes('jkanime.net'))) {
-    links.push({ site: 'JKAnime', url: `https://jkanime.net/${slug}/`, language: '' });
+  if (!existing.some((u) => u.includes('jkanime.net'))) {
+    links.push({ site: 'JKAnime', url: `https://jkanime.net/buscar/${query}/`, language: 'buscar' });
   }
   if (!existing.some((u) => u.includes('animeflv'))) {
-    links.push({ site: 'AnimeFLV', url: `https://www4.animeflv.net/browse?q=${encodeURIComponent(title)}`, language: 'buscar' });
+    links.push({ site: 'AnimeFLV', url: `https://www4.animeflv.net/browse?q=${query}`, language: 'buscar' });
   }
   return links;
 };
