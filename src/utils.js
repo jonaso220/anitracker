@@ -78,16 +78,63 @@ export const sortStreamingLinks = (links) =>
   [...(links || [])].sort((a, b) => streamingRank(a?.url) - streamingRank(b?.url));
 
 /**
+ * URL-friendly slug of a title ('Hell Mode: Yarikomizuki no Gamer...' →
+ * 'hell-mode-yarikomizuki-no-gamer-...'). Empty for non-latin-only titles.
+ */
+export const slugify = (text) => (text || '')
+  .toLowerCase()
+  .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .replace(/[^a-z0-9]+/g, '-')
+  .replace(/^-+|-+$/g, '');
+
+const FAN_PLATFORM_SOURCES = ['MAL', 'Kitsu', 'AniList'];
+
+/**
+ * Links generados para las plataformas fan que las APIs nunca devuelven.
+ * JKAnime usa el título romaji slugificado como URL de la obra; AnimeFLV va a
+ * su búsqueda porque sus slugs no son predecibles. Solo para fuentes de
+ * catálogo de anime (nunca TMDB/TVMaze/iTunes, que traen películas y series
+ * occidentales), y sin duplicar plataformas que ya vengan en streamingLinks.
+ */
+export const buildFanStreamingLinks = (anime) => {
+  if (!anime) return [];
+  const isAnimeSource = FAN_PLATFORM_SOURCES.includes(anime.source)
+    || (!anime.source && Number(anime.id) > 0 && Number(anime.id) < 400000);
+  if (!isAnimeSource) return [];
+  const title = anime.titleOriginal || anime.title || '';
+  if (!title) return [];
+  const existing = (anime.streamingLinks || []).map((l) => (l?.url || '').toLowerCase());
+  const links = [];
+  const slug = slugify(title);
+  if (slug && !existing.some((u) => u.includes('jkanime.net'))) {
+    links.push({ site: 'JKAnime', url: `https://jkanime.net/${slug}/`, language: '' });
+  }
+  if (!existing.some((u) => u.includes('animeflv'))) {
+    links.push({ site: 'AnimeFLV', url: `https://www4.animeflv.net/browse?q=${encodeURIComponent(title)}`, language: 'buscar' });
+  }
+  return links;
+};
+
+/**
+ * Every streaming link worth showing for an anime — the API-provided ones plus
+ * the generated fan-platform links — sorted by platform preference.
+ */
+export const getDisplayStreamingLinks = (anime) =>
+  sortStreamingLinks([
+    ...(anime?.streamingLinks || []).filter((l) => l && l.url),
+    ...buildFanStreamingLinks(anime),
+  ]);
+
+/**
  * Pick a default watch link for an anime. A manual `watchLink` wins unless it
- * points to a dead platform; otherwise the best-ranked streaming link, with
- * Spanish-language ones breaking ties within the same platform. Never returns
- * a dead-platform URL — '' when there's nothing usable to pick.
+ * points to a dead platform; otherwise the best-ranked streaming link
+ * (including generated fan-platform links), with Spanish-language ones
+ * breaking ties within the same platform. Never returns a dead-platform URL —
+ * '' when there's nothing usable to pick.
  */
 export const pickAutoWatchLink = (anime) => {
   if (anime?.watchLink && !isDeadPlatformUrl(anime.watchLink)) return anime.watchLink;
-  const links = sortStreamingLinks(
-    (anime?.streamingLinks || []).filter((l) => l && l.url && !isDeadPlatformUrl(l.url))
-  );
+  const links = getDisplayStreamingLinks(anime).filter((l) => !isDeadPlatformUrl(l.url));
   if (links.length === 0) return '';
   const bestRank = streamingRank(links[0].url);
   const spanish = links.find((l) => streamingRank(l.url) === bestRank && /spanish|español/i.test(l.language || ''));

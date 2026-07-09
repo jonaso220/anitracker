@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import StarRating from '../StarRating';
 import { sanitizeUrl, pruneTranslationCache } from '../../constants';
 import { translateEnToEs } from '../../services/translationService';
-import { getPlatformInfo, formatAiringDate, looksSpanish, sortStreamingLinks, pickAutoWatchLink } from '../../utils';
+import { getPlatformInfo, formatAiringDate, looksSpanish, getDisplayStreamingLinks, pickAutoWatchLink } from '../../utils';
 import { fetchTmdbExtras, parseTmdbKey, TMDB_ENABLED, TMDB_REGIONS, getPreferredRegion, setPreferredRegion } from '../../services/tmdbService';
 import { fetchAnilistRelations } from '../../services/anilistService';
 
@@ -142,9 +142,10 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
     const closeAndDo = (fn) => { setShowAnimeDetail(null); fn(); };
     const airing = airingData[a.id];
 
-    // Preferred platforms first; dead ones (HIDIVE) last. "Ver ahora" never
-    // points to a dead platform even if it's stored as watchLink.
-    const streamingLinks = sortStreamingLinks(a.streamingLinks || []);
+    // API links + generated fan-platform links (JKAnime/AnimeFLV), preferred
+    // platforms first and dead ones (HIDIVE) last. "Ver ahora" never points to
+    // a dead platform even if it's stored as watchLink.
+    const streamingLinks = getDisplayStreamingLinks(a);
     const effectiveWatchLink = pickAutoWatchLink(a);
     const trailerUrl = a.trailerUrl || tmdbExtras?.trailerUrl || '';
     const providers = tmdbExtras?.providers;

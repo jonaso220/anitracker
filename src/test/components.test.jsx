@@ -284,6 +284,8 @@ describe('AnimeDetailModal', () => {
     const { container } = render(<AnimeDetailModal {...baseProps} showAnimeDetail={anime} setShowAnimeDetail={noop} />);
     const chips = [...container.querySelectorAll('.streaming-chip')].map((el) => el.textContent);
     expect(chips[0]).toContain('Crunchyroll');
+    expect(chips[1]).toContain('JKAnime'); // link fan generado a partir del título
+    expect(chips[2]).toContain('AnimeFLV · buscar');
     expect(chips[chips.length - 1]).toContain('HIDIVE');
     const verAhora = screen.getByText('▶ Ver ahora').closest('a');
     expect(verAhora.getAttribute('href')).toBe('https://www.crunchyroll.com/x');

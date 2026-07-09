@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { clean, filterByLocalSearch, getFilteredWatched, parseEpisodes, hashString, buildBackup, parseBackup, getPlatformInfo, pickAutoWatchLink, sortStreamingLinks, isDeadPlatformUrl, formatAiringWhen, formatAiringDate, formatTimeAgo, formatTimeUntil, getAiringDayIndex, groupSeasonByDay, looksSpanish } from '../utils';
+import { clean, filterByLocalSearch, getFilteredWatched, parseEpisodes, hashString, buildBackup, parseBackup, getPlatformInfo, pickAutoWatchLink, sortStreamingLinks, isDeadPlatformUrl, slugify, buildFanStreamingLinks, getDisplayStreamingLinks, formatAiringWhen, formatAiringDate, formatTimeAgo, formatTimeUntil, getAiringDayIndex, groupSeasonByDay, looksSpanish } from '../utils';
 
 describe('clean', () => {
   it('removes internal flags from anime object', () => {
@@ -272,6 +272,53 @@ describe('pickAutoWatchLink', () => {
       { site: 'Crunchyroll', url: 'https://www.crunchyroll.com/es', language: 'Spanish' },
     ] };
     expect(pickAutoWatchLink(anime)).toBe('https://www.crunchyroll.com/es');
+  });
+
+  it('recommends the generated JKAnime link when the APIs only offer unknown or dead platforms', () => {
+    // Caso real reportado: Hell Mode S2 solo trae HIDIVE (muerto) e iQ.
+    const anime = {
+      id: 20, source: 'MAL',
+      titleOriginal: 'Hell Mode: Yarikomizuki no Gamer wa Hai Settei no Isekai de Musou suru 2nd Season',
+      watchLink: 'https://www.hidive.com/season/36239',
+      streamingLinks: [
+        { site: 'HIDIVE', url: 'https://www.hidive.com/season/36239' },
+        { site: 'iQ', url: 'https://www.iq.com/x' },
+      ],
+    };
+    expect(pickAutoWatchLink(anime)).toBe('https://jkanime.net/hell-mode-yarikomizuki-no-gamer-wa-hai-settei-no-isekai-de-musou-suru-2nd-season/');
+  });
+});
+
+describe('slugify / buildFanStreamingLinks', () => {
+  it('slugifies titles the way JKAnime names its URLs', () => {
+    expect(slugify('Hell Mode: Yarikomizuki no Gamer wa Hai Settei no Isekai de Musou suru 2nd Season'))
+      .toBe('hell-mode-yarikomizuki-no-gamer-wa-hai-settei-no-isekai-de-musou-suru-2nd-season');
+    expect(slugify('Shingeki no Kyojin (Final)')).toBe('shingeki-no-kyojin-final');
+    expect(slugify('  ')).toBe('');
+    expect(slugify('ナルト')).toBe('');
+  });
+
+  it('generates JKAnime (direct) + AnimeFLV (search) links for anime-catalog sources', () => {
+    const links = buildFanStreamingLinks({ id: 20, source: 'MAL', titleOriginal: 'Hell Mode 2nd Season', streamingLinks: [] });
+    expect(links[0]).toEqual({ site: 'JKAnime', url: 'https://jkanime.net/hell-mode-2nd-season/', language: '' });
+    expect(links[1].site).toBe('AnimeFLV');
+    expect(links[1].url).toBe(`https://www4.animeflv.net/browse?q=${encodeURIComponent('Hell Mode 2nd Season')}`);
+  });
+
+  it('skips non-anime sources, empty titles, and platforms already present', () => {
+    expect(buildFanStreamingLinks({ id: 600000603, source: 'TMDB', title: 'Matrix' })).toEqual([]);
+    expect(buildFanStreamingLinks({ id: 400001, source: 'TVMaze', title: 'Show' })).toEqual([]);
+    expect(buildFanStreamingLinks({ id: 1, source: 'MAL', title: '' })).toEqual([]);
+    const links = buildFanStreamingLinks({ id: 1, source: 'AniList', title: 'X Y', streamingLinks: [{ site: 'JKAnime', url: 'https://jkanime.net/x-y/' }] });
+    expect(links.map((l) => l.site)).toEqual(['AnimeFLV']);
+  });
+
+  it('getDisplayStreamingLinks merges API and fan links sorted by preference', () => {
+    const anime = { id: 1, source: 'MAL', titleOriginal: 'X Y', streamingLinks: [
+      { site: 'iQ', url: 'https://www.iq.com/x' },
+      { site: 'Crunchyroll', url: 'https://www.crunchyroll.com/x' },
+    ] };
+    expect(getDisplayStreamingLinks(anime).map((l) => l.site)).toEqual(['Crunchyroll', 'JKAnime', 'AnimeFLV', 'iQ']);
   });
 });
 
