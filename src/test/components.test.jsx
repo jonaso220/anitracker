@@ -82,6 +82,30 @@ describe('AnimeCard', () => {
     expect(container.querySelector('.anime-card-airing.airing-today')).toBeInTheDocument();
     expect(container.querySelector('.anime-card-airing.airing-later')).not.toBeInTheDocument();
   });
+
+  it('shows animated feedback after incrementing an episode', () => {
+    const onIncrementEpisode = vi.fn();
+    const { container } = render(
+      <AnimeCard anime={{ ...mockAnime, currentEp: 2, episodes: 12 }} airingData={{}} onIncrementEpisode={onIncrementEpisode} />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sumar un episodio' }));
+
+    expect(onIncrementEpisode).toHaveBeenCalledWith(mockAnime.id, 1);
+    expect(container.querySelector('.quick-ep-value.is-confirmed')).toBeInTheDocument();
+    expect(container.querySelector('.quick-ep-feedback')).toHaveTextContent('✓ +1');
+  });
+
+  it('allows incrementing when the provider omits the episode total', () => {
+    const onIncrementEpisode = vi.fn();
+    render(
+      <AnimeCard anime={{ ...mockAnime, currentEp: 3, episodes: undefined }} airingData={{}} onIncrementEpisode={onIncrementEpisode} />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sumar un episodio' }));
+
+    expect(onIncrementEpisode).toHaveBeenCalledWith(mockAnime.id, 1);
+  });
 });
 
 describe('DiscoveryCard', () => {

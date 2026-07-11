@@ -189,6 +189,40 @@
 .quick-ep:hover {
   background: linear-gradient(135deg, rgba(168, 85, 247, 0.85), rgba(78, 205, 196, 0.85));
 }
+.quick-ep {
+  position: relative;
+  overflow: visible;
+}
+.quick-ep-value {
+  display: block;
+  line-height: 1;
+}
+.quick-ep-value.is-confirmed {
+  animation: quickEpPop 0.42s var(--ease-out);
+}
+.quick-ep-feedback {
+  position: absolute;
+  top: -0.25rem;
+  left: 50%;
+  color: #fff;
+  font-size: 0.62rem;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+  text-shadow: 0 1px 5px rgba(0, 0, 0, 0.8), 0 0 8px rgba(78, 205, 196, 0.8);
+  animation: quickEpFeedback 0.7s var(--ease-out) both;
+}
+@keyframes quickEpPop {
+  0%, 100% { transform: scale(1) rotate(0); }
+  45% { transform: scale(1.4) rotate(-8deg); }
+  75% { transform: scale(0.9) rotate(3deg); }
+}
+@keyframes quickEpFeedback {
+  0% { opacity: 0; transform: translate(-50%, 5px) scale(0.75); }
+  22% { opacity: 1; transform: translate(-50%, -2px) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -24px) scale(1.12); }
+}
 .quick-watch {
   background: var(--platform-color, rgba(0, 0, 0, 0.7));
   border-color: transparent;
@@ -388,4 +422,3 @@
   opacity: 0.7;
   letter-spacing: -0.02em;
 }
-

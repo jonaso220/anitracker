@@ -31,6 +31,7 @@ const AnimeCard = ({
   onIncrementEpisode,
 }) => {
   const [imgLoaded, setImgLoaded] = useState(false);
+  const [episodeFeedback, setEpisodeFeedback] = useState(0);
   const airing = airingData[anime.id];
   const airingBadge = airing ? (
     airing.hasAired ? 'airing-new' :
@@ -70,9 +71,12 @@ const AnimeCard = ({
   const platform = getPlatformInfo(watchUrl);
   const isHighRated = (anime.rating || 0) >= 9;
 
-  const showQuickEp = !!onIncrementEpisode && !isWatched && total > 0 && !isComplete;
+  // Some providers omit the total episode count. Progress can still be tracked,
+  // so only hide the shortcut when the anime is watched or definitively complete.
+  const showQuickEp = !!onIncrementEpisode && !isWatched && !isComplete;
   const handleQuickEp = (e) => {
     e.stopPropagation();
+    setEpisodeFeedback((value) => value + 1);
     onIncrementEpisode(anime.id, 1);
   };
 
@@ -120,7 +124,22 @@ const AnimeCard = ({
               title={`Marcar episodio ${ep + 1} como visto`}
               aria-label="Sumar un episodio"
             >
-              +1
+              <span
+                key={`value-${episodeFeedback}`}
+                className={`quick-ep-value ${episodeFeedback > 0 ? 'is-confirmed' : ''}`}
+              >
+                +1
+              </span>
+              {episodeFeedback > 0 && (
+                <span
+                  key={`feedback-${episodeFeedback}`}
+                  className="quick-ep-feedback"
+                  aria-hidden="true"
+                  onAnimationEnd={() => setEpisodeFeedback(0)}
+                >
+                  ✓ +1
+                </span>
+              )}
             </button>
           )}
           {platform && watchUrl && (
