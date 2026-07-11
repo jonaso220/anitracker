@@ -303,6 +303,34 @@ export const applyRatingFilter = (list, { minRating = 0, sortByRating = false } 
   return out;
 };
 
+/** Rank discovery results from the user's genres, ratings and completion history. */
+export const personalizeDiscovery = (items = [], library = []) => {
+  const genreWeights = {};
+  for (const anime of library) {
+    const ratingWeight = anime.userRating > 0 ? (anime.userRating - 5) / 2 : 0;
+    const statusWeight = anime.finished === false ? -2 : anime.finished ? 1 : 0.25;
+    for (const genre of anime.genres || []) genreWeights[genre] = (genreWeights[genre] || 0) + ratingWeight + statusWeight;
+  }
+  return items.map((anime) => {
+    const matches = (anime.genres || []).map((genre) => [genre, genreWeights[genre] || 0]).filter(([, weight]) => weight > 0).sort((a, b) => b[1] - a[1]);
+    return {
+      ...anime,
+      _recommendationScore: matches.reduce((sum, [, weight]) => sum + weight, 0) + (anime.rating ? anime.rating / 4 : 0),
+      _recommendationReason: matches.length ? `Porque te gusta ${matches.slice(0, 2).map(([genre]) => genre).join(' y ')}` : 'Popular entre la comunidad',
+    };
+  }).sort((a, b) => b._recommendationScore - a._recommendationScore || (b.rating || 0) - (a.rating || 0));
+};
+
+export const filterDiscovery = (items = [], { genre = 'all', platform = 'all', hideAdded = false, ignoredIds = [] } = {}, addedIds = new Set()) => {
+  const ignored = new Set(ignoredIds);
+  return items.filter((anime) => {
+    if (ignored.has(anime.id) || (hideAdded && addedIds.has(anime.id))) return false;
+    if (genre !== 'all' && !(anime.genres || []).includes(genre)) return false;
+    if (platform !== 'all' && !(anime.streamingLinks || []).some((link) => link.site === platform)) return false;
+    return true;
+  });
+};
+
 /**
  * Filter and sort the watched list based on filter, sort, and search criteria.
  */

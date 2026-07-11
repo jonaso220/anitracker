@@ -9,15 +9,24 @@ export function usePersistedState(key, initialValue) {
     try {
       const raw = localStorage.getItem(key);
       return raw != null ? JSON.parse(raw) : (typeof initialValue === 'function' ? initialValue() : initialValue);
-    } catch {
+    } catch (error) {
+      queueMicrotask(() => window.dispatchEvent(new CustomEvent('anitracker-storage-error', { detail: { key, error, retry: null } })));
       return typeof initialValue === 'function' ? initialValue() : initialValue;
     }
   });
 
   useEffect(() => {
-    try {
+    const persist = () => {
+      try {
       localStorage.setItem(key, JSON.stringify(value));
-    } catch { /* quota exceeded or serialization error */ }
+        window.dispatchEvent(new CustomEvent('anitracker-storage-restored', { detail: { key } }));
+        return true;
+      } catch (error) {
+        window.dispatchEvent(new CustomEvent('anitracker-storage-error', { detail: { key, error, retry: persist } }));
+        return false;
+      }
+    };
+    persist();
   }, [key, value]);
 
   // Expose a ref for callers that need stable access to the latest value inside

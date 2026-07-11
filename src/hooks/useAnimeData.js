@@ -34,12 +34,15 @@ export function useAnimeData(schedule) {
   const [isSearching, setIsSearching] = useState(false);
   const [searchPartial, setSearchPartial] = useState([]);
   const [airingData, setAiringData] = useState({});
+  const [airingError, setAiringError] = useState(null);
+  const [airingRetry, setAiringRetry] = useState(0);
 
   const searchDebounceRef = useRef(null);
   const searchIdRef = useRef(0);
   const searchAbortRef = useRef(null);
   const airingDebounceRef = useRef(null);
   const airingAbortRef = useRef(null);
+  const airingForceRef = useRef(false);
 
   // --- Airing info ---
   useEffect(() => {
@@ -47,11 +50,12 @@ export function useAnimeData(schedule) {
     const malIds = allAnime.filter((a) => a.id && a.id < 100000).map((a) => a.id);
     const anilistIds = allAnime.filter((a) => a.id >= 300000 && a.id < 400000).map((a) => a.id - 300000);
 
-    if (malIds.length === 0 && anilistIds.length === 0) { setAiringData({}); return; }
+    if (malIds.length === 0 && anilistIds.length === 0) { setAiringData({}); setAiringError(null); return; }
 
     const currentIds = [...malIds, ...anilistIds].sort().join(',');
     const cached = readAiringCache(currentIds);
-    if (cached) { setAiringData(cached); return; }
+    if (cached && !airingForceRef.current) { setAiringData(cached); setAiringError(null); return; }
+    airingForceRef.current = false;
 
     if (airingDebounceRef.current) clearTimeout(airingDebounceRef.current);
     if (airingAbortRef.current) airingAbortRef.current.abort();
@@ -63,10 +67,14 @@ export function useAnimeData(schedule) {
         const data = await fetchAiringInfo({ malIds, anilistIds, signal: controller.signal });
         if (!controller.signal.aborted) {
           setAiringData(data);
+          setAiringError(null);
           writeAiringCache(data, currentIds);
         }
       } catch (err) {
-        if (err.name !== 'AbortError') console.error('[AniTracker] Airing check failed:', err);
+        if (err.name !== 'AbortError') {
+          console.error('[AniTracker] Airing check failed:', err);
+          setAiringError({ kind: !navigator.onLine ? 'offline' : String(err?.message).includes('429') ? 'rate-limit' : 'service' });
+        }
       }
     }, 1000);
 
@@ -74,7 +82,7 @@ export function useAnimeData(schedule) {
       if (airingDebounceRef.current) clearTimeout(airingDebounceRef.current);
       controller.abort();
     };
-  }, [schedule]);
+  }, [schedule, airingRetry]);
 
   // --- Search ---
   const performSearch = useCallback(async (query) => {
@@ -124,6 +132,8 @@ export function useAnimeData(schedule) {
     isSearching,
     searchPartial,
     airingData,
+    airingError,
+    retryAiring: () => { airingForceRef.current = true; setAiringRetry((value) => value + 1); },
     handleSearch,
     performSearch,
   };

@@ -2,14 +2,17 @@ import React, { useMemo, useState } from 'react';
 import { daysOfWeek } from '../constants';
 import DiscoveryCard from './DiscoveryCard';
 import RatingFilterBar from './RatingFilterBar';
-import { applyRatingFilter, groupSeasonByDay } from '../utils';
+import DiscoveryControls from './DiscoveryControls';
+import ApiErrorState from './ApiErrorState';
+import { applyRatingFilter, filterDiscovery, groupSeasonByDay, personalizeDiscovery } from '../utils';
 import { t } from '../i18n';
 
 const SEASONS = ['WINTER', 'SPRING', 'SUMMER', 'FALL'];
 const SEASON_LABELS = { WINTER: 'Invierno', SPRING: 'Primavera', SUMMER: 'Verano', FALL: 'Otoño' };
 const SEASON_ICONS = { WINTER: '❄️', SPRING: '🌸', SUMMER: '☀️', FALL: '🍂' };
+const DEFAULT_PREFERENCES = { personalized: false, hideAdded: false, genre: 'all', platform: 'all' };
 
-const SeasonSection = ({ seasonAnime, seasonLoading, schedule, watchedList, watchLater, selectedSeason, onChangeSeason, setShowDayPicker, addToWatchLater, markAsWatched, onDetail }) => {
+const SeasonSection = ({ seasonAnime, seasonLoading, error, onRetry, schedule, watchedList, watchLater, preferences = DEFAULT_PREFERENCES, setPreferences = () => {}, ignoredIds = [], setIgnoredIds = () => {}, selectedSeason, onChangeSeason, setShowDayPicker, addToWatchLater, markAsWatched, onDetail }) => {
     const [minRating, setMinRating] = useState(0);
     const [sortByRating, setSortByRating] = useState(false);
 
@@ -25,14 +28,20 @@ const SeasonSection = ({ seasonAnime, seasonLoading, schedule, watchedList, watc
     const [selectedDay, setSelectedDay] = useState(() => (isCurrent ? todayIdx : 'all'));
     const activeDay = isCurrent ? selectedDay : 'all';
 
-    const grouped = useMemo(() => groupSeasonByDay(seasonAnime), [seasonAnime]);
+    const library = useMemo(() => [...daysOfWeek.flatMap((day) => schedule[day] || []), ...watchedList, ...watchLater], [schedule, watchedList, watchLater]);
+    const allUserIds = useMemo(() => new Set(library.map((anime) => anime.id)), [library]);
+    const discoverySource = useMemo(() => {
+        const ordered = preferences.personalized ? personalizeDiscovery(seasonAnime, library) : seasonAnime;
+        return filterDiscovery(ordered, { ...preferences, ignoredIds }, allUserIds);
+    }, [seasonAnime, library, preferences, ignoredIds, allUserIds]);
+    const grouped = useMemo(() => groupSeasonByDay(discoverySource), [discoverySource]);
 
     const visible = useMemo(() => {
         const base = activeDay === 'all'
-            ? seasonAnime.filter((a) => !a._continuing)
+            ? discoverySource.filter((a) => !a._continuing)
             : grouped.days[activeDay] || [];
         return applyRatingFilter(base, { minRating, sortByRating });
-    }, [seasonAnime, grouped, activeDay, minRating, sortByRating]);
+    }, [discoverySource, grouped, activeDay, minRating, sortByRating]);
 
     const goPrev = () => {
         const idx = SEASONS.indexOf(selectedSeason.season);
@@ -45,12 +54,6 @@ const SeasonSection = ({ seasonAnime, seasonLoading, schedule, watchedList, watc
         else onChangeSeason(SEASONS[idx + 1], selectedSeason.year);
     };
     const goCurrentSeason = () => onChangeSeason(curSeason, curYear);
-
-    const allUserIds = new Set([
-        ...daysOfWeek.flatMap(d => (schedule[d] || []).map(a => a.id)),
-        ...watchedList.map(a => a.id),
-        ...watchLater.map(a => a.id)
-    ]);
 
     return (
         <>
@@ -93,13 +96,14 @@ const SeasonSection = ({ seasonAnime, seasonLoading, schedule, watchedList, watc
                 </div>
             )}
             {!seasonLoading && seasonAnime.length > 0 && (
-                <RatingFilterBar
+                <><DiscoveryControls items={seasonAnime} preferences={preferences} setPreferences={setPreferences} ignoredCount={ignoredIds.length} onRestoreIgnored={() => setIgnoredIds([])} /><RatingFilterBar
                     minRating={minRating}
                     setMinRating={setMinRating}
                     sortByRating={sortByRating}
                     setSortByRating={setSortByRating}
-                />
+                /></>
             )}
+            {!seasonLoading && error && <ApiErrorState error={error} onRetry={onRetry} />}
             {seasonLoading ? (
                 <div className="season-grid">
                     {Array.from({ length: 12 }).map((_, i) => (
@@ -113,7 +117,7 @@ const SeasonSection = ({ seasonAnime, seasonLoading, schedule, watchedList, watc
                         </div>
                     ))}
                 </div>
-            ) : visible.length > 0 ? (
+            ) : error ? null : visible.length > 0 ? (
                 <>
                     {activeDay !== 'all' && (
                         <h3 className="season-day-heading">📆 {daysOfWeek[activeDay]}</h3>
@@ -125,6 +129,8 @@ const SeasonSection = ({ seasonAnime, seasonLoading, schedule, watchedList, watc
                                 anime={anime}
                                 airing={anime._airing}
                                 alreadyAdded={allUserIds.has(anime.id)}
+                                recommendationReason={preferences.personalized ? anime._recommendationReason : null}
+                                onIgnore={(item) => setIgnoredIds((prev) => [...new Set([...prev, item.id])])}
                                 onDetail={onDetail}
                                 onAddToSchedule={setShowDayPicker}
                                 onAddToWatchLater={addToWatchLater}

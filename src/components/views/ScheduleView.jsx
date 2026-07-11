@@ -1,5 +1,7 @@
 import React from 'react';
 import AnimeCard from '../AnimeCard';
+import TodayPanel from '../TodayPanel';
+import ApiErrorState from '../ApiErrorState';
 import { daysOfWeek, dayEmojis } from '../../constants';
 
 // Maps JS Date.getDay() (0=Sun…6=Sat) to our daysOfWeek index (0=Mon…6=Sun)
@@ -9,7 +11,7 @@ const todayDayName = () => {
 };
 
 const ScheduleView = ({
-  schedule, airingData, setShowAnimeDetail, updateEpisode,
+  schedule, airingData, airingError, retryAiring, setShowAnimeDetail, updateEpisode,
   dragState, isDragging, dropTarget, dropIndex,
   handleDragStart, handleDragEnd, handleDragOverRow, handleDragOverCard,
   handleDrop, handleTouchStart, handleTouchMove, handleTouchEnd, touchRef,
@@ -18,6 +20,13 @@ const ScheduleView = ({
 
   return (
     <div className="schedule-rows" role="region" aria-label="Horario semanal">
+      <TodayPanel
+        schedule={schedule}
+        airingData={airingData}
+        onDetail={(anime) => setShowAnimeDetail({ ...anime, _isWatchLater: false, _isWatched: false, _isSeason: false })}
+        onIncrementEpisode={updateEpisode}
+      />
+      {airingError && <ApiErrorState error={airingError} onRetry={retryAiring} />}
       {daysOfWeek.map((day, i) => {
         const items = schedule[day] || [];
         const isEmpty = items.length === 0;

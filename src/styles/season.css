@@ -176,6 +176,19 @@
   box-shadow: 0 12px 24px rgba(0, 0, 0, 0.35), 0 0 16px rgba(168, 85, 247, 0.15);
   border-color: rgba(168, 85, 247, 0.35);
 }
+.season-card:focus-within { outline: 3px solid var(--color-brand-primary); outline-offset: 3px; }
+.season-card-open { position: absolute; inset: 0; z-index: 3; border: 0; background: transparent; cursor: pointer; }
+.season-card-actions { position: relative; z-index: 5; }
+.season-ignore { position: absolute; top: 0.45rem; right: 0.45rem; z-index: 6; width: 28px; height: 28px; border-radius: 50%; border: 1px solid rgba(255,255,255,.3); background: rgba(10,10,20,.72); color: #fff; cursor: pointer; font-size: 1rem; }
+.recommendation-reason { margin: 0; color: #ddd6fe; font-size: 0.64rem; line-height: 1.3; }
+.discovery-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 0.55rem; margin: 0 0 1rem; padding: 0.7rem; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--bg-surface); }
+.discovery-controls label { display: inline-flex; align-items: center; gap: 0.35rem; color: var(--text-muted); font-size: 0.74rem; font-weight: 600; }
+.discovery-controls select { padding: 0.38rem 0.55rem; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--bg-elevated); color: var(--text-primary); font: inherit; }
+.filter-btn.muted { opacity: 0.7; margin-left: auto; }
+.api-error { display: flex; align-items: center; gap: 0.8rem; padding: 1rem; margin: 1rem 0; border: 1px solid rgba(245,158,11,.35); border-radius: var(--radius-lg); background: rgba(245,158,11,.08); }
+.api-error > span { font-size: 1.6rem; }.api-error div { flex: 1; }.api-error p { margin: 0.15rem 0 0; color: var(--text-muted); font-size: 0.8rem; }.api-error button { padding: 0.5rem 0.8rem; border: 1px solid var(--border-brand); border-radius: var(--radius-sm); background: var(--gradient-brand-soft); color: var(--text-primary); cursor: pointer; }
+.storage-error-banner { position: fixed; left: 50%; bottom: calc(1rem + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 9998; width: min(620px, calc(100% - 2rem)); display: flex; align-items: center; gap: 0.75rem; padding: 0.8rem 1rem; border: 1px solid rgba(245,158,11,.5); border-radius: var(--radius-lg); background: var(--bg-elevated); box-shadow: var(--shadow-xl); }
+.storage-error-banner div { flex: 1; display: flex; flex-direction: column; }.storage-error-banner small { color: var(--text-muted); }.storage-error-banner button { border: 1px solid var(--border-brand); border-radius: var(--radius-sm); background: var(--gradient-brand-soft); color: inherit; padding: 0.45rem 0.7rem; cursor: pointer; }
 
 .season-card.high-rated { border-color: rgba(251, 191, 36, 0.4); }
 .season-card.high-rated:hover {

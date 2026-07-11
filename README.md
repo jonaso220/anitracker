@@ -72,6 +72,13 @@ Para apuntar a **tu propio** proyecto Firebase, copiá `.env.example` a
 cp .env.example .env.local
 ```
 
+Las reglas de Firestore están versionadas en `firestore.rules`. Desplegalas en
+tu proyecto antes de habilitar la sincronización:
+
+```bash
+firebase deploy --only firestore:rules
+```
+
 > Las claves Web de Firebase **no son secretas** — la seguridad se hace con
 > Firebase Security Rules, no ocultando estos valores. Aun así, `.env*` está en
 > `.gitignore`.

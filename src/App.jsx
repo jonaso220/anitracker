@@ -6,6 +6,7 @@ import Header from './components/Header';
 import NavTabs from './components/NavTabs';
 import Toast from './components/Toast';
 import UpdateBanner from './components/UpdateBanner';
+import StorageErrorBanner from './components/StorageErrorBanner';
 import ScheduleView from './components/views/ScheduleView';
 
 // Lazy: non-default tabs and modals are only fetched the first time they're
@@ -69,13 +70,17 @@ export default function AnimeTracker() {
   const [watchedList, setWatchedList, watchedListRef] = usePersistedState('watchedAnimes', []);
   const [watchLater, setWatchLater, watchLaterRef] = usePersistedState('watchLater', []);
   const [customLists, setCustomLists, customListsRef] = usePersistedState('anitracker-custom-lists', []);
+  const [discoveryPreferences, setDiscoveryPreferences] = usePersistedState('anitracker-discovery-preferences', {
+    personalized: true, hideAdded: true, genre: 'all', platform: 'all',
+  });
+  const [ignoredDiscovery, setIgnoredDiscovery] = usePersistedState('anitracker-discovery-ignored', []);
 
   // --- Hooks ---
   const { toast, showToast, dismissToast, undoToast } = useToast();
   const { user, syncing, syncError, loginWithGoogle, logout, FIREBASE_ENABLED } = useFirebase(
     schedule, watchedList, watchLater, customLists, setSchedule, setWatchedList, setWatchLater, setCustomLists
   );
-  const { searchQuery, setSearchQuery, searchResults, setSearchResults, isSearching, searchPartial, airingData, handleSearch } = useAnimeData(schedule);
+  const { searchQuery, setSearchQuery, searchResults, setSearchResults, isSearching, searchPartial, airingData, airingError, retryAiring, handleSearch } = useAnimeData(schedule);
   const dragDrop = useDragDrop(schedule, setSchedule, daysOfWeek);
   const bulk = useBulkMode();
   const { updateAvailable, applyUpdate } = useServiceWorkerUpdate();
@@ -209,6 +214,7 @@ export default function AnimeTracker() {
         {activeTab === 'schedule' && (
           <ScheduleView
             schedule={schedule} airingData={airingData} setShowAnimeDetail={setShowAnimeDetail}
+            airingError={airingError} retryAiring={retryAiring}
             updateEpisode={actions.updateEpisode}
             {...dragDrop}
           />
@@ -259,7 +265,10 @@ export default function AnimeTracker() {
         {activeTab === 'season' && (
           <SeasonSection
             seasonAnime={discovery.seasonAnime} seasonLoading={discovery.seasonLoading}
+            error={discovery.seasonError} onRetry={discovery.retrySeason}
             schedule={schedule} watchedList={watchedList} watchLater={watchLater}
+            preferences={discoveryPreferences} setPreferences={setDiscoveryPreferences}
+            ignoredIds={ignoredDiscovery} setIgnoredIds={setIgnoredDiscovery}
             selectedSeason={discovery.selectedSeason} onChangeSeason={discovery.changeSeason}
             setShowDayPicker={setShowDayPicker}
             addToWatchLater={actions.addToWatchLater}
@@ -272,6 +281,8 @@ export default function AnimeTracker() {
           <DirectorySection
             directory={directory}
             schedule={schedule} watchedList={watchedList} watchLater={watchLater}
+            preferences={discoveryPreferences} setPreferences={setDiscoveryPreferences}
+            ignoredIds={ignoredDiscovery} setIgnoredIds={setIgnoredDiscovery}
             setShowDayPicker={setShowDayPicker}
             addToWatchLater={actions.addToWatchLater}
             markAsWatched={actions.markAsWatched}
@@ -284,6 +295,7 @@ export default function AnimeTracker() {
       </main>
 
       <Toast toast={toast} onUndo={undoToast} onDismiss={dismissToast} />
+      <StorageErrorBanner />
       <UpdateBanner visible={updateAvailable} onUpdate={applyUpdate} />
 
       <Suspense fallback={null}>

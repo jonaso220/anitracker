@@ -98,6 +98,11 @@ const WatchedView = ({
                 key={a.id}
                 className={`bulk-card-wrapper ${bulkMode ? 'selectable' : ''} ${bulkSelected.has(a.id) ? 'selected' : ''}`}
                 onClick={bulkMode ? (e) => { e.stopPropagation(); toggleBulkSelect(a.id); } : undefined}
+                role={bulkMode ? 'checkbox' : undefined}
+                tabIndex={bulkMode ? 0 : undefined}
+                aria-checked={bulkMode ? bulkSelected.has(a.id) : undefined}
+                aria-label={bulkMode ? `Seleccionar ${a.title}` : undefined}
+                onKeyDown={bulkMode ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleBulkSelect(a.id); } } : undefined}
               >
                 {bulkMode && (
                   <div className={`bulk-checkbox ${bulkSelected.has(a.id) ? 'checked' : ''}`} aria-hidden="true">

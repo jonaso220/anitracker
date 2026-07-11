@@ -1,16 +1,14 @@
-import React, { useEffect } from 'react';
+import React, { useCallback } from 'react';
 import { daysOfWeek } from '../../constants';
+import { useAccessibleDialog } from '../../hooks/useAccessibleDialog';
 
 const DayPickerModal = ({ showDayPicker, setShowDayPicker, watchLater, addToSchedule, moveFromWatchLaterToSchedule }) => {
-    useEffect(() => {
-        const onKey = (e) => { if (e.key === 'Escape') setShowDayPicker(null); };
-        window.addEventListener('keydown', onKey);
-        return () => window.removeEventListener('keydown', onKey);
-    }, [setShowDayPicker]);
+    const close = useCallback(() => setShowDayPicker(null), [setShowDayPicker]);
+    const dialogRef = useAccessibleDialog(close);
 
     return (
-        <div className="modal-overlay" onClick={() => setShowDayPicker(null)} role="dialog" aria-modal="true" aria-labelledby="day-picker-title">
-            <div className="day-picker-modal fade-in" onClick={e => e.stopPropagation()}>
+        <div className="modal-overlay" onClick={close}>
+            <div ref={dialogRef} className="day-picker-modal fade-in" role="dialog" aria-modal="true" aria-labelledby="day-picker-title" tabIndex={-1} onClick={e => e.stopPropagation()}>
                 <div className="bottom-sheet-handle" aria-hidden="true"></div>
                 <h3 id="day-picker-title">📅 ¿Qué día querés ver "{showDayPicker.title}"?</h3>
                 <div className="days-grid">{daysOfWeek.map(d => (

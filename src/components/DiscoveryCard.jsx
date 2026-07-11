@@ -17,6 +17,8 @@ const DiscoveryCard = ({
   onAddToSchedule,
   onAddToWatchLater,
   onMarkWatched,
+  recommendationReason,
+  onIgnore,
 }) => {
   const handleImgError = (e) => {
     e.target.style.display = 'none';
@@ -52,7 +54,6 @@ const DiscoveryCard = ({
     <div className="season-card-wrap fade-in">
       <div
         className={`season-card ${alreadyAdded ? 'already-added' : ''} ${isHighRated ? 'high-rated' : ''}`}
-        onClick={() => onDetail(anime)}
       >
         <div className="season-card-image">
           <img src={anime.image || anime.imageSm} alt={anime.title} loading="lazy" decoding="async" onError={handleImgError} />
@@ -61,10 +62,12 @@ const DiscoveryCard = ({
           {anime.rating > 0 && <div className="anime-card-score">⭐ {Number(anime.rating).toFixed(1)}</div>}
 
           {alreadyAdded && <div className="season-added-pill" title="Ya está en tu lista">✓ En tu lista</div>}
+          {onIgnore && <button className="season-ignore" onClick={(e) => { e.stopPropagation(); onIgnore(anime); }} aria-label={`No me interesa ${anime.title}`} title="No me interesa">×</button>}
 
           <div className="season-card-overlay">
             <h3 className="season-card-title">{anime.title}</h3>
             <div className="season-card-overlay-meta">
+              {recommendationReason && <p className="recommendation-reason">✨ {recommendationReason}</p>}
               <div className="anime-genres">
                 {(anime.genres || []).slice(0, 2).map((g) => <span key={g} className="genre-tag">{g}</span>)}
               </div>
@@ -82,6 +85,7 @@ const DiscoveryCard = ({
               )}
             </div>
           </div>
+          <button className="season-card-open" onClick={() => onDetail(anime)} aria-label={`Abrir detalles de ${anime.title}`} />
         </div>
       </div>
       {renderAiringFooter()}

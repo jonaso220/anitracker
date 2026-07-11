@@ -4,6 +4,9 @@ import DiscoveryCard from './DiscoveryCard';
 import DirectoryListRow from './DirectoryListRow';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { t } from '../i18n';
+import DiscoveryControls from './DiscoveryControls';
+import ApiErrorState from './ApiErrorState';
+import { filterDiscovery, personalizeDiscovery } from '../utils';
 
 // Valores tal como los espera AniList; etiquetas en español para la UI.
 const GENRES = [
@@ -33,6 +36,7 @@ const SORTS = [
 ];
 const CURRENT_YEAR = new Date().getFullYear();
 const YEARS = Array.from({ length: CURRENT_YEAR + 2 - 1960 }, (_, i) => String(CURRENT_YEAR + 1 - i));
+const DEFAULT_PREFERENCES = { personalized: false, hideAdded: false, genre: 'all', platform: 'all' };
 
 const FilterSelect = ({ id, label, value, options, allLabel, onChange }) => (
   <label className="directory-field" htmlFor={id}>
@@ -44,8 +48,8 @@ const FilterSelect = ({ id, label, value, options, allLabel, onChange }) => (
   </label>
 );
 
-const DirectorySection = ({ directory, schedule, watchedList, watchLater, setShowDayPicker, addToWatchLater, markAsWatched, onDetail }) => {
-  const { filters, results, loading, loadingMore, hasNextPage, updateFilter, resetFilters, loadMore } = directory;
+const DirectorySection = ({ directory, schedule, watchedList, watchLater, preferences = DEFAULT_PREFERENCES, setPreferences = () => {}, ignoredIds = [], setIgnoredIds = () => {}, setShowDayPicker, addToWatchLater, markAsWatched, onDetail }) => {
+  const { filters, results, loading, loadingMore, hasNextPage, error, retry, updateFilter, resetFilters, loadMore } = directory;
   const [viewMode, setViewMode] = usePersistedState('anitracker-directory-view', 'grid');
 
   const allUserIds = useMemo(() => new Set([
@@ -53,6 +57,11 @@ const DirectorySection = ({ directory, schedule, watchedList, watchLater, setSho
     ...watchedList.map(a => a.id),
     ...watchLater.map(a => a.id)
   ]), [schedule, watchedList, watchLater]);
+  const library = useMemo(() => [...daysOfWeek.flatMap((day) => schedule[day] || []), ...watchedList, ...watchLater], [schedule, watchedList, watchLater]);
+  const visibleResults = useMemo(() => {
+    const ordered = preferences.personalized ? personalizeDiscovery(results, library) : results;
+    return filterDiscovery(ordered, { ...preferences, genre: 'all', ignoredIds }, allUserIds);
+  }, [results, library, preferences, ignoredIds, allUserIds]);
 
   const hasActiveFilters = filters.search.trim() !== '' || ['genre', 'demography', 'format', 'status', 'year', 'season'].some((k) => filters[k] !== '') || filters.sort !== 'POPULARITY_DESC';
 
@@ -60,7 +69,7 @@ const DirectorySection = ({ directory, schedule, watchedList, watchLater, setSho
     <>
       <div className="section-header">
         <h2>📚 {t('nav.directory', 'Directorio')}</h2>
-        <span className="count">{results.length}{hasNextPage ? '+' : ''}</span>
+        <span className="count">{visibleResults.length}{hasNextPage ? '+' : ''}</span>
       </div>
 
       <div className="directory-filters">
@@ -105,6 +114,8 @@ const DirectorySection = ({ directory, schedule, watchedList, watchLater, setSho
           </button>
         )}
       </div>
+      {!loading && results.length > 0 && <DiscoveryControls items={results} preferences={preferences} setPreferences={setPreferences} ignoredCount={ignoredIds.length} onRestoreIgnored={() => setIgnoredIds([])} showGenre={false} />}
+      {!loading && error && <ApiErrorState error={error} onRetry={retry} />}
 
       {loading ? (
         <div className="season-grid">
@@ -119,11 +130,11 @@ const DirectorySection = ({ directory, schedule, watchedList, watchLater, setSho
             </div>
           ))}
         </div>
-      ) : results.length > 0 ? (
+      ) : visibleResults.length > 0 ? (
         <>
           {viewMode === 'list' ? (
             <div className="directory-list stagger-in">
-              {results.map(anime => (
+              {visibleResults.map(anime => (
                 <DirectoryListRow
                   key={anime.id}
                   anime={anime}
@@ -137,11 +148,13 @@ const DirectorySection = ({ directory, schedule, watchedList, watchLater, setSho
             </div>
           ) : (
             <div className="season-grid stagger-in">
-              {results.map(anime => (
+              {visibleResults.map(anime => (
                 <DiscoveryCard
                   key={anime.id}
                   anime={anime}
                   alreadyAdded={allUserIds.has(anime.id)}
+                  recommendationReason={preferences.personalized ? anime._recommendationReason : null}
+                  onIgnore={(item) => setIgnoredIds((prev) => [...new Set([...prev, item.id])])}
                   onDetail={onDetail}
                   onAddToSchedule={setShowDayPicker}
                   onAddToWatchLater={addToWatchLater}
@@ -156,7 +169,7 @@ const DirectorySection = ({ directory, schedule, watchedList, watchLater, setSho
             </button>
           )}
         </>
-      ) : (
+      ) : error ? null : (
         <div className="empty-state"><span>🔍</span><p>{t('directory.empty', 'Sin resultados con esos filtros')}</p></div>
       )}
     </>

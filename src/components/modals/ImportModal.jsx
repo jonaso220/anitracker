@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { fetchAnilistUserAnimeLists } from '../../services/anilistService';
+import { useAccessibleDialog } from '../../hooks/useAccessibleDialog';
 
 const ImportModal = ({ onClose, onImport }) => {
   const [username, setUsername] = useState('');
@@ -7,6 +8,7 @@ const ImportModal = ({ onClose, onImport }) => {
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState('');
   const [selected, setSelected] = useState({ schedule: true, watchLater: true, watched: true });
+  const dialogRef = useAccessibleDialog(onClose);
 
   const fetchList = async () => {
     if (!username.trim()) return;
@@ -32,8 +34,8 @@ const ImportModal = ({ onClose, onImport }) => {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="import-modal-title" onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}>
-      <div className="import-modal fade-in" onClick={e => e.stopPropagation()}>
+    <div className="modal-overlay" onClick={onClose}>
+      <div ref={dialogRef} className="import-modal fade-in" role="dialog" aria-modal="true" aria-labelledby="import-modal-title" tabIndex={-1} onClick={e => e.stopPropagation()}>
         <div className="bottom-sheet-handle" aria-hidden="true"></div>
         <button className="close-btn" onClick={onClose} aria-label="Cerrar">×</button>
         <h2 id="import-modal-title" className="import-title">Importar desde AniList</h2>

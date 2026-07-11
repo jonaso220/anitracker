@@ -22,6 +22,7 @@ export function useDiscovery() {
   const [selectedSeason, setSelectedSeason] = useState(currentSeason);
   const [seasonAnime, setSeasonAnime] = useState([]);
   const [seasonLoading, setSeasonLoading] = useState(false);
+  const [seasonError, setSeasonError] = useState(null);
 
   const seasonCacheRef = useRef({});
   const seasonAbortRef = useRef(null);
@@ -57,6 +58,7 @@ export function useDiscovery() {
     const ctrl = new AbortController();
     seasonAbortRef.current = ctrl;
     setSeasonLoading(true);
+    setSeasonError(null);
     setSeasonAnime([]);
     try {
       const results = await fetchSeason(s, y, { signal: ctrl.signal, current: isCurrent });
@@ -67,6 +69,7 @@ export function useDiscovery() {
     } catch (err) {
       if (err?.name === 'AbortError') return;
       console.error('[AniTracker] Season fetch failed:', err);
+      setSeasonError({ kind: !navigator.onLine ? 'offline' : String(err?.message).includes('429') ? 'rate-limit' : 'service' });
     } finally {
       if (!ctrl.signal.aborted) setSeasonLoading(false);
       if (seasonLoadingKeyRef.current === key) seasonLoadingKeyRef.current = null;
@@ -89,8 +92,10 @@ export function useDiscovery() {
     selectedSeason,
     seasonAnime,
     seasonLoading,
+    seasonError,
     changeSeason,
     loadSeasonCurrent: () => loadSeason(selectedSeason.season, selectedSeason.year),
     prefetchCurrentSeason,
+    retrySeason: () => loadSeason(selectedSeason.season, selectedSeason.year),
   };
 }

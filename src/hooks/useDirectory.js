@@ -52,6 +52,7 @@ export function useDirectory() {
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasNextPage, setHasNextPage] = useState(false);
+  const [error, setError] = useState(null);
 
   const filtersRef = useRef(filters);
   const pageRef = useRef(1);
@@ -69,7 +70,7 @@ export function useDirectory() {
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     if (append) setLoadingMore(true);
-    else { setLoading(true); setResults([]); }
+    else { setLoading(true); setResults([]); setError(null); }
     try {
       const { results: fetched, hasNextPage: more } = await fetchDirectory(f, { signal: ctrl.signal, page });
       if (ctrl.signal.aborted) return;
@@ -87,6 +88,7 @@ export function useDirectory() {
     } catch (err) {
       if (err?.name === 'AbortError') return;
       console.error('[AniTracker] Directory fetch failed:', err);
+      setError({ kind: !navigator.onLine ? 'offline' : String(err?.message).includes('429') ? 'rate-limit' : 'service' });
     } finally {
       if (!ctrl.signal.aborted) { setLoading(false); setLoadingMore(false); }
     }
@@ -132,5 +134,6 @@ export function useDirectory() {
     fetchPage(filtersRef.current, pageRef.current + 1, true);
   }, [fetchPage]);
 
-  return { filters, results, loading, loadingMore, hasNextPage, updateFilter, resetFilters, loadInitial, loadMore };
+  const retry = useCallback(() => fetchPage(filtersRef.current, 1, false), [fetchPage]);
+  return { filters, results, loading, loadingMore, hasNextPage, error, retry, updateFilter, resetFilters, loadInitial, loadMore };
 }
