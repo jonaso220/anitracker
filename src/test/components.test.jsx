@@ -6,6 +6,8 @@ import DiscoveryCard from '../components/DiscoveryCard';
 import SeasonSection from '../components/SeasonSection';
 import DirectorySection from '../components/DirectorySection';
 import AnimeDetailModal from '../components/modals/AnimeDetailModal';
+import TodayPanel from '../components/TodayPanel';
+import { buildAgenda } from '../agenda';
 import { clearRelationsCache } from '../services/anilistService';
 
 const mockAnime = {
@@ -21,6 +23,62 @@ const mockAnime = {
   userRating: 4,
   watchLink: '',
 };
+
+describe('TodayPanel', () => {
+  afterEach(() => vi.useRealTimers());
+
+  const sundaySchedule = (sunday, monday = []) => ({
+    Lunes: monday, Martes: [], Miércoles: [], Jueves: [], Viernes: [], Sábado: [], Domingo: sunday,
+  });
+
+  it('recommends today\'s episode only while it is still pending', () => {
+    const now = new Date('2026-07-12T15:00:00Z');
+    const due = { id: 101, title: 'Sale hoy', currentEp: 2, episodes: 12 };
+    const caughtUp = { id: 102, title: 'Ya al día', currentEp: 3, episodes: 12 };
+    const airingData = {
+      101: { episode: 3, isToday: true, hasAired: false, airingAt: 1783868400 },
+      102: { episode: 3, isToday: true, hasAired: false, airingAt: 1783868400 },
+    };
+
+    const agenda = buildAgenda(sundaySchedule([due, caughtUp]), airingData, now);
+    expect(agenda.active.day).toBe('Domingo');
+    expect(agenda.active.items.map((anime) => anime.title)).toEqual(['Sale hoy']);
+    expect(agenda.active.items[0]._nextToWatch).toBe(3);
+  });
+
+  it('moves the next pending day into the main column as soon as today is completed', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-12T15:00:00Z'));
+    const onIncrementEpisode = vi.fn();
+    const today = { id: 201, title: 'Domingo pendiente', currentEp: 2, episodes: 12, image: 'today.jpg' };
+    const tomorrow = { id: 202, title: 'Lunes atrasado', currentEp: 0, episodes: 12, image: 'next.jpg' };
+    const airingData = {
+      201: { episode: 3, isToday: true, hasAired: false, airingAt: 1783868400 },
+      202: { episode: 4, isToday: false, hasAired: false, airingAt: 1784127600 },
+    };
+    const { rerender } = render(
+      <TodayPanel schedule={sundaySchedule([today], [tomorrow])} airingData={airingData} onDetail={() => {}} onIncrementEpisode={onIncrementEpisode} />,
+    );
+
+    expect(screen.getByText('Domingo pendiente')).toBeInTheDocument();
+    expect(screen.getByText('Lunes atrasado')).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('Marcar episodio 3 de Domingo pendiente'));
+    expect(onIncrementEpisode).toHaveBeenCalledWith(201, 1);
+
+    rerender(
+      <TodayPanel schedule={sundaySchedule([{ ...today, currentEp: 3 }], [tomorrow])} airingData={airingData} onDetail={() => {}} onIncrementEpisode={onIncrementEpisode} />,
+    );
+    expect(screen.queryByText('Domingo pendiente')).not.toBeInTheDocument();
+    expect(screen.getByText('▶ Continuar · Lunes')).toBeInTheDocument();
+    expect(screen.getByText('Ver episodio 1 · 3 pendientes')).toBeInTheDocument();
+  });
+
+  it('does not recommend a future episode when the user is already caught up', () => {
+    const future = { id: 301, title: 'Al día hasta la semana que viene', currentEp: 3, episodes: 12 };
+    const airingData = { 301: { episode: 4, isToday: false, hasAired: false, airingAt: 1784473200 } };
+    expect(buildAgenda(sundaySchedule([future]), airingData, new Date('2026-07-12T15:00:00Z')).active).toBeNull();
+  });
+});
 
 describe('AnimeCard', () => {
   it('renders anime title', () => {
