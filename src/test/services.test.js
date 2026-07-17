@@ -5,7 +5,7 @@ import { toAnime as anilistToAnime, fetchAiringInfo, fetchAnilistUserAnimeLists,
 import { toAnime as tvmazeToAnime } from '../services/tvmazeService';
 import { toAnime as itunesToAnime } from '../services/itunesService';
 import { toAnime as tmdbToAnime, parseTmdbKey, extractExtras, TMDB_MOVIE_ID_BASE, TMDB_TV_ID_BASE } from '../services/tmdbService';
-import { searchAnime, clearSearchCache } from '../services/searchAnime';
+import { searchAnime, clearSearchCache, parseAnimeSearchInput } from '../services/searchAnime';
 
 describe('adapter: jikanService.toAnime', () => {
   it('maps Jikan fields into normalized anime', () => {
@@ -519,6 +519,38 @@ describe('anilistService.fetchAiringInfo', () => {
   });
 });
 
+describe('parseAnimeSearchInput', () => {
+  it('extracts the title and platform from a Crunchyroll series URL', () => {
+    expect(parseAnimeSearchInput('https://www.crunchyroll.com/es-es/series/GDKHZEJ0K/solo-leveling')).toEqual({
+      isUrl: true,
+      searchTerm: 'solo leveling',
+      url: 'https://www.crunchyroll.com/es-es/series/GDKHZEJ0K/solo-leveling',
+      site: 'Crunchyroll',
+    });
+  });
+
+  it('keeps normal text searches unchanged', () => {
+    expect(parseAnimeSearchInput('  Frieren  ')).toEqual({
+      isUrl: false,
+      searchTerm: 'Frieren',
+      url: '',
+      site: '',
+    });
+  });
+
+  it('does not mistake a Crunchyroll episode slug for the anime title', () => {
+    const parsed = parseAnimeSearchInput('https://www.crunchyroll.com/watch/GN7UNM9XJ/the-final-battle');
+    expect(parsed.isUrl).toBe(true);
+    expect(parsed.searchTerm).toBe('');
+  });
+
+  it('extracts title slugs from other streaming URLs when available', () => {
+    const parsed = parseAnimeSearchInput('https://example.com/anime/frieren-beyond-journeys-end');
+    expect(parsed.searchTerm).toBe('frieren beyond journeys end');
+    expect(parsed.site).toBe('example.com');
+  });
+});
+
 describe('searchAnime integration (mocked)', () => {
   beforeEach(() => { clearSearchCache(); vi.spyOn(globalThis, 'fetch'); });
   afterEach(() => { vi.restoreAllMocks(); });
@@ -544,6 +576,29 @@ describe('searchAnime integration (mocked)', () => {
     expect(results.length).toBeGreaterThan(0);
     expect(results[0].title).toBe('Naruto');
     expect(failedApis).toEqual([]);
+  });
+
+  it('searches from a Crunchyroll series URL and preserves that exact URL', async () => {
+    const crunchyrollUrl = 'https://www.crunchyroll.com/es-es/series/GDKHZEJ0K/solo-leveling?utm_source=share';
+    globalThis.fetch.mockImplementation((url) => {
+      if (url.includes('jikan')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: [{ mal_id: 151807, title: 'Solo Leveling', images: {} }] }) });
+      if (url.includes('kitsu')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: [] }) });
+      if (url.includes('anilist')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: { Page: { media: [] } } }) });
+      if (url.includes('tvmaze')) return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+      if (url.includes('itunes')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ results: [] }) });
+      return Promise.reject(new Error(`unexpected ${url}`));
+    });
+
+    const { results } = await searchAnime(crunchyrollUrl);
+
+    expect(globalThis.fetch.mock.calls.some(([url]) => url.includes('solo%20leveling'))).toBe(true);
+    expect(results[0].title).toBe('Solo Leveling');
+    expect(results[0].watchLink).toBe(crunchyrollUrl);
+    expect(results[0].streamingLinks[0]).toEqual({
+      site: 'Crunchyroll',
+      url: crunchyrollUrl,
+      language: 'enlace proporcionado',
+    });
   });
 
   it('reports failed APIs but still returns partial results', async () => {

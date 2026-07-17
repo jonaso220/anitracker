@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { SEARCH_SOURCE_NAMES } from '../../services/searchAnime';
+import { parseAnimeSearchInput, SEARCH_SOURCE_NAMES } from '../../services/searchAnime';
 
 const Highlight = ({ text, query }) => {
     if (!query || query.length < 2 || !text) return <>{text}</>;
@@ -39,6 +39,7 @@ const SearchModal = ({ setShowSearch, searchQuery, handleSearch, searchResults, 
     const [filterYearFrom, setFilterYearFrom] = useState('');
     const [filterYearTo, setFilterYearTo] = useState('');
     const [filterScore, setFilterScore] = useState(0);
+    const parsedSearch = useMemo(() => parseAnimeSearchInput(searchQuery), [searchQuery]);
 
     const hasActiveFilters = filterType !== 'Todos' || filterYearFrom || filterYearTo || filterScore > 0;
 
@@ -82,7 +83,7 @@ const SearchModal = ({ setShowSearch, searchQuery, handleSearch, searchResults, 
         <div className="bottom-sheet-handle" aria-hidden="true"></div>
         <h2 id="search-modal-title" className="sr-only">Buscar anime</h2>
         <div className="search-header">
-          <input type="text" placeholder="Buscar anime o serie..." value={searchQuery} onChange={e => handleSearch(e.target.value)} autoFocus aria-label="Buscar anime o serie" />
+          <input type="text" placeholder="Buscar anime o pegar una URL..." value={searchQuery} onChange={e => handleSearch(e.target.value)} autoFocus aria-label="Buscar anime o pegar una URL" />
           <button className={`filter-toggle-btn ${hasActiveFilters ? 'active' : ''}`} onClick={() => setShowFilters(!showFilters)} title="Filtros" aria-pressed={showFilters} aria-label="Mostrar filtros">
             {hasActiveFilters ? '⚙ Filtros activos' : '⚙'}
           </button>
@@ -124,6 +125,12 @@ const SearchModal = ({ setShowSearch, searchQuery, handleSearch, searchResults, 
         )}
 
         <div className="search-results">
+          {parsedSearch.isUrl && parsedSearch.searchTerm && (
+            <div className="search-url-notice">
+              <span aria-hidden="true">🔗</span>
+              <span>Buscando <strong>{parsedSearch.searchTerm}</strong>. El enlace de {parsedSearch.site} quedará listo para guardar.</span>
+            </div>
+          )}
           {isSearching ? <div className="skeleton-search-list">{Array.from({ length: 5 }).map((_, i) => (
             <div key={i} className="skeleton-search-item">
               <div className="skeleton skeleton-search-img"></div>
@@ -149,8 +156,8 @@ const SearchModal = ({ setShowSearch, searchQuery, handleSearch, searchResults, 
             <div key={anime.id} className="search-result-item fade-in">
               <img src={anime.imageSm || anime.image} alt={anime.title} loading="lazy" decoding="async" />
               <div className="search-result-info">
-                <div className="search-result-title-row"><h4><Highlight text={anime.title} query={searchQuery} /></h4><span className="source-badge">{anime.source}</span></div>
-                {anime.altTitles?.length > 0 && <p className="alt-titles">También: {anime.altTitles.slice(0, 3).map((t, i) => <React.Fragment key={i}>{i > 0 && ' · '}<Highlight text={t} query={searchQuery} /></React.Fragment>)}</p>}
+                <div className="search-result-title-row"><h4><Highlight text={anime.title} query={parsedSearch.searchTerm} /></h4><span className="source-badge">{anime.source}</span></div>
+                {anime.altTitles?.length > 0 && <p className="alt-titles">También: {anime.altTitles.slice(0, 3).map((t, i) => <React.Fragment key={i}>{i > 0 && ' · '}<Highlight text={t} query={parsedSearch.searchTerm} /></React.Fragment>)}</p>}
                 <div className="search-result-meta">
                   {anime.type && <span className="meta-tag type">{anime.type}</span>}
                   {anime.year && <span className="meta-tag year">{anime.year}</span>}
@@ -158,7 +165,12 @@ const SearchModal = ({ setShowSearch, searchQuery, handleSearch, searchResults, 
                   {anime.rating > 0 && <span className="meta-tag score">⭐ {Number(anime.rating).toFixed(1)}</span>}
                 </div>
                 <div className="search-result-genres">{(anime.genres || []).slice(0, 3).map((g, i) => <span key={i} className="genre-tag-sm">{g}</span>)}</div>
-                <a href={anime.malUrl} target="_blank" rel="noopener noreferrer" className="mal-link">Ver en {anime.source} ↗</a>
+                <div className="search-result-links">
+                  {anime.malUrl && <a href={anime.malUrl} target="_blank" rel="noopener noreferrer" className="mal-link">Ver en {anime.source} ↗</a>}
+                  {parsedSearch.isUrl && anime.watchLink && (
+                    <a href={anime.watchLink} target="_blank" rel="noopener noreferrer" className="provided-watch-link">✓ URL de {parsedSearch.site} lista</a>
+                  )}
+                </div>
               </div>
               <div className="search-result-actions">
                 <button className="add-btn schedule-btn" onClick={() => setShowDayPicker(anime)}>📅 Semana</button>
@@ -168,8 +180,9 @@ const SearchModal = ({ setShowSearch, searchQuery, handleSearch, searchResults, 
             </div>
           ))}</>
           : searchResults.length > 0 && hasActiveFilters ? <div className="no-results"><span>🔍</span><p>Ningún resultado coincide con los filtros</p><button className="clear-filters-btn" onClick={clearFilters}>Limpiar filtros</button></div>
-          : searchQuery.length > 1 ? <div className="no-results"><span>😢</span><p>Sin resultados para "{searchQuery}"</p></div>
-          : <div className="search-placeholder"><span>🎌</span><p>Buscá anime, series o películas</p><p className="search-hint">{SEARCH_SOURCE_NAMES.join(' · ')}</p></div>}
+          : parsedSearch.isUrl && !parsedSearch.searchTerm ? <div className="no-results"><span>🔗</span><p>No pude identificar el anime desde esa URL.</p><p className="search-hint">En Crunchyroll, copiá el enlace de la página de la serie en lugar del enlace de un episodio.</p></div>
+          : searchQuery.length > 1 ? <div className="no-results"><span>😢</span><p>Sin resultados para "{parsedSearch.searchTerm || searchQuery}"</p></div>
+          : <div className="search-placeholder"><span>🎌</span><p>Buscá por nombre o pegá la URL del anime</p><p className="search-hint">{SEARCH_SOURCE_NAMES.join(' · ')}</p></div>}
         </div>
       </div>
     </div>

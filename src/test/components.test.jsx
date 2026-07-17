@@ -6,6 +6,7 @@ import DiscoveryCard from '../components/DiscoveryCard';
 import SeasonSection from '../components/SeasonSection';
 import DirectorySection from '../components/DirectorySection';
 import AnimeDetailModal from '../components/modals/AnimeDetailModal';
+import SearchModal from '../components/modals/SearchModal';
 import TodayPanel from '../components/TodayPanel';
 import { buildAgenda } from '../agenda';
 import { clearRelationsCache } from '../services/anilistService';
@@ -23,6 +24,48 @@ const mockAnime = {
   userRating: 4,
   watchLink: '',
 };
+
+describe('SearchModal URL search', () => {
+  const crunchyrollUrl = 'https://www.crunchyroll.com/es-es/series/GDKHZEJ0K/solo-leveling?utm_source=share';
+  const renderSearch = (overrides = {}) => render(
+    <SearchModal
+      setShowSearch={vi.fn()}
+      searchQuery={crunchyrollUrl}
+      handleSearch={vi.fn()}
+      searchResults={[{
+        ...mockAnime,
+        id: 151807,
+        title: 'Solo Leveling',
+        source: 'MAL',
+        malUrl: 'https://myanimelist.net/anime/151807',
+        watchLink: crunchyrollUrl,
+      }]}
+      isSearching={false}
+      setSearchResults={vi.fn()}
+      setSearchQuery={vi.fn()}
+      setShowDayPicker={vi.fn()}
+      addToWatchLater={vi.fn()}
+      markAsWatchedFromSearch={vi.fn()}
+      {...overrides}
+    />,
+  );
+
+  it('confirms the extracted title and the exact URL that will be saved', () => {
+    renderSearch();
+    expect(screen.getByText(/Buscando/)).toHaveTextContent('Buscando solo leveling');
+    expect(screen.getByRole('link', { name: '✓ URL de Crunchyroll lista' })).toHaveAttribute('href', crunchyrollUrl);
+    expect(screen.getByText('Solo Leveling')).toBeInTheDocument();
+  });
+
+  it('explains that a Crunchyroll episode URL cannot identify the series', () => {
+    renderSearch({
+      searchQuery: 'https://www.crunchyroll.com/watch/GN7UNM9XJ/the-final-battle',
+      searchResults: [],
+    });
+    expect(screen.getByText('No pude identificar el anime desde esa URL.')).toBeInTheDocument();
+    expect(screen.getByText(/página de la serie/)).toBeInTheDocument();
+  });
+});
 
 describe('TodayPanel', () => {
   afterEach(() => vi.useRealTimers());
