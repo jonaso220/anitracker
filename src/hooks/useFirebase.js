@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { LOCAL_REV_KEY, readActiveLibrary, persistAccountLibrary, selectLibraryAccount } from '../accountStorage';
+import { resolveAuthDomain, shouldRedirectGoogle } from '../authFlow';
 
 // Firebase config — these are public Firebase Web SDK keys (safe to commit).
 // Security is enforced via Firebase Security Rules, not by hiding these values.
@@ -10,7 +11,11 @@ import { LOCAL_REV_KEY, readActiveLibrary, persistAccountLibrary, selectLibraryA
 const env = import.meta.env;
 const FIREBASE_CONFIG = {
   apiKey: env.VITE_FIREBASE_API_KEY || "AIzaSyB3AcPFUO8DMBGUdM1emaOEzGtwrZ4BQ0Y",
-  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN || "animetracker-47abf.firebaseapp.com",
+  authDomain: resolveAuthDomain({
+    hostname: window.location.hostname,
+    configuredDomain: env.VITE_FIREBASE_AUTH_DOMAIN,
+    projectId: env.VITE_FIREBASE_PROJECT_ID || 'animetracker-47abf',
+  }),
   projectId: env.VITE_FIREBASE_PROJECT_ID || "animetracker-47abf",
   storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET || "animetracker-47abf.firebasestorage.app",
   messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID || "757726364049",
@@ -28,7 +33,7 @@ const initFirebase = () => {
   if (initPromise) return initPromise;
   initPromise = (async () => {
     const { initializeApp } = await import('firebase/app');
-    const { getAuth, signInWithPopup, getRedirectResult, GoogleAuthProvider, signOut, onAuthStateChanged, browserLocalPersistence, setPersistence } = await import('firebase/auth');
+    const { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signOut, onAuthStateChanged, browserLocalPersistence, setPersistence } = await import('firebase/auth');
     const { getFirestore, doc, setDoc, onSnapshot, serverTimestamp } = await import('firebase/firestore');
 
     firebaseApp ||= initializeApp(FIREBASE_CONFIG);
@@ -36,7 +41,7 @@ const initFirebase = () => {
     try { await setPersistence(auth, browserLocalPersistence); } catch { /* Persistence is best-effort. */ }
     db = getFirestore(firebaseApp);
 
-    firebaseAuth = { signInWithPopup, getRedirectResult, GoogleAuthProvider, signOut, onAuthStateChanged };
+    firebaseAuth = { signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signOut, onAuthStateChanged };
     firebaseDb = { doc, setDoc, onSnapshot, serverTimestamp };
   })().catch((error) => { initPromise = null; throw error; });
   return initPromise;
@@ -439,9 +444,12 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
     setAuthBusy(true);
     const provider = new firebaseAuth.GoogleAuthProvider();
     try {
-      // Also in installed iPad PWAs: cross-domain redirect loses its state
-      // when Safari blocks third-party storage. Do not fall back to that flow.
-      await firebaseAuth.signInWithPopup(auth, provider);
+      const standalone = window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone;
+      if (shouldRedirectGoogle({ hostname: window.location.hostname, authDomain: FIREBASE_CONFIG.authDomain, standalone })) {
+        await firebaseAuth.signInWithRedirect(auth, provider);
+      } else {
+        await firebaseAuth.signInWithPopup(auth, provider);
+      }
     } catch (error) {
       setAuthError(authMessage(error));
     } finally {

@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v9';
+const CACHE_VERSION = 'v10';
 const STATIC_CACHE = `anitracker-static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `anitracker-runtime-${CACHE_VERSION}`;
 const IMAGE_CACHE = `anitracker-images-${CACHE_VERSION}`;
@@ -113,6 +113,9 @@ self.addEventListener('fetch', (event) => {
   let url;
   try { url = new URL(request.url); } catch { return; }
   if (!['http:', 'https:'].includes(url.protocol)) return;
+  // OAuth helpers and callbacks must always reach Firebase. Never cache a
+  // one-time callback or replace it with the offline app shell.
+  if (url.origin === self.location.origin && url.pathname.startsWith('/__/auth/')) return;
   if (isNoCache(url)) return; // Let it hit network directly
 
   if (isImage(request, url)) {

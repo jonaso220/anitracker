@@ -3,6 +3,7 @@ import { renderHook, act } from '@testing-library/react';
 import { useState } from 'react';
 import { useFirebase, serializeData, shouldKeepLocal } from '../hooks/useFirebase';
 import { signInWithPopup, signInWithRedirect } from 'firebase/auth';
+import { shouldRedirectGoogle } from '../authFlow';
 import { normalizeAnime } from '../schemas/anime';
 
 // Shared, resettable handles into the Firebase mocks. `vi.hoisted` lets the
@@ -15,6 +16,11 @@ const h = vi.hoisted(() => ({
   authUnsub: vi.fn(),
   redirectResult: { user: null },
 }));
+
+vi.mock('../authFlow', async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, shouldRedirectGoogle: vi.fn(actual.shouldRedirectGoogle) };
+});
 
 vi.mock('firebase/app', () => ({ initializeApp: vi.fn(() => ({})) }));
 
@@ -290,6 +296,21 @@ describe('account isolation, auth and read recovery', () => {
    expect(result.current.watchedList).toEqual([{id:77}]);
    await tick(2100);
    expect(h.setDoc).not.toHaveBeenCalled();
+ });
+ it('redirects installed apps only when the same-origin helper is configured', async () => {
+   const { result } = await loginAndSubscribe();
+   shouldRedirectGoogle.mockReturnValueOnce(true);
+   await act(async () => result.current.loginWithGoogle());
+   expect(signInWithRedirect).toHaveBeenCalledOnce();
+   expect(signInWithPopup).not.toHaveBeenCalled();
+ });
+ it('shows an error when same-origin redirect fails', async () => {
+   const { result } = await loginAndSubscribe();
+   shouldRedirectGoogle.mockReturnValueOnce(true);
+   signInWithRedirect.mockRejectedValueOnce({code:'auth/network-request-failed'});
+   await act(async () => result.current.loginWithGoogle());
+   expect(result.current.authError).toContain('conexión');
+   expect(result.current.authBusy).toBe(false);
  });
  it('opens Google directly as a popup even in installed iPad mode', async () => {
    const { result } = await loginAndSubscribe();

@@ -79,10 +79,17 @@ tu proyecto antes de habilitar la sincronización:
 firebase deploy --only firestore:rules
 ```
 
-El acceso con Google utiliza una ventana emergente también en la PWA instalada
-en iPad, para evitar perder la sesión durante una redirección entre dominios.
+La PWA instalada usa redirección con los auxiliares de Firebase servidos desde
+el mismo dominio de la app. En Netlify, `public/_redirects` reenvía `/__/auth/*`
+a Firebase antes de aplicar la ruta de la SPA. El service worker no cachea esas
+rutas. El navegador normal conserva el acceso mediante ventana emergente.
 El botón espera a que Firebase esté listo y muestra los errores de acceso.
-Agregá el dominio publicado a los dominios autorizados de Firebase Auth.
+
+Para otro dominio, configurá `VITE_FIREBASE_AUTH_DOMAIN`, adaptá el proxy y
+autorizá el dominio en Firebase Auth y `https://DOMINIO/__/auth/handler` en el
+cliente OAuth de Google. No cambies solo `authDomain`: el proxy y el destino
+autorizado deben estar preparados antes. En el dominio de producción
+`anitracker-jona.netlify.app` se utiliza esta configuración automáticamente.
 
 Al cambiar de cuenta, se conserva una copia local de la biblioteca anterior y
 se recupera la biblioteca de la cuenta elegida. Los cambios sin conexión quedan
