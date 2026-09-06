@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
-import { captureEntry, restoreEntry, changeEpisode } from '../libraryEdits';
+import { episodePatch, seasonPatch } from '../tracking';
+import { captureEntry, restoreEntry } from '../libraryEdits';
 import { daysOfWeek, sanitizeUrl } from '../constants';
 import { clean, pickAutoWatchLink } from '../utils';
 
@@ -49,6 +50,7 @@ export function useAnimeActions({
     const fromLibrary = anime._day || anime._isCustomList || anime._isWatched || anime._isWatchLater;
     const a = prepare(fromLibrary ? latestAnime(anime) : anime);
     if (anime._isWatched) {
+      a.paused = false;
       delete a.finished;
       delete a.finishedDate;
       delete a.droppedDate;
@@ -163,7 +165,25 @@ export function useAnimeActions({
   }, [setSchedule, setWatchLater, setWatchedList, setCustomLists]);
 
   const updateEpisode = useCallback((animeId, delta) => {
-    updateAnimeField(animeId, (a) => ({ currentEp: changeEpisode(a.currentEp, delta, a.episodes) }));
+    updateAnimeField(animeId, (a) => episodePatch(a, (a.currentEp || 0) + delta));
+  }, [updateAnimeField]);
+
+  const setEpisodeNumber = useCallback((animeId, value) => {
+    if (!Number.isSafeInteger(value) || value < 0) return;
+    updateAnimeField(animeId, (a) => episodePatch(a, value));
+  }, [updateAnimeField]);
+
+  const setAnimeSeason = useCallback((animeId, season, total) => {
+    if (!Number.isSafeInteger(season) || season < 1 || season > 999) return;
+    if (total !== undefined && (!Number.isSafeInteger(total) || total < 0)) return;
+    updateAnimeField(animeId, (a) => {
+      const patch = seasonPatch(a, season, total);
+      return total > 0 && total < patch.currentEp ? {} : patch;
+    });
+  }, [updateAnimeField]);
+
+  const setAnimePaused = useCallback((animeId, paused) => {
+    updateAnimeField(animeId, () => ({ paused }));
   }, [updateAnimeField]);
 
   const updateAnimeLink = useCallback((animeId, link) => {
@@ -281,6 +301,9 @@ export function useAnimeActions({
     deleteAnime,
     moveAnimeToDay,
     updateEpisode,
+    setEpisodeNumber,
+    setAnimeSeason,
+    setAnimePaused,
     updateAnimeLink,
     updateUserRating,
     mergeAnimeExtras,

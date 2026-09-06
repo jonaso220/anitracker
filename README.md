@@ -11,6 +11,14 @@ opcional en la nube.
 
 - **📅 Horario semanal** — organizá los animes que estás viendo por día, con
   drag & drop entre días e info de próximos episodios en emisión.
+- **Progreso directo** — tocá el número de episodio para editarlo; las tarjetas
+  muestran el avance y permiten sumar un episodio sin abrir la ficha.
+- **Temporadas** — activá «Seguir por temporadas» para conservar el progreso
+  de cada temporada por separado. El total se configura manualmente y puede
+  quedar sin confirmar. Las temporadas nuevas no reutilizan avisos de emisión
+  de la temporada original.
+- **En pausa** — apartá una serie de la agenda y retomála conservando su día y
+  todos sus episodios. Las acciones secundarias están en «Más acciones».
 - **🕐 Ver después** — cola de pendientes con filtro por rating.
 - **✓ Vistas** — historial de terminados/abandonados, con filtros y orden por
   fecha, rating o título.

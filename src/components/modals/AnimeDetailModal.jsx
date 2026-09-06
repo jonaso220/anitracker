@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import SeasonControls from '../SeasonControls';
+import { seasonPatch, trackingAiring } from '../../tracking';
 import StarRating from '../StarRating';
 import { changeEpisode } from '../../libraryEdits';
 import { sanitizeUrl, pruneTranslationCache } from '../../constants';
@@ -24,7 +26,7 @@ const ProviderRow = ({ label, items, link }) => (
     </div>
 );
 
-const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, updateEpisode, updateUserRating, updateAnimeLink, mergeAnimeExtras, markAsFinished, dropAnime, deleteAnime, addToWatchLater, markAsWatched, setShowMoveDayPicker, setShowDayPicker, resumeAnime, customLists = [], addToCustomList, removeFromCustomList, libraryIds }) => {
+const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, updateEpisode, setEpisodeNumber, setAnimeSeason, setAnimePaused, updateUserRating, updateAnimeLink, mergeAnimeExtras, markAsFinished, dropAnime, deleteAnime, addToWatchLater, markAsWatched, setShowMoveDayPicker, setShowDayPicker, resumeAnime, customLists = [], addToCustomList, removeFromCustomList, libraryIds }) => {
     // Compute initial synopsis synchronously (Spanish detection + cache check)
     const getInitialSynopsis = () => {
         const syn = showAnimeDetail?.synopsis;
@@ -36,6 +38,8 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
     const initialSynopsis = getInitialSynopsis();
 
     const [localEp, setLocalEp] = useState(showAnimeDetail?.currentEp || 0);
+    const [episodeDraft, setEpisodeDraft] = useState(null);
+    const [episodeError, setEpisodeError] = useState('');
     const [localRating, setLocalRating] = useState(showAnimeDetail?.userRating || 0);
     const [localLink, setLocalLink] = useState(showAnimeDetail?.watchLink || '');
     const [showLinkInput, setShowLinkInput] = useState(false);
@@ -150,7 +154,7 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
     const isDiscovery = a._isSeason || a._isDirectory;
     const isSchedule = !!a._day && !a._isCustomList && !a._isWatchLater && !a._isWatched && !isDiscovery;
     const closeAndDo = (fn) => { setShowAnimeDetail(null); fn(); };
-    const airing = airingData[a.id];
+    const airing = trackingAiring(a, airingData[a.id]);
 
     // API links + generated fan-platform links (JKAnime/AnimeFLV), preferred
     // platforms first and dead ones (HIDIVE) last. "Ver ahora" never points to
@@ -163,10 +167,30 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
     const showWhereToWatch = streamingLinks.length > 0 || isTmdbItem || trailerUrl;
     const episodeComplete = a.episodes > 0 && localEp >= a.episodes;
     const changeLocalEpisode = (delta) => {
+        setEpisodeDraft(null);
+        setEpisodeError('');
         const next = changeEpisode(localEp, delta, a.episodes);
         updateEpisode(a.id, delta);
         setLocalEp(next);
         if (bingeMode) setBingeCount((count) => Math.max(0, count + next - localEp));
+    };
+    const commitEpisode = () => {
+        if (episodeDraft === null) return;
+        const text = episodeDraft.trim();
+        const value = Number(text);
+        if (!/^\d+$/.test(text) || !Number.isSafeInteger(value) || value < 0 || (a.episodes > 0 && value > a.episodes)) {
+            setEpisodeError(a.episodes > 0 ? `Elegí un episodio entre 0 y ${a.episodes}.` : 'Ingresá un número entero de episodios, desde 0.');
+            return;
+        }
+        setEpisodeNumber?.(a.id, value);
+        setLocalEp(value);
+        if (bingeMode) setBingeCount((count) => Math.max(0, count + value - localEp));
+        setEpisodeDraft(null);
+        setEpisodeError('');
+    };
+    const changeSeason = (season, total) => {
+        setAnimeSeason?.(a.id, season, total);
+        setShowAnimeDetail((prev) => ({ ...prev, ...seasonPatch({ ...a, currentEp: localEp }, season, total) }));
     };
     const saveLink = () => {
         const link = localLink.trim();
@@ -191,7 +215,7 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
             aria-labelledby="anime-detail-title"
             onKeyDown={(e) => { if (e.key === 'Escape') setShowAnimeDetail(null); }}
         >
-            <div className="detail-modal fade-in" onClick={e => e.stopPropagation()}>
+            <div className="detail-modal tracking-detail fade-in" onClick={e => e.stopPropagation()}>
                 <div className="bottom-sheet-handle" aria-hidden="true"></div>
                 <button className="close-btn" onClick={() => setShowAnimeDetail(null)} aria-label="Cerrar">×</button>
                 <div className="detail-header">
@@ -202,13 +226,101 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                         <div className="detail-meta">
                             {a.type && <span className="meta-tag type">{a.type}</span>}
                             {a.year && <span className="meta-tag year">{a.year}</span>}
-                            {a.episodes && <span className="meta-tag eps">{a.episodes} episodios</span>}
+                            {a.episodes > 0 && <span className="meta-tag eps">{a.episodes} episodios</span>}
                         </div>
+                        {a.paused && isSchedule && <span className="detail-paused-label">En pausa · {a._day}</span>}
                         <div className="detail-genres">{(a.genres || []).map((g, i) => <span key={i} className="genre-tag">{g}</span>)}</div>
                         {a.rating > 0 && <div className="detail-score"><span className="score-label">Valoración:</span><span className="score-value">⭐ {Number(a.rating).toFixed(1)}</span></div>}
                     </div>
                 </div>
 
+                <div className="detail-primary">
+                {(isSchedule || a._isCustomList) && (
+                    <div className="detail-section">
+                        <div className="detail-section-header">
+                            <h4>📺 Episodio actual</h4>
+                            <button className={`binge-toggle ${bingeMode ? 'active' : ''}`} onClick={toggleBinge}>
+                                {bingeMode ? '🔥 Maratón' : '🔥 Maratón'}
+                            </button>
+                        </div>
+                        <div className="episode-controls">
+                            <button className="ep-control-btn" disabled={localEp <= 0} onClick={() => changeLocalEpisode(-1)}>−</button>
+                            <input className="ep-number ep-input" aria-label="Episodio actual" inputMode="numeric" type="text"
+                                value={episodeDraft ?? String(localEp)} aria-invalid={!!episodeError} aria-describedby="episode-entry-hint"
+                                onChange={(e) => { setEpisodeDraft(e.target.value); setEpisodeError(''); }} onBlur={commitEpisode}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') { e.preventDefault(); commitEpisode(); }
+                                    if (e.key === 'Escape' && episodeDraft !== null) { e.stopPropagation(); setEpisodeDraft(null); setEpisodeError(''); }
+                                }} />
+                            <button className="ep-control-btn" disabled={episodeComplete} onClick={() => changeLocalEpisode(1)}>+</button>
+                        </div>
+                        <p id="episode-entry-hint" className="episode-entry-hint">Tocá el número para editar{a.episodes > 0 ? ` · ${a.episodes} episodios en total` : ''}</p>
+                        {episodeError && <p className="tracking-error" role="alert">{episodeError}</p>}
+                        {setAnimeSeason && <SeasonControls anime={{ ...a, currentEp: localEp }} onChange={changeSeason} />}
+                        {airing && (
+                            <p className={`detail-next-ep ${airing.hasAired ? 'aired' : airing.isToday ? 'today' : ''}`}>
+                                {airing.hasAired
+                                    ? <>🆕 Episodio {airing.episode}: ¡ya disponible!</>
+                                    : <>📅 Próximo episodio ({airing.episode}): {formatAiringDate(airing.airingAt)}</>}
+                            </p>
+                        )}
+                        {bingeMode && (
+                            <div className="binge-panel fade-in">
+                                <div className="binge-quick-btns">
+                                    {[1, 3, 5].map(n => (
+                                        <button key={n} className="binge-quick-btn" disabled={episodeComplete} onClick={() => changeLocalEpisode(n)}>+{n} ep{n > 1 ? 's' : ''}</button>
+                                    ))}
+                                </div>
+                                <div className="binge-stats">
+                                        <span className="binge-stat">🔥 {bingeCount} ep{bingeCount !== 1 ? 's' : ''} esta sesión</span>
+                                        <span className="binge-stat">⏱ {bingeMinutes} min</span>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                <div className="detail-section">
+                    <h4>🔗 Link</h4>
+                    {effectiveWatchLink && !showLinkInput ? (
+                        <div className="detail-link-row">
+                            <a href={sanitizeUrl(effectiveWatchLink)} target="_blank" rel="noopener noreferrer" className="platform-btn watch">▶ Ver ahora</a>
+                            <button className="detail-action-sm" onClick={() => setShowLinkInput(true)}>✏️ Editar</button>
+                        </div>
+                    ) : (
+                        <div className="detail-link-edit">
+                            <input type="url" placeholder="Pegá una URL..." value={localLink} aria-label="Enlace para ver" aria-invalid={!!linkError} aria-describedby={linkError ? "watch-link-error" : undefined} onChange={e => { setLocalLink(e.target.value); setLinkError(''); }} onKeyDown={e => { if (e.key === 'Enter') saveLink(); }} />
+                            <button className="save-link-btn" onClick={saveLink}>Guardar</button>
+                        </div>
+                    )}
+                </div>
+
+                {linkError && <p id="watch-link-error" className="detail-link-error" role="alert">{linkError}</p>}
+
+                <div className="detail-secondary-row">
+                {(a._isWatchLater || a._isCustomList || isDiscovery) && <button className="tracking-text-button" onClick={() => closeAndDo(() => setShowDayPicker(a))}>📅 Añadir a semana</button>}
+                {isDiscovery && <button className="tracking-text-button" onClick={() => closeAndDo(() => addToWatchLater(a))}>🕐 Ver después</button>}
+                {a._isWatched && !a.finished && <button className="tracking-pause-button resume" onClick={() => closeAndDo(() => resumeAnime(a))}>▶ Retomar</button>}
+                {isSchedule && setAnimePaused && <button className={`tracking-pause-button ${a.paused ? 'resume' : ''}`}
+                    onClick={() => closeAndDo(() => setAnimePaused(a.id, !a.paused))}>
+                    {a.paused ? '▶ Retomar en ' + a._day : '⏸ Poner en pausa'}
+                </button>}
+                <details className="detail-more-actions"><summary>Más acciones</summary><div className="detail-actions">
+                    {isSchedule && <>
+                        <button className="detail-action-btn finish" onClick={() => closeAndDo(() => markAsFinished(a, a._day))}>✓ Finalizar</button>
+                        <button className="detail-action-btn drop" onClick={() => closeAndDo(() => dropAnime(a, a._day))}>✗ Dropear</button>
+                        <button className="detail-action-btn move" onClick={() => closeAndDo(() => setShowMoveDayPicker({ anime: a, fromDay: a._day }))}>↔ Mover día</button>
+                    </>}
+                    {isDiscovery && <button className="detail-action-btn watched" onClick={() => closeAndDo(() => markAsWatched(a))}>✓ Visto</button>}
+                    {a._isCustomList && (
+                        <button className="detail-action-btn delete" onClick={() => closeAndDo(() => removeFromCustomList(a._customListId, a.id))}>✕ Quitar de lista</button>
+                    )}
+                    {(isSchedule || a._isWatchLater || a._isWatched) && (
+                        <button className="detail-action-btn delete" onClick={() => closeAndDo(() => deleteAnime(a))}>🗑 Eliminar</button>
+                    )}
+                </div></details>
+                </div>
+                </div>
                 <div className="detail-synopsis">
                     <div className="detail-synopsis-header">
                         <h4>📖 Sinopsis</h4>
@@ -286,65 +398,12 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                     </div>
                 )}
 
-                {(isSchedule || a._isCustomList) && (
-                    <div className="detail-section">
-                        <div className="detail-section-header">
-                            <h4>📺 Episodio actual</h4>
-                            <button className={`binge-toggle ${bingeMode ? 'active' : ''}`} onClick={toggleBinge}>
-                                {bingeMode ? '🔥 Maratón' : '🔥 Maratón'}
-                            </button>
-                        </div>
-                        <div className="episode-controls">
-                            <button className="ep-control-btn" disabled={localEp <= 0} onClick={() => changeLocalEpisode(-1)}>−</button>
-                            <span className="ep-number">{localEp}</span>
-                            <button className="ep-control-btn" disabled={episodeComplete} onClick={() => changeLocalEpisode(1)}>+</button>
-                        </div>
-                        {airing && (
-                            <p className={`detail-next-ep ${airing.hasAired ? 'aired' : airing.isToday ? 'today' : ''}`}>
-                                {airing.hasAired
-                                    ? <>🆕 Episodio {airing.episode}: ¡ya disponible!</>
-                                    : <>📅 Próximo episodio ({airing.episode}): {formatAiringDate(airing.airingAt)}</>}
-                            </p>
-                        )}
-                        {bingeMode && (
-                            <div className="binge-panel fade-in">
-                                <div className="binge-quick-btns">
-                                    {[1, 3, 5].map(n => (
-                                        <button key={n} className="binge-quick-btn" disabled={episodeComplete} onClick={() => changeLocalEpisode(n)}>+{n} ep{n > 1 ? 's' : ''}</button>
-                                    ))}
-                                </div>
-                                <div className="binge-stats">
-                                        <span className="binge-stat">🔥 {bingeCount} ep{bingeCount !== 1 ? 's' : ''} esta sesión</span>
-                                        <span className="binge-stat">⏱ {bingeMinutes} min</span>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                )}
-
                 <div className="detail-section">
                     <h4>★ Tu valoración</h4>
                     <div className="detail-rating-row">
                         <StarRating rating={localRating} size={24} interactive onChange={(r) => { setLocalRating(r); updateUserRating(a.id, r); }} />
                     </div>
                 </div>
-
-                <div className="detail-section">
-                    <h4>🔗 Link</h4>
-                    {effectiveWatchLink && !showLinkInput ? (
-                        <div className="detail-link-row">
-                            <a href={sanitizeUrl(effectiveWatchLink)} target="_blank" rel="noopener noreferrer" className="platform-btn watch">▶ Ver ahora</a>
-                            <button className="detail-action-sm" onClick={() => setShowLinkInput(true)}>✏️ Editar</button>
-                        </div>
-                    ) : (
-                        <div className="detail-link-edit">
-                            <input type="url" placeholder="Pegá una URL..." value={localLink} aria-label="Enlace para ver" aria-invalid={!!linkError} aria-describedby={linkError ? "watch-link-error" : undefined} onChange={e => { setLocalLink(e.target.value); setLinkError(''); }} onKeyDown={e => { if (e.key === 'Enter') saveLink(); }} />
-                            <button className="save-link-btn" onClick={saveLink}>Guardar</button>
-                        </div>
-                    )}
-                </div>
-
-                {linkError && <p id="watch-link-error" className="detail-link-error" role="alert">{linkError}</p>}
 
                 {customLists.length > 0 && (
                     <div className="detail-section">
@@ -413,23 +472,7 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                     </div>
                 )}
 
-                <div className="detail-actions">
-                    {isSchedule && <>
-                        <button className="detail-action-btn finish" onClick={() => closeAndDo(() => markAsFinished(a, a._day))}>✓ Finalizar</button>
-                        <button className="detail-action-btn drop" onClick={() => closeAndDo(() => dropAnime(a, a._day))}>✗ Dropear</button>
-                        <button className="detail-action-btn move" onClick={() => closeAndDo(() => setShowMoveDayPicker({ anime: a, fromDay: a._day }))}>↔ Mover día</button>
-                    </>}
-                    {(a._isWatchLater || a._isCustomList || isDiscovery) && <button className="detail-action-btn schedule" onClick={() => closeAndDo(() => setShowDayPicker(a))}>📅 Añadir a semana</button>}
-                    {isDiscovery && <button className="detail-action-btn later" onClick={() => closeAndDo(() => addToWatchLater(a))}>🕐 Ver después</button>}
-                    {isDiscovery && <button className="detail-action-btn watched" onClick={() => closeAndDo(() => markAsWatched(a))}>✓ Visto</button>}
-                    {a._isWatched && !a.finished && <button className="detail-action-btn resume" onClick={() => closeAndDo(() => resumeAnime(a))}>▶ Retomar</button>}
-                    {a._isCustomList && (
-                        <button className="detail-action-btn delete" onClick={() => closeAndDo(() => removeFromCustomList(a._customListId, a.id))}>✕ Quitar de lista</button>
-                    )}
-                    {(isSchedule || a._isWatchLater || a._isWatched) && (
-                        <button className="detail-action-btn delete" onClick={() => closeAndDo(() => deleteAnime(a))}>🗑 Eliminar</button>
-                    )}
-                </div>
+
             </div>
         </div>
     );

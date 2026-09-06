@@ -1,3 +1,4 @@
+import { trackingAiring } from './tracking';
 import { daysOfWeek } from './constants';
 
 const getTodayIndex = (now) => (now.getDay() + 6) % 7;
@@ -37,7 +38,8 @@ export const buildAgenda = (schedule, airingData, now = new Date()) => {
   const todayIndex = getTodayIndex(now);
   const dayBuckets = daysOfWeek.map((day, dayIndex) => {
     const items = (schedule[day] || []).flatMap((anime) => {
-      const enriched = { ...anime, _day: day, airing: airingData[anime.id] };
+      if (anime.paused) return [];
+      const enriched = { ...anime, _day: day, airing: trackingAiring(anime, airingData[anime.id]) };
       const watchableEpisode = getWatchableEpisode(enriched);
       const currentEp = anime.currentEp || 0;
       const isFinished = Boolean(anime.episodes) && currentEp >= anime.episodes;

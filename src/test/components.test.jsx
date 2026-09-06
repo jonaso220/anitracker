@@ -136,8 +136,9 @@ describe('AnimeCard', () => {
 
   it('renders progress bar when episodes known', () => {
     const { container } = render(<AnimeCard anime={mockAnime} airingData={{}} onClick={() => {}} />);
-    const progressFill = container.querySelector('.anime-card-progress-fill');
+    const progressFill = container.querySelector('.card-progress-track > span');
     expect(progressFill).toBeInTheDocument();
+    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '120');
     // 120 / 500 → 24%
     expect(progressFill.style.width).toBe('24%');
   });

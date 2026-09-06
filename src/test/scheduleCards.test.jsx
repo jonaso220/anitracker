@@ -119,6 +119,22 @@ it('moving first card immediately after second must not move it after third',()=
  expect(result.current.s.Lunes.map(x=>x.id)).toEqual([b.id,a.id,c.id]);
 });
 
+it('touch insertion uses the original index when a paused card is hidden', () => {
+ vi.useFakeTimers();
+ const paused = { ...b, id: 900003, paused: true };
+ const {result}=renderHook(()=>{const [s,ss]=useState({...blank(),Lunes:[a],Martes:[paused,b]});return {s,...useDragDrop(s,ss,days)};});
+ const row=document.createElement('section');row.className='day-row';
+ row.innerHTML=`<span class="day-name">Martes</span><div class="anime-card" data-anime-id="${b.id}"></div>`;
+ row.querySelector('.anime-card').getBoundingClientRect=()=>({left:100,width:100,bottom:300});
+ Object.defineProperty(document,'elementFromPoint',{configurable:true,value:()=>row});
+ act(()=>result.current.handleTouchStart({touches:[{clientX:50,clientY:50}]},a,'Lunes'));
+ act(()=>vi.advanceTimersByTime(401));
+ act(()=>result.current.handleTouchMove({touches:[{clientX:120,clientY:150}],preventDefault:()=>{} }));
+ act(()=>result.current.handleTouchEnd());
+ expect(result.current.s.Martes.map(x=>x.id)).toEqual([paused.id,a.id,b.id]);
+ expect(result.current.s.Martes[0].paused).toBe(true);
+});
+
 it('undo preserves new cards and the moved position of another card', () => {
  const {result}=renderHook(useHarness);
  act(()=>result.current.deleteAnime({...a,_day:'Lunes'}));
@@ -140,7 +156,7 @@ it('Maraton caps a batch, counts only applied episodes, and allows correction', 
  const p=modalProps();render(<AnimeDetailModal {...p}/>);
  fireEvent.click(screen.getByRole('button',{name:'🔥 Maratón'}));
  fireEvent.click(screen.getByRole('button',{name:'+5 eps'}));
- expect(screen.getByText('12',{selector:'.ep-number'})).toBeInTheDocument();
+ expect(screen.getByRole('textbox',{name:'Episodio actual',exact:true})).toHaveValue('12');
  expect(screen.getByText(/esta sesión/)).toHaveTextContent('1 ep esta sesión');
  expect(screen.getByRole('button',{name:'+',exact:true})).toBeDisabled();
  expect(screen.getByRole('button',{name:'+5 eps'})).toBeDisabled();
@@ -186,4 +202,60 @@ it('cancelling a touch drag removes its ghost without moving the card', () => {
  unmount();
  act(()=>vi.runOnlyPendingTimers());
  expect(document.querySelector('.touch-drag-ghost')).toBeNull();
+});
+
+it('absolute episode updates keep all saved copies and season progress in sync', () => {
+ const {result}=renderHook(useHarness);
+ act(()=>result.current.addToCustomList('qa',a));
+ act(()=>result.current.setAnimeSeason(a.id,2));
+ act(()=>result.current.setEpisodeNumber(a.id,5));
+ expect(result.current.schedule.Lunes[0]).toMatchObject({currentSeason:2,currentEp:5,seasonProgress:{1:{currentEp:11},2:{currentEp:5}}});
+ expect(result.current.customLists[0].items[0]).toMatchObject({currentSeason:2,currentEp:5});
+ act(()=>result.current.setAnimeSeason(a.id,1));
+ expect(result.current.schedule.Lunes[0].currentEp).toBe(11);
+ act(()=>result.current.setAnimeSeason(a.id,2));
+ expect(result.current.schedule.Lunes[0].currentEp).toBe(5);
+});
+it('changing season totals never discards recorded episodes', () => {
+ const {result}=renderHook(useHarness);
+ act(()=>result.current.setAnimeSeason(a.id,1,5));
+ expect(result.current.schedule.Lunes[0]).toMatchObject({currentEp:11,episodes:12});
+ act(()=>result.current.setAnimeSeason(a.id,1,24));
+ expect(result.current.schedule.Lunes[0]).toMatchObject({currentEp:11,episodes:24});
+});
+it('pausing and resuming preserve the day, episode and selected season', () => {
+ const {result}=renderHook(useHarness);
+ act(()=>result.current.setAnimeSeason(a.id,2));
+ act(()=>result.current.setEpisodeNumber(a.id,5));
+ act(()=>result.current.setAnimePaused(a.id,true));
+ expect(result.current.schedule.Lunes[0]).toMatchObject({paused:true,currentSeason:2,currentEp:5});
+ act(()=>result.current.setAnimePaused(a.id,false));
+ expect(result.current.schedule.Lunes[0]).toMatchObject({paused:false,currentSeason:2,currentEp:5});
+});
+it('direct episode input saves on Enter, rejects invalid values, and supports zero', () => {
+ const save=vi.fn();render(<AnimeDetailModal {...modalProps()} setEpisodeNumber={save}/>);
+ const input=screen.getByRole('textbox',{name:'Episodio actual',exact:true});
+ fireEvent.change(input,{target:{value:'8'}});fireEvent.keyDown(input,{key:'Enter'});
+ expect(save).toHaveBeenLastCalledWith(a.id,8);
+ fireEvent.change(input,{target:{value:'20'}});fireEvent.blur(input);
+ expect(screen.getByRole('alert')).toHaveTextContent('entre 0 y 12');
+ expect(save).toHaveBeenCalledTimes(1);
+ fireEvent.change(input,{target:{value:'0'}});fireEvent.blur(input);
+ expect(save).toHaveBeenLastCalledWith(a.id,0);
+ expect(screen.getByRole('button',{name:'−',exact:true})).toBeDisabled();
+});
+it('direct episode entry also counts the actual change during Maraton', () => {
+ render(<AnimeDetailModal {...modalProps()} showAnimeDetail={{...a,_day:'Lunes',currentEp:2}} setEpisodeNumber={vi.fn()}/>);
+ fireEvent.click(screen.getByRole('button',{name:'🔥 Maratón'}));
+ fireEvent.change(screen.getByRole('textbox',{name:'Episodio actual',exact:true}),{target:{value:'5'}});
+ fireEvent.keyDown(screen.getByRole('textbox',{name:'Episodio actual',exact:true}),{key:'Enter'});
+ expect(screen.getByText(/esta sesión/)).toHaveTextContent('3 eps');
+});
+it('progress and viewing controls appear before the synopsis', () => {
+ const {container}=render(<AnimeDetailModal {...modalProps()}/>);
+ const primary=container.querySelector('.detail-primary');
+ const synopsis=container.querySelector('.detail-synopsis');
+ expect(primary.compareDocumentPosition(synopsis) & 4).toBe(4);
+ expect(primary.querySelector('input[aria-label="Episodio actual"]')).not.toBeNull();
+ expect(container.querySelector('.detail-more-actions').hasAttribute('open')).toBe(false);
 });

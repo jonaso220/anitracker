@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
+import { trackingAiring } from '../tracking';
 import StarRating from './StarRating';
 import { sanitizeUrl } from '../constants';
 import { getPlatformInfo, pickAutoWatchLink, formatAiringWhen } from '../utils';
 
 // Derive a status used for the colored left border.
 const getCardStatus = ({ anime, isWatched, airing, ep, total }) => {
+  if (anime.paused && !isWatched) return 'paused';
   if (isWatched) return anime.finished ? 'finished' : 'dropped';
   if (airing && (airing.isToday || airing.isTomorrow || airing.hasAired)) return 'airing';
   if (total > 0 && ep >= total) return 'finished';
@@ -33,7 +35,7 @@ const AnimeCard = ({
 }) => {
   const [imgLoaded, setImgLoaded] = useState(false);
   const [episodeFeedback, setEpisodeFeedback] = useState(0);
-  const airing = airingData[anime.id];
+  const airing = trackingAiring(anime, airingData[anime.id]);
   const airingBadge = airing ? (
     airing.hasAired ? 'airing-new' :
     airing.isToday ? 'airing-today' :
@@ -74,49 +76,15 @@ const AnimeCard = ({
 
   // Some providers omit the total episode count. Progress can still be tracked,
   // so only hide the shortcut when the anime is watched or definitively complete.
-  const showQuickEp = !!onIncrementEpisode && !isWatched && !isComplete;
+  const showQuickEp = !!onIncrementEpisode && !isWatched && !isComplete && !anime.paused;
   const handleQuickEp = (e) => {
     e.stopPropagation();
     setEpisodeFeedback((value) => value + 1);
     onIncrementEpisode(anime.id, 1);
   };
 
-  return (
-    <div
-      className={`anime-card fade-in status-${status} ${airingBadge ? 'has-airing' : ''} ${airingHoverText ? 'has-airing-later' : ''} ${isDraggable ? 'draggable' : ''} ${isHighRated ? 'high-rated' : ''}`}
-      onClick={(e) => onClick && onClick(e, anime, day, isWatchLater, isWatched)}
-      draggable={isDraggable}
-      onDragStart={isDraggable && onDragStart ? (e) => onDragStart(e, anime, day) : undefined}
-      onDragEnd={isDraggable ? onDragEnd : undefined}
-      onDragOver={isDraggable && cardIndex != null && onDragOver ? (e) => onDragOver(e, cardDay, cardIndex) : undefined}
-      onTouchStart={isDraggable && onTouchStart ? (e) => onTouchStart(e, anime, day) : undefined}
-      onTouchMove={isDraggable && onTouchMove ? (e) => onTouchMove(e, day) : undefined}
-      onTouchEnd={isDraggable ? onTouchEnd : undefined}
-      onTouchCancel={isDraggable ? onTouchCancel : undefined}
-    >
-      <div className="anime-card-image">
-        <div className="anime-card-blur" style={{ backgroundImage: anime.imageSm ? `url(${anime.imageSm})` : 'none' }} aria-hidden="true" />
-        <img
-          src={anime.image || anime.imageSm}
-          alt={anime.title}
-          loading="lazy"
-          decoding="async"
-          draggable="false"
-          onError={handleImgError}
-          onLoad={() => setImgLoaded(true)}
-          className={imgLoaded ? 'loaded' : 'loading'}
-        />
-        <div className="img-fallback" style={{ display: 'none' }}>{anime.title?.charAt(0) || '?'}</div>
-
-        {/* Top-left affordances */}
-        {isDraggable && <span className="anime-card-grip" aria-hidden="true">⋮⋮</span>}
-
-        {/* Top-right: rating */}
-        {anime.rating > 0 && (
-          <div className="anime-card-score">⭐ {Number(anime.rating).toFixed(1)}</div>
-        )}
-
-        {/* Hover-only quick actions */}
+  const showTracking = !!day || isWatchLater || isWatched || anime.currentEp != null;
+  const quickActions = (
         <div className="anime-card-quick">
           {showQuickEp && (
             <button
@@ -159,6 +127,47 @@ const AnimeCard = ({
             </a>
           )}
         </div>
+  );
+
+  return (
+    <div
+      data-anime-id={anime.id}
+      className={`anime-card fade-in ${showTracking ? 'tracked-card' : ''} status-${status} ${airingBadge ? 'has-airing' : ''} ${airingHoverText ? 'has-airing-later' : ''} ${isDraggable ? 'draggable' : ''} ${isHighRated ? 'high-rated' : ''}`}
+      onClick={(e) => onClick && onClick(e, anime, day, isWatchLater, isWatched)}
+      draggable={isDraggable}
+      onDragStart={isDraggable && onDragStart ? (e) => onDragStart(e, anime, day) : undefined}
+      onDragEnd={isDraggable ? onDragEnd : undefined}
+      onDragOver={isDraggable && cardIndex != null && onDragOver ? (e) => onDragOver(e, cardDay, cardIndex) : undefined}
+      onTouchStart={isDraggable && onTouchStart ? (e) => onTouchStart(e, anime, day) : undefined}
+      onTouchMove={isDraggable && onTouchMove ? (e) => onTouchMove(e, day) : undefined}
+      onTouchEnd={isDraggable ? onTouchEnd : undefined}
+      onTouchCancel={isDraggable ? onTouchCancel : undefined}
+    >
+      <div className="anime-card-image">
+        <div className="anime-card-blur" style={{ backgroundImage: anime.imageSm ? `url(${anime.imageSm})` : 'none' }} aria-hidden="true" />
+        <img
+          src={anime.image || anime.imageSm}
+          alt={anime.title}
+          loading="lazy"
+          decoding="async"
+          draggable="false"
+          onError={handleImgError}
+          onLoad={() => setImgLoaded(true)}
+          className={imgLoaded ? 'loaded' : 'loading'}
+        />
+        <div className="img-fallback" style={{ display: 'none' }}>{anime.title?.charAt(0) || '?'}</div>
+
+        {/* Top-left affordances */}
+        {anime.paused && !isWatched && <span className="card-paused-badge">En pausa</span>}
+        {isDraggable && <span className="anime-card-grip" aria-hidden="true">⋮⋮</span>}
+
+        {/* Top-right: rating */}
+        {anime.rating > 0 && (
+          <div className="anime-card-score">⭐ {Number(anime.rating).toFixed(1)}</div>
+        )}
+
+        {/* Hover-only quick actions */}
+        {!showTracking && quickActions}
 
         {/* Airing pulse */}
         {airingBadge && (
@@ -180,7 +189,7 @@ const AnimeCard = ({
         </div>
 
         {/* Slim progress bar at the very bottom of the cover */}
-        {(hasProgress || isComplete) && (
+        {!showTracking && (hasProgress || isComplete) && (
           <div className="anime-card-progress" aria-label={`${ep} de ${total} episodios`}>
             <div className={`anime-card-progress-fill ${isComplete ? 'complete' : ''}`} style={{ width: `${pct}%` }} />
           </div>
@@ -193,6 +202,14 @@ const AnimeCard = ({
           </div>
         )}
       </div>
+      {showTracking && <div className="card-tracking">
+        <div className="card-progress-copy">
+          <strong>{anime.currentSeason ? `T${anime.currentSeason} · ` : ''}{ep}{total > 0 ? `/${total}` : ep === 1 ? ' episodio' : ' episodios'}</strong>
+          <span>{anime.paused && !isWatched ? `En pausa${day ? ` · ${day}` : ''}` : total > 0 ? (isComplete ? 'Al día' : `Faltan ${Math.max(0, total - ep)}`) : 'Total por confirmar'}</span>
+        </div>
+        {quickActions}
+        {total > 0 && <div className="card-progress-track" role="progressbar" aria-label="Progreso de episodios" aria-valuemin={0} aria-valuemax={total} aria-valuenow={Math.min(ep, total)}><span style={{ width: `${pct}%` }} /></div>}
+      </div>}
     </div>
   );
 };

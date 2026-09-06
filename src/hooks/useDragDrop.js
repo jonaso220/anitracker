@@ -182,10 +182,13 @@ export function useDragDrop(schedule, setSchedule, daysOfWeek) {
 
           // Calcular índice de inserción basado en las tarjetas de la fila
           const cards = dayRow.querySelectorAll('.anime-card');
-          let idx = cards.length;
+          let idx = (schedule[detectedDay] || []).length;
           for (let i = 0; i < cards.length; i++) {
             const rect = cards[i].getBoundingClientRect();
-            if (touch.clientX < rect.left + rect.width / 2) { idx = i; break; }
+            if (touch.clientY < rect.bottom && touch.clientX < rect.left + rect.width / 2) {
+              const originalIndex = (schedule[detectedDay] || []).findIndex((item) => String(item.id) === cards[i].dataset.animeId);
+              idx = originalIndex >= 0 ? originalIndex : i; break;
+            }
           }
           dropIndexRef.current = idx;
           setDropIndex(idx);

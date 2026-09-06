@@ -17,6 +17,7 @@ const ScheduleView = ({
   handleDrop, handleTouchStart, handleTouchMove, handleTouchEnd, handleTouchCancel, touchRef,
 }) => {
   const today = todayDayName();
+  const paused = daysOfWeek.flatMap((day) => (schedule[day] || []).filter((anime) => anime.paused).map((anime) => ({ ...anime, _day: day })));
 
   return (
     <div className="schedule-rows" role="region" aria-label="Horario semanal">
@@ -28,7 +29,7 @@ const ScheduleView = ({
       />
       {airingError && <ApiErrorState error={airingError} onRetry={retryAiring} />}
       {daysOfWeek.map((day, i) => {
-        const items = schedule[day] || [];
+        const items = (schedule[day] || []).filter((anime) => !anime.paused);
         const isEmpty = items.length === 0;
         const isToday = day === today;
         return (
@@ -49,9 +50,9 @@ const ScheduleView = ({
               <div className="day-animes">
                 {items.map((a, idx) => (
                   <React.Fragment key={a.id}>
-                    {dropTarget === day && dropIndex === idx && isDragging && dragState.anime?.id !== a.id && <div className="drop-indicator" />}
+                    {dropTarget === day && dropIndex === (schedule[day] || []).findIndex((item) => item.id === a.id) && isDragging && dragState.anime?.id !== a.id && <div className="drop-indicator" />}
                     <AnimeCard
-                      anime={a} day={day} cardIndex={idx} cardDay={day} airingData={airingData} isDraggable
+                      anime={a} day={day} cardIndex={(schedule[day] || []).findIndex((item) => item.id === a.id)} cardDay={day} airingData={airingData} isDraggable
                       onDragStart={handleDragStart}
                       onDragEnd={handleDragEnd}
                       onDragOver={handleDragOverCard}
@@ -65,7 +66,7 @@ const ScheduleView = ({
                         setShowAnimeDetail({ ...a, _day: day, _isWatchLater: false, _isWatched: false, _isSeason: false });
                       }}
                     />
-                    {dropTarget === day && dropIndex === idx + 1 && idx === items.length - 1 && isDragging && <div className="drop-indicator" />}
+                    {dropTarget === day && dropIndex === (schedule[day] || []).findIndex((item) => item.id === a.id) + 1 && idx === items.length - 1 && isDragging && <div className="drop-indicator" />}
                   </React.Fragment>
                 ))}
               </div>
@@ -78,6 +79,15 @@ const ScheduleView = ({
           </section>
         );
       })}
+      {paused.length > 0 && (
+        <section className="paused-section" aria-labelledby="paused-title">
+          <div className="paused-heading"><h2 id="paused-title">En pausa <span>{paused.length}</span></h2><p>Retomá cuando quieras. Tu progreso y tu día quedan guardados.</p></div>
+          <div className="paused-grid">
+            {paused.map((anime) => <AnimeCard key={`${anime._day}:${anime.id}`} anime={anime} day={anime._day}
+              onClick={() => setShowAnimeDetail({ ...anime, _isWatchLater: false, _isWatched: false })} />)}
+          </div>
+        </section>
+      )}
     </div>
   );
 };

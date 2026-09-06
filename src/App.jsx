@@ -38,6 +38,7 @@ import { useDiscovery } from './hooks/useDiscovery';
 import { useDirectory } from './hooks/useDirectory';
 import { useServiceWorkerUpdate } from './hooks/useServiceWorkerUpdate';
 import { daysOfWeek } from './constants';
+import { totalTrackedEpisodes } from './tracking';
 import { buildBackup } from './utils';
 import { readActiveLibrary } from './accountStorage';
 
@@ -205,7 +206,7 @@ export default function AnimeTracker() {
       totalWatchLater: watchLater.length,
       finished: watchedList.filter((a) => a.finished).length,
       dropped: watchedList.filter((a) => !a.finished).length,
-      totalEps: allAnime.reduce((sum, a) => sum + (a.currentEp || 0), 0),
+      totalEps: allAnime.reduce((sum, a) => sum + totalTrackedEpisodes(a), 0),
       avgRating: rated.length > 0 ? (rated.reduce((s, a) => s + a.userRating, 0) / rated.length).toFixed(1) : '—',
       topGenres: Object.entries(genreCount).sort((a, b) => b[1] - a[1]).slice(0, 8),
       allTotal: allAnime.length,
@@ -334,9 +335,11 @@ export default function AnimeTracker() {
 
       {showAnimeDetail && (
         <AnimeDetailModal
-          key={showAnimeDetail.id} showAnimeDetail={showAnimeDetail} setShowAnimeDetail={setShowAnimeDetail}
+          key={`${showAnimeDetail.id}:${showAnimeDetail.currentSeason || 1}`} showAnimeDetail={showAnimeDetail} setShowAnimeDetail={setShowAnimeDetail}
           airingData={airingData}
           updateEpisode={actions.updateEpisode} updateUserRating={actions.updateUserRating}
+          setEpisodeNumber={actions.setEpisodeNumber} setAnimeSeason={actions.setAnimeSeason}
+          setAnimePaused={actions.setAnimePaused}
           updateAnimeLink={actions.updateAnimeLink}
           mergeAnimeExtras={actions.mergeAnimeExtras}
           markAsFinished={actions.markAsFinished} dropAnime={actions.dropAnime} deleteAnime={actions.deleteAnime}

@@ -9,7 +9,7 @@ function TodayItem({ anime, onDetail, onIncrementEpisode, showDay = false }) {
         <img src={anime.imageSm || anime.image} alt="" loading="lazy" decoding="async" />
         <span className="today-item-copy">
           <strong>{anime.title}</strong>
-          <small>{dayLabel}Ver episodio {anime._nextToWatch}{pendingLabel}</small>
+          <small>{dayLabel}{anime.currentSeason ? `T${anime.currentSeason} · ` : ''}Ver episodio {anime._nextToWatch}{pendingLabel}</small>
         </span>
       </button>
       <button className="today-quick" onClick={() => onIncrementEpisode(anime.id, 1)} aria-label={`Marcar episodio ${anime._nextToWatch} de ${anime.title}`}>+1</button>
