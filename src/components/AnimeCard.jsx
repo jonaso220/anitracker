@@ -28,6 +28,7 @@ const AnimeCard = ({
   onTouchStart,
   onTouchMove,
   onTouchEnd,
+  onTouchCancel,
   onIncrementEpisode,
 }) => {
   const [imgLoaded, setImgLoaded] = useState(false);
@@ -91,6 +92,7 @@ const AnimeCard = ({
       onTouchStart={isDraggable && onTouchStart ? (e) => onTouchStart(e, anime, day) : undefined}
       onTouchMove={isDraggable && onTouchMove ? (e) => onTouchMove(e, day) : undefined}
       onTouchEnd={isDraggable ? onTouchEnd : undefined}
+      onTouchCancel={isDraggable ? onTouchCancel : undefined}
     >
       <div className="anime-card-image">
         <div className="anime-card-blur" style={{ backgroundImage: anime.imageSm ? `url(${anime.imageSm})` : 'none' }} aria-hidden="true" />

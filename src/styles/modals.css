@@ -987,3 +987,7 @@ a.provider-chip:hover { border-color: var(--border-brand-strong); transform: tra
   transform: translateY(-1px);
   box-shadow: var(--shadow-sm);
 }
+
+.ep-control-btn:disabled,
+.binge-quick-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+.detail-link-error { color: #f87171; font-size: 0.85rem; margin: -0.5rem 0 1rem; }

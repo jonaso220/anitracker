@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import StarRating from '../StarRating';
+import { changeEpisode } from '../../libraryEdits';
 import { sanitizeUrl, pruneTranslationCache } from '../../constants';
 import { translateEnToEs } from '../../services/translationService';
 import { getPlatformInfo, formatAiringDate, looksSpanish, getDisplayStreamingLinks, pickAutoWatchLink } from '../../utils';
@@ -38,23 +39,32 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
     const [localRating, setLocalRating] = useState(showAnimeDetail?.userRating || 0);
     const [localLink, setLocalLink] = useState(showAnimeDetail?.watchLink || '');
     const [showLinkInput, setShowLinkInput] = useState(false);
+    const [linkError, setLinkError] = useState('');
     const [translatedSynopsis, setTranslatedSynopsis] = useState(initialSynopsis.text);
     const [isTranslating, setIsTranslating] = useState(initialSynopsis.needsFetch);
     const [translationFailed, setTranslationFailed] = useState(false);
     const [retryNonce, setRetryNonce] = useState(0);
     const [bingeMode, setBingeMode] = useState(false);
     const [bingeCount, setBingeCount] = useState(0);
-    const [bingeStart] = useState(() => Date.now());
+    const [bingeClock, setBingeClock] = useState({ startedAt: null, elapsedMs: 0 });
     const [bingeMinutes, setBingeMinutes] = useState(0);
     const [showListPicker, setShowListPicker] = useState(false);
 
     useEffect(() => {
         if (!bingeMode) return undefined;
-        const updateElapsed = () => setBingeMinutes(Math.round((Date.now() - bingeStart) / 60000));
+        const updateElapsed = () => setBingeMinutes(Math.floor((bingeClock.elapsedMs + Date.now() - bingeClock.startedAt) / 60000));
         updateElapsed();
         const intervalId = setInterval(updateElapsed, 30000);
         return () => clearInterval(intervalId);
-    }, [bingeMode, bingeStart]);
+    }, [bingeMode, bingeClock]);
+
+    const toggleBinge = () => {
+        const now = Date.now();
+        setBingeClock((clock) => bingeMode
+            ? { startedAt: null, elapsedMs: clock.elapsedMs + now - clock.startedAt }
+            : { ...clock, startedAt: now });
+        setBingeMode(!bingeMode);
+    };
 
     // Only fetch translation if needed (not already Spanish or cached)
     useEffect(() => {
@@ -146,11 +156,31 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
     // platforms first and dead ones (HIDIVE) last. "Ver ahora" never points to
     // a dead platform even if it's stored as watchLink.
     const streamingLinks = getDisplayStreamingLinks(a);
-    const effectiveWatchLink = pickAutoWatchLink(a);
+    const effectiveWatchLink = sanitizeUrl(pickAutoWatchLink(a));
     const trailerUrl = a.trailerUrl || tmdbExtras?.trailerUrl || '';
     const providers = tmdbExtras?.providers;
     const hasProviders = !!providers && (providers.flatrate.length > 0 || providers.rent.length > 0 || providers.buy.length > 0);
     const showWhereToWatch = streamingLinks.length > 0 || isTmdbItem || trailerUrl;
+    const episodeComplete = a.episodes > 0 && localEp >= a.episodes;
+    const changeLocalEpisode = (delta) => {
+        const next = changeEpisode(localEp, delta, a.episodes);
+        updateEpisode(a.id, delta);
+        setLocalEp(next);
+        if (bingeMode) setBingeCount((count) => Math.max(0, count + next - localEp));
+    };
+    const saveLink = () => {
+        const link = localLink.trim();
+        if (link && !sanitizeUrl(link)) {
+            setLinkError('Pegá un enlace válido que empiece con https:// o http://.');
+            return;
+        }
+        updateAnimeLink(a.id, link);
+        setLocalLink(link);
+        setLinkError('');
+        setShowAnimeDetail({ ...a, watchLink: link });
+        setShowLinkInput(false);
+    };
+
 
     return (
         <div
@@ -260,14 +290,14 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                     <div className="detail-section">
                         <div className="detail-section-header">
                             <h4>📺 Episodio actual</h4>
-                            <button className={`binge-toggle ${bingeMode ? 'active' : ''}`} onClick={() => setBingeMode(!bingeMode)}>
+                            <button className={`binge-toggle ${bingeMode ? 'active' : ''}`} onClick={toggleBinge}>
                                 {bingeMode ? '🔥 Maratón' : '🔥 Maratón'}
                             </button>
                         </div>
                         <div className="episode-controls">
-                            <button className="ep-control-btn" onClick={() => { updateEpisode(a.id, -1); setLocalEp(p => Math.max(0, p - 1)); }}>−</button>
+                            <button className="ep-control-btn" disabled={localEp <= 0} onClick={() => changeLocalEpisode(-1)}>−</button>
                             <span className="ep-number">{localEp}</span>
-                            <button className="ep-control-btn" onClick={() => { updateEpisode(a.id, 1); setLocalEp(p => p + 1); }}>+</button>
+                            <button className="ep-control-btn" disabled={episodeComplete} onClick={() => changeLocalEpisode(1)}>+</button>
                         </div>
                         {airing && (
                             <p className={`detail-next-ep ${airing.hasAired ? 'aired' : airing.isToday ? 'today' : ''}`}>
@@ -280,19 +310,13 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                             <div className="binge-panel fade-in">
                                 <div className="binge-quick-btns">
                                     {[1, 3, 5].map(n => (
-                                        <button key={n} className="binge-quick-btn" onClick={() => {
-                                            updateEpisode(a.id, n);
-                                            setBingeCount(prev => prev + n);
-                                            setLocalEp(p => p + n);
-                                        }}>+{n} ep{n > 1 ? 's' : ''}</button>
+                                        <button key={n} className="binge-quick-btn" disabled={episodeComplete} onClick={() => changeLocalEpisode(n)}>+{n} ep{n > 1 ? 's' : ''}</button>
                                     ))}
                                 </div>
-                                {bingeCount > 0 && (
-                                    <div className="binge-stats">
-                                        <span className="binge-stat">🔥 {bingeCount} ep{bingeCount > 1 ? 's' : ''} esta sesión</span>
+                                <div className="binge-stats">
+                                        <span className="binge-stat">🔥 {bingeCount} ep{bingeCount !== 1 ? 's' : ''} esta sesión</span>
                                         <span className="binge-stat">⏱ {bingeMinutes} min</span>
-                                    </div>
-                                )}
+                                </div>
                             </div>
                         )}
                     </div>
@@ -314,15 +338,13 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                         </div>
                     ) : (
                         <div className="detail-link-edit">
-                            <input type="url" placeholder="Pegá una URL..." value={localLink} onChange={e => setLocalLink(e.target.value)} />
-                            <button className="save-link-btn" onClick={() => {
-                                updateAnimeLink(a.id, localLink);
-                                setShowAnimeDetail({ ...a, watchLink: localLink });
-                                setShowLinkInput(false);
-                            }}>Guardar</button>
+                            <input type="url" placeholder="Pegá una URL..." value={localLink} aria-label="Enlace para ver" aria-invalid={!!linkError} aria-describedby={linkError ? "watch-link-error" : undefined} onChange={e => { setLocalLink(e.target.value); setLinkError(''); }} onKeyDown={e => { if (e.key === 'Enter') saveLink(); }} />
+                            <button className="save-link-btn" onClick={saveLink}>Guardar</button>
                         </div>
                     )}
                 </div>
+
+                {linkError && <p id="watch-link-error" className="detail-link-error" role="alert">{linkError}</p>}
 
                 {customLists.length > 0 && (
                     <div className="detail-section">

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 
 export function useDragDrop(schedule, setSchedule, daysOfWeek) {
   const [dragState, setDragState] = useState({ anime: null, fromDay: null });
@@ -11,32 +11,50 @@ export function useDragDrop(schedule, setSchedule, daysOfWeek) {
   const touchRef = useRef({ timer: null, active: false, anime: null, fromDay: null, startY: 0, ghost: null });
   const dropTargetRef = useRef(null); // Ref para acceso síncrono en touch
 
+  const resetTimerRef = useRef(null);
+  const mouseTimerRef = useRef(null);
+  useEffect(() => () => {
+    clearTimeout(touchRef.current.timer);
+    clearTimeout(resetTimerRef.current);
+    clearTimeout(mouseTimerRef.current);
+    touchRef.current.ghost?.remove();
+  }, []);
+
   // --- Logic Helpers ---
   const insertAnimeAtPosition = (anime, fromDay, toDay, index) => {
     setSchedule(prev => {
+      if (!daysOfWeek.includes(toDay)) return prev;
+      const current = prev[fromDay]?.find((a) => a.id === anime.id) || anime;
+      const destination = prev[toDay] || [];
+      const removedIndex = destination.findIndex((a) => a.id === anime.id);
+      const adjustedIndex = index == null ? destination.length : index - (removedIndex >= 0 && removedIndex < index ? 1 : 0);
       const next = { ...prev };
       if (fromDay) {
         next[fromDay] = next[fromDay].filter(a => a.id !== anime.id);
       }
       const filtered = (next[toDay] || []).filter(a => a.id !== anime.id);
-      const clampedIdx = Math.min(index ?? filtered.length, filtered.length);
-      next[toDay] = [...filtered.slice(0, clampedIdx), anime, ...filtered.slice(clampedIdx)];
+      const clampedIdx = Math.max(0, Math.min(adjustedIndex, filtered.length));
+      next[toDay] = [...filtered.slice(0, clampedIdx), current, ...filtered.slice(clampedIdx)];
       return next;
     });
   };
 
   // --- Mouse Handlers ---
   const handleDragStart = (e, anime, fromDay) => {
+    dropTargetRef.current = null;
+    dropIndexRef.current = null;
     dragRef.current = { anime, fromDay };
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', anime.id.toString());
-    setTimeout(() => {
+    mouseTimerRef.current = setTimeout(() => {
       setDragState({ anime, fromDay });
       setIsDragging(true);
     }, 0);
   };
 
   const handleDragEnd = () => {
+    clearTimeout(mouseTimerRef.current);
+    dropTargetRef.current = null;
     dragRef.current = { anime: null, fromDay: null };
     setDragState({ anime: null, fromDay: null });
     setIsDragging(false);
@@ -48,6 +66,11 @@ export function useDragDrop(schedule, setSchedule, daysOfWeek) {
   const handleDragOverRow = (e, day) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
+    if (dropTargetRef.current !== day) {
+      dropIndexRef.current = null;
+      setDropIndex(null);
+    }
+    dropTargetRef.current = day;
     if (dropTarget !== day) setDropTarget(day);
     if (!schedule[day] || schedule[day].length === 0) {
       dropIndexRef.current = 0;
@@ -61,6 +84,7 @@ export function useDragDrop(schedule, setSchedule, daysOfWeek) {
     e.dataTransfer.dropEffect = 'move';
     if (dropTarget !== day) setDropTarget(day);
     
+    dropTargetRef.current = day;
     const rect = e.currentTarget.getBoundingClientRect();
     const midX = rect.left + rect.width / 2;
     const idx = e.clientX < midX ? cardIndex : cardIndex + 1;
@@ -83,6 +107,16 @@ export function useDragDrop(schedule, setSchedule, daysOfWeek) {
 
   // --- Touch Handlers (Mobile) ---
   const handleTouchStart = (e, anime, day) => {
+    if (e.target?.closest?.('button, a, input, select, textarea')) return;
+    clearTimeout(resetTimerRef.current);
+    clearTimeout(touchRef.current.timer);
+    touchRef.current.ghost?.remove();
+    touchRef.current.active = false;
+    touchRef.current.ghost = null;
+    dropTargetRef.current = null;
+    dropIndexRef.current = null;
+    setDropTarget(null);
+    setDropIndex(null);
     const touch = e.touches[0];
     touchRef.current.startY = touch.clientY;
     touchRef.current.startX = touch.clientX;
@@ -162,14 +196,14 @@ export function useDragDrop(schedule, setSchedule, daysOfWeek) {
     }
   };
 
-  const handleTouchEnd = () => {
+  const finishTouch = (cancelled = false) => {
     if (touchRef.current.timer) clearTimeout(touchRef.current.timer);
     if (touchRef.current.ghost) touchRef.current.ghost.remove();
 
     const target = dropTargetRef.current;
     const idx = dropIndexRef.current;
 
-    if (touchRef.current.active && touchRef.current.anime && target) {
+    if (!cancelled && touchRef.current.active && touchRef.current.anime && target) {
       insertAnimeAtPosition(touchRef.current.anime, touchRef.current.fromDay, target, idx);
     }
 
@@ -186,15 +220,18 @@ export function useDragDrop(schedule, setSchedule, daysOfWeek) {
     handleDragEnd();
 
     // Delay full reset so onClick can still check moved/active flags
-    setTimeout(() => {
+    resetTimerRef.current = setTimeout(() => {
       touchRef.current = { timer: null, active: false, anime: null, fromDay: null, startY: 0, startX: 0, ghost: null, moved: false };
     }, 0);
   };
+
+  const handleTouchEnd = () => finishTouch();
+  const handleTouchCancel = () => finishTouch(true);
 
   return {
     dragState, isDragging, dropTarget, dropIndex, setDropTarget, setDropIndex,
     dropIndexRef, dropTargetRef, touchRef, // Exponemos refs para integración fina
     handleDragStart, handleDragEnd, handleDragOverRow, handleDragOverCard, handleDrop,
-    handleTouchStart, handleTouchMove, handleTouchEnd
+    handleTouchStart, handleTouchMove, handleTouchEnd, handleTouchCancel
   };
 }

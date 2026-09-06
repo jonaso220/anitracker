@@ -14,7 +14,7 @@ const ScheduleView = ({
   schedule, airingData, airingError, retryAiring, setShowAnimeDetail, updateEpisode,
   dragState, isDragging, dropTarget, dropIndex,
   handleDragStart, handleDragEnd, handleDragOverRow, handleDragOverCard,
-  handleDrop, handleTouchStart, handleTouchMove, handleTouchEnd, touchRef,
+  handleDrop, handleTouchStart, handleTouchMove, handleTouchEnd, handleTouchCancel, touchRef,
 }) => {
   const today = todayDayName();
 
@@ -58,6 +58,7 @@ const ScheduleView = ({
                       onTouchStart={handleTouchStart}
                       onTouchMove={handleTouchMove}
                       onTouchEnd={handleTouchEnd}
+                      onTouchCancel={handleTouchCancel}
                       onIncrementEpisode={updateEpisode}
                       onClick={() => {
                         if (touchRef.current.moved || touchRef.current.active) return;
