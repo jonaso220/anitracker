@@ -284,7 +284,7 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                     <h4>🔗 Link</h4>
                     {effectiveWatchLink && !showLinkInput ? (
                         <div className="detail-link-row">
-                            <a href={sanitizeUrl(effectiveWatchLink)} target="_blank" rel="noopener noreferrer" className="platform-btn watch">▶ Ver ahora</a>
+                            <a href={sanitizeUrl(effectiveWatchLink)} target="_blank" rel="noopener noreferrer" className="platform-btn watch" style={{ '--platform-color': getPlatformInfo(effectiveWatchLink).color }}>▶ Ver ahora</a>
                             <button className="detail-action-sm" onClick={() => setShowLinkInput(true)}>✏️ Editar</button>
                         </div>
                     ) : (
