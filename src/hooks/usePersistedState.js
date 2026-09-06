@@ -4,8 +4,9 @@ import { useEffect, useState, useRef } from 'react';
  * `useState` that mirrors its value to localStorage. Falls back to `initialValue`
  * if the key is missing or JSON parsing fails.
  */
-export function usePersistedState(key, initialValue) {
+export function usePersistedState(key, initialValue, restoredValue) {
   const [value, setValue] = useState(() => {
+    if (restoredValue !== undefined) return restoredValue;
     try {
       const raw = localStorage.getItem(key);
       return raw != null ? JSON.parse(raw) : (typeof initialValue === 'function' ? initialValue() : initialValue);

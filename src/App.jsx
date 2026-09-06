@@ -39,6 +39,7 @@ import { useDirectory } from './hooks/useDirectory';
 import { useServiceWorkerUpdate } from './hooks/useServiceWorkerUpdate';
 import { daysOfWeek } from './constants';
 import { buildBackup } from './utils';
+import { readActiveLibrary } from './accountStorage';
 
 const EMPTY_SCHEDULE = { 'Lunes': [], 'Martes': [], 'Miércoles': [], 'Jueves': [], 'Viernes': [], 'Sábado': [], 'Domingo': [] };
 
@@ -66,10 +67,11 @@ export default function AnimeTracker() {
     } catch { /* empty */ }
     return true;
   });
-  const [schedule, setSchedule, scheduleRef] = usePersistedState('animeSchedule', () => ({ ...EMPTY_SCHEDULE }));
-  const [watchedList, setWatchedList, watchedListRef] = usePersistedState('watchedAnimes', []);
-  const [watchLater, setWatchLater, watchLaterRef] = usePersistedState('watchLater', []);
-  const [customLists, setCustomLists, customListsRef] = usePersistedState('anitracker-custom-lists', []);
+  const [accountSnapshot] = useState(readActiveLibrary);
+  const [schedule, setSchedule, scheduleRef] = usePersistedState('animeSchedule', () => ({ ...EMPTY_SCHEDULE }), accountSnapshot?.data.schedule);
+  const [watchedList, setWatchedList, watchedListRef] = usePersistedState('watchedAnimes', [], accountSnapshot?.data.watchedList);
+  const [watchLater, setWatchLater, watchLaterRef] = usePersistedState('watchLater', [], accountSnapshot?.data.watchLater);
+  const [customLists, setCustomLists, customListsRef] = usePersistedState('anitracker-custom-lists', [], accountSnapshot?.data.customLists);
   const [discoveryPreferences, setDiscoveryPreferences] = usePersistedState('anitracker-discovery-preferences', {
     personalized: true, hideAdded: true, genre: 'all', platform: 'all',
   });
@@ -77,7 +79,7 @@ export default function AnimeTracker() {
 
   // --- Hooks ---
   const { toast, showToast, dismissToast, undoToast } = useToast();
-  const { user, syncing, syncError, loginWithGoogle, logout, FIREBASE_ENABLED } = useFirebase(
+  const { user, syncing, syncError, retrySync, authError, authReady, authBusy, loginWithGoogle, logout, FIREBASE_ENABLED } = useFirebase(
     schedule, watchedList, watchLater, customLists, setSchedule, setWatchedList, setWatchLater, setCustomLists
   );
   const { searchQuery, setSearchQuery, searchResults, setSearchResults, isSearching, searchPartial, airingData, airingError, retryAiring, handleSearch } = useAnimeData(schedule);
@@ -86,6 +88,24 @@ export default function AnimeTracker() {
   const { updateAvailable, applyUpdate } = useServiceWorkerUpdate();
   const discovery = useDiscovery();
   const directory = useDirectory();
+  const exitBulkMode = bulk.exitBulkMode;
+  useEffect(() => {
+    // Old modals/undo callbacks must not write one account's data into another.
+    const closeAccountUI = () => {
+      dismissToast();
+      setShowAnimeDetail(null);
+      setShowDayPicker(null);
+      setShowMoveDayPicker(null);
+      setShowSearch(false);
+      setShowImport(false);
+      setShowBackup(false);
+      setShowBulkDayPicker(false);
+      setSearchQuery('');
+      exitBulkMode();
+    };
+    window.addEventListener('anitracker-account-changed', closeAccountUI);
+    return () => window.removeEventListener('anitracker-account-changed', closeAccountUI);
+  }, [dismissToast, setSearchQuery, exitBulkMode]);
 
   const actions = useAnimeActions({
     schedule, setSchedule, scheduleRef,
@@ -199,6 +219,7 @@ export default function AnimeTracker() {
       <Header
         darkMode={darkMode} setDarkMode={setDarkMode}
         user={user} syncing={syncing} syncError={syncError} loginWithGoogle={loginWithGoogle} logout={logout} firebaseEnabled={FIREBASE_ENABLED}
+        authError={authError} authReady={authReady} authBusy={authBusy} onRetrySync={retrySync}
         onOpenSearch={() => setShowSearch(true)} onOpenImport={() => setShowImport(true)}
         onOpenBackup={() => setShowBackup(true)}
       />

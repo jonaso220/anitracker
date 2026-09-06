@@ -29,7 +29,7 @@ function writeAiringCache(data, currentIds) {
 }
 
 export function useAnimeData(schedule) {
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchPartial, setSearchPartial] = useState([]);
@@ -85,12 +85,28 @@ export function useAnimeData(schedule) {
   }, [schedule, airingRetry]);
 
   // --- Search ---
+  const setSearchQuery = useCallback((query) => {
+    // Invalidate immediately, including during the debounce and on modal close.
+    searchIdRef.current += 1;
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchAbortRef.current?.abort();
+    setQuery(query);
+    setSearchResults([]);
+    setSearchPartial([]);
+    setIsSearching(false);
+  }, []);
+
   const performSearch = useCallback(async (query) => {
-    if (!query || query.length < 2) { setSearchResults([]); setSearchPartial([]); return; }
     const id = ++searchIdRef.current;
 
     // Cancel previous in-flight search
     if (searchAbortRef.current) searchAbortRef.current.abort();
+    if (!query || query.trim().length < 2) {
+      setSearchResults([]);
+      setSearchPartial([]);
+      setIsSearching(false);
+      return;
+    }
     const controller = new AbortController();
     searchAbortRef.current = controller;
 
@@ -114,9 +130,10 @@ export function useAnimeData(schedule) {
 
   const handleSearch = useCallback((query) => {
     setSearchQuery(query);
-    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
-    searchDebounceRef.current = setTimeout(() => performSearch(query), SEARCH_DEBOUNCE_MS);
-  }, [performSearch]);
+    if (query.trim().length >= 2) {
+      searchDebounceRef.current = setTimeout(() => performSearch(query), SEARCH_DEBOUNCE_MS);
+    }
+  }, [performSearch, setSearchQuery]);
 
   // Clean up any pending work on unmount
   useEffect(() => () => {

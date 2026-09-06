@@ -13,7 +13,7 @@ const DayPickerModal = ({ showDayPicker, setShowDayPicker, watchLater, addToSche
                 <h3 id="day-picker-title">📅 ¿Qué día querés ver "{showDayPicker.title}"?</h3>
                 <div className="days-grid">{daysOfWeek.map(d => (
                     <button key={d} className="day-btn" onClick={() => {
-                        const fromWL = watchLater.some(a => a.id === showDayPicker.id);
+                        const fromWL = !showDayPicker._isWatched && watchLater.some(a => a.id === showDayPicker.id);
                         if (fromWL) moveFromWatchLaterToSchedule(showDayPicker, d);
                         else addToSchedule(showDayPicker, d);
                     }}>{d}</button>

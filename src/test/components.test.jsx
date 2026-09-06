@@ -377,6 +377,16 @@ describe('AnimeDetailModal', () => {
   });
   afterEach(() => { vi.restoreAllMocks(); });
 
+  it('custom lists offer editing and scheduling without invalid agenda actions', async () => {
+    render(<AnimeDetailModal {...baseProps} showAnimeDetail={{...detailAnime, _isDirectory: false, _isCustomList: true, _customListId: 'l1'}} setShowAnimeDetail={noop} />);
+    expect(screen.queryByRole('button', {name: '✓ Finalizar'})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: '✗ Dropear'})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: '↔ Mover día'})).not.toBeInTheDocument();
+    expect(screen.getByRole('button', {name: '📅 Añadir a semana'})).toBeInTheDocument();
+    expect(screen.getByRole('button', {name: '+'})).toBeInTheDocument();
+    await screen.findByText('🎬 Más de este anime');
+  });
+
   it('recommends related works at the end of the card and opens them on click', async () => {
     const setShowAnimeDetail = vi.fn();
     render(<AnimeDetailModal {...baseProps} showAnimeDetail={detailAnime} setShowAnimeDetail={setShowAnimeDetail} />);

@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 const Header = ({
   darkMode, setDarkMode,
   user, syncing, syncError, loginWithGoogle, logout, firebaseEnabled,
+  authError, authReady = true, authBusy = false, onRetrySync,
   onOpenSearch, onOpenImport, onOpenBackup,
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -121,8 +122,8 @@ const Header = ({
             <kbd className="search-input-hint" aria-hidden="true">⌘K</kbd>
           </button>
           {firebaseEnabled && !user && (
-            <button className="auth-btn google" onClick={loginWithGoogle} aria-label="Iniciar sesión con Google">
-              <span aria-hidden="true">🔑</span><span className="btn-label"> Google</span>
+            <button className="auth-btn google" onClick={loginWithGoogle} disabled={!authReady || authBusy} aria-busy={authBusy} aria-label="Iniciar sesión con Google">
+              <span aria-hidden="true">🔑</span><span className="btn-label">{authBusy ? ' Conectando…' : !authReady ? ' Cargando…' : ' Google'}</span>
             </button>
           )}
 
@@ -155,13 +156,14 @@ const Header = ({
                     <div className="user-menu-name">
                       <strong>{user.displayName || 'Usuario'}</strong>
                       {syncError ? (
-                        <span className="user-menu-syncing user-menu-sync-error">⚠️ No se pudo guardar en la nube — reintentando</span>
+                        <span className="user-menu-syncing user-menu-sync-error">⚠️ No se pudo sincronizar. Tus cambios siguen guardados en este dispositivo.</span>
                       ) : (
-                        syncing && <span className="user-menu-syncing">☁️ Sincronizando...</span>
+                        <span className="user-menu-syncing">{syncing ? '☁️ Sincronizando…' : '☁️ Sincronizado'}</span>
                       )}
                     </div>
                   </div>
                 )}
+                {user && syncError && <button className="user-menu-item" role="menuitem" onClick={onRetrySync}>Reintentar sincronización</button>}
                 <button
                   className="user-menu-item"
                   role="menuitem"
@@ -201,6 +203,7 @@ const Header = ({
           </div>
         </div>
       </div>
+      {authError && <div className="auth-error" role="alert">{authError}</div>}
     </header>
   );
 };

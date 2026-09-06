@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { LOCAL_REV_KEY, readActiveLibrary, persistAccountLibrary, selectLibraryAccount } from '../accountStorage';
 
 // Firebase config — these are public Firebase Web SDK keys (safe to commit).
 // Security is enforced via Firebase Security Rules, not by hiding these values.
@@ -20,23 +21,37 @@ const FIREBASE_ENABLED = FIREBASE_CONFIG.apiKey !== "";
 
 let firebaseApp = null, firebaseAuth = null, firebaseDb = null;
 let auth = null, db = null;
+let initPromise = null;
 
-const initFirebase = async () => {
-  if (!FIREBASE_ENABLED || firebaseApp) return;
-  try {
+const initFirebase = () => {
+  if (firebaseAuth) return Promise.resolve();
+  if (initPromise) return initPromise;
+  initPromise = (async () => {
     const { initializeApp } = await import('firebase/app');
-    const { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signOut, onAuthStateChanged, browserLocalPersistence, setPersistence } = await import('firebase/auth');
+    const { getAuth, signInWithPopup, getRedirectResult, GoogleAuthProvider, signOut, onAuthStateChanged, browserLocalPersistence, setPersistence } = await import('firebase/auth');
     const { getFirestore, doc, setDoc, onSnapshot, serverTimestamp } = await import('firebase/firestore');
 
-    firebaseApp = initializeApp(FIREBASE_CONFIG);
+    firebaseApp ||= initializeApp(FIREBASE_CONFIG);
     auth = getAuth(firebaseApp);
     try { await setPersistence(auth, browserLocalPersistence); } catch { /* Persistence is best-effort. */ }
     db = getFirestore(firebaseApp);
 
-    firebaseAuth = { signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signOut, onAuthStateChanged };
+    firebaseAuth = { signInWithPopup, getRedirectResult, GoogleAuthProvider, signOut, onAuthStateChanged };
     firebaseDb = { doc, setDoc, onSnapshot, serverTimestamp };
-  } catch (e) { console.error('Firebase init error:', e); }
+  })().catch((error) => { initPromise = null; throw error; });
+  return initPromise;
 };
+
+function authMessage(error) {
+  switch (error?.code) {
+    case 'auth/popup-blocked': return 'El navegador bloqueó la ventana de Google. Permití las ventanas emergentes para esta app y volvé a intentarlo.';
+    case 'auth/popup-closed-by-user': return 'Se cerró el acceso de Google. Tocá Google para intentarlo otra vez.';
+    case 'auth/network-request-failed': return 'No se pudo conectar con Google. Revisá tu conexión y volvé a intentarlo.';
+    case 'auth/unauthorized-domain': return 'El dominio de esta app no está autorizado para iniciar sesión. Contactá al administrador.';
+    case 'auth/web-storage-unsupported': return 'El navegador no permite guardar la sesión. Habilitá el almacenamiento para esta app.';
+    default: return 'No se pudo iniciar sesión con Google. Volvé a intentarlo.';
+  }
+}
 
 const parseCloudField = (value, fallback) => {
   if (value == null) return fallback;
@@ -69,7 +84,6 @@ const EMPTY_SYNC_JSON = serializeData({ schedule: {}, watchedList: [], watchLate
 // cloud doc (older than our own edits, e.g. because previous saves failed)
 // apart from *newer* edits made on another device. Without it, the cloud
 // snapshot always wins on app open and a stale doc silently wipes local data.
-const LOCAL_REV_KEY = 'anitracker-local-rev';
 
 const SAVE_DEBOUNCE_MS = 2000;
 const RETRY_BASE_MS = 5000;
@@ -93,6 +107,20 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
   // True while saves are failing (rules, red, datos inválidos). Surfaced in the
   // header so a broken sync is visible instead of dying in la consola.
   const [syncError, setSyncError] = useState(false);
+  const [authError, setAuthError] = useState('');
+  const [authReady, setAuthReady] = useState(false);
+  const [authBusy, setAuthBusy] = useState(false);
+  const loginPending = useRef(false);
+  const [initialAccount] = useState(readActiveLibrary);
+  const ownerRef = useRef(initialAccount?.owner || null);
+  const [initialRevision] = useState(() => {
+    if (initialAccount) return initialAccount.rev;
+    try { return localStorage.getItem(LOCAL_REV_KEY); } catch { return null; }
+  });
+  const localRevRef = useRef(initialRevision);
+  const sessionRef = useRef(0);
+  const readRetryTimer = useRef(null);
+  const retrySyncRef = useRef(null);
   const hasLoadedUser = useRef(null);
   const syncTimer = useRef(null);
   const cloudUnsub = useRef(null);
@@ -114,6 +142,7 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
 
   const saveToCloud = useCallback(async (uid, json) => {
     if (!firebaseDb || !db || !uid) return false;
+    const session = sessionRef.current;
     setSyncing(true);
     try {
       // Parse the canonical JSON instead of sending the state objects: the
@@ -128,18 +157,20 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
         updatedAt: firebaseDb.serverTimestamp(),
         updatedAtIso: new Date().toISOString(),
       }, { merge: true });
+      if (session !== sessionRef.current) return false;
       lastSyncedRef.current = json;
       setSyncing(false);
       return true;
     } catch (e) {
       console.error('Save error:', e);
-      setSyncing(false);
+      if (session === sessionRef.current) setSyncing(false);
       return false;
     }
   }, []);
 
   const scheduleSave = useCallback((delay) => {
     if (syncTimer.current) clearTimeout(syncTimer.current);
+    setSyncing(true);
     syncTimer.current = setTimeout(() => {
       syncTimer.current = null;
       flushSaveRef.current?.();
@@ -154,8 +185,10 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
     const uid = hasLoadedUser.current;
     if (!uid || lastSyncedRef.current === null) return;
     const json = serializeData(dataRef.current);
-    if (json === lastSyncedRef.current) return;
+    if (json === lastSyncedRef.current) { setSyncing(false); return; }
+    const session = sessionRef.current;
     const ok = await saveToCloud(uid, json);
+    if (session !== sessionRef.current) return;
     if (ok) {
       saveAttempts.current = 0;
       setSyncError(false);
@@ -182,8 +215,7 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
       customLists: data.customLists != null ? parseCloudField(data.customLists, []) : latest.customLists,
     };
     const nextJson = serializeData(next);
-    let localRev = null;
-    try { localRev = localStorage.getItem(LOCAL_REV_KEY); } catch { /* best-effort */ }
+    const localRev = localRevRef.current;
     const cloudRev = typeof data.updatedAtIso === 'string' ? data.updatedAtIso : '';
     if (shouldKeepLocal({ cloudJson: nextJson, localJson: serializeData(latest), cloudRev, localRev })) {
       // The cloud doc is OLDER than our last local edit (typically because
@@ -208,16 +240,46 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
     if (!firebaseDb || !db || !uid) return;
     // Tear down any previous subscription (e.g. when switching accounts).
     if (cloudUnsub.current) { cloudUnsub.current(); cloudUnsub.current = null; }
+    if (readRetryTimer.current) clearTimeout(readRetryTimer.current);
+    if (syncTimer.current) { clearTimeout(syncTimer.current); syncTimer.current = null; }
+    const session = ++sessionRef.current;
     lastSyncedRef.current = null;
+    try {
+      const next = selectLibraryAccount(uid, ownerRef.current, dataRef.current, localRevRef.current);
+      const switching = ownerRef.current && ownerRef.current !== uid;
+      ownerRef.current = uid;
+      localRevRef.current = next.rev;
+      if (switching) {
+        window.dispatchEvent(new Event('anitracker-account-changed'));
+        // Update refs before subscribing: even a synchronous callback must see
+        // only this account's library and edit timestamp.
+        dataRef.current = next.data;
+        prevJsonRef.current = serializeData(next.data);
+        setSchedule(next.data.schedule);
+        setWatchedList(next.data.watchedList);
+        setWatchLater(next.data.watchLater);
+        setCustomLists(next.data.customLists);
+        try {
+          if (next.rev) localStorage.setItem(LOCAL_REV_KEY, next.rev);
+          else localStorage.removeItem(LOCAL_REV_KEY);
+        } catch { /* canonical account snapshot contains the revision */ }
+      }
+    } catch {
+      setSyncError(true);
+      setSyncing(false);
+      return;
+    }
     setSyncing(true);
     cloudUnsub.current = firebaseDb.onSnapshot(
       firebaseDb.doc(db, 'users', uid),
       (snap) => {
+        if (session !== sessionRef.current) return;
         // Skip echoes of our own not-yet-acked local writes: applying them is a
         // no-op and only risks a save loop. We still apply the server-confirmed
         // version (hasPendingWrites === false), which is harmless for our own
         // writes and is exactly what we want for remote changes.
         if (snap.metadata.hasPendingWrites) return;
+        setSyncError(false);
         if (snap.exists()) {
           applyCloudData(snap.data());
         } else if (lastSyncedRef.current === null) {
@@ -228,16 +290,32 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
         }
         setSyncing(false);
       },
-      (e) => { console.error('Snapshot error:', e); setSyncing(false); }
+      (e) => {
+        if (session !== sessionRef.current) return;
+        console.error('Snapshot error:', e);
+        setSyncing(false);
+        setSyncError(true);
+        // A failed listener is terminal in Firestore. Recreate it explicitly.
+        readRetryTimer.current = setTimeout(() => retrySyncRef.current?.(), RETRY_MAX_MS);
+      }
     );
-  }, [applyCloudData, scheduleSave]);
+  }, [applyCloudData, scheduleSave, setSchedule, setWatchedList, setWatchLater, setCustomLists]);
+
+  const retrySync = useCallback(() => {
+    if (hasLoadedUser.current) subscribeToCloud(hasLoadedUser.current);
+  }, [subscribeToCloud]);
+  useEffect(() => { retrySyncRef.current = retrySync; }, [retrySync]);
 
   const unsubscribeFromCloud = useCallback(() => {
+    sessionRef.current += 1;
+    if (readRetryTimer.current) clearTimeout(readRetryTimer.current);
+    if (syncTimer.current) { clearTimeout(syncTimer.current); syncTimer.current = null; }
     if (cloudUnsub.current) { cloudUnsub.current(); cloudUnsub.current = null; }
     hasLoadedUser.current = null;
     lastSyncedRef.current = null;
     saveAttempts.current = 0;
     setSyncError(false);
+    setSyncing(false);
   }, []);
 
   // Inicializar Auth
@@ -247,6 +325,10 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
     let cancelled = false;
     initFirebase().then(async () => {
       if (cancelled || !firebaseAuth || !auth) return;
+      setAuthReady(true);
+      if (initialAccount?.rev) {
+        try { localStorage.setItem(LOCAL_REV_KEY, initialAccount.rev); } catch { /* best-effort */ }
+      }
 
       try {
         const result = await firebaseAuth.getRedirectResult(auth);
@@ -258,11 +340,12 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
             subscribeToCloud(result.user.uid);
           }
         }
-      } catch (e) { console.error('Redirect result error:', e); }
+      } catch (e) { if (!cancelled) setAuthError(authMessage(e)); }
 
       if (cancelled) return;
       unsubscribe = firebaseAuth.onAuthStateChanged(auth, (u) => {
         setUser(u);
+        if (u) setAuthError('');
         if (u && hasLoadedUser.current !== u.uid) {
           hasLoadedUser.current = u.uid;
           subscribeToCloud(u.uid);
@@ -271,14 +354,16 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
           unsubscribeFromCloud();
         }
       });
-    });
+    }).catch((error) => { if (!cancelled) { setAuthReady(true); setAuthError(authMessage(error)); } });
     return () => {
       cancelled = true;
+      sessionRef.current += 1;
+      if (readRetryTimer.current) clearTimeout(readRetryTimer.current);
       if (unsubscribe) unsubscribe();
       if (cloudUnsub.current) { cloudUnsub.current(); cloudUnsub.current = null; }
       if (syncTimer.current) { clearTimeout(syncTimer.current); syncTimer.current = null; }
     };
-  }, [subscribeToCloud, unsubscribeFromCloud]);
+  }, [subscribeToCloud, unsubscribeFromCloud, initialAccount]);
 
   // Auto-sync: save local edits to the cloud, debounced.
   useEffect(() => {
@@ -290,7 +375,14 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
     const prevJson = prevJsonRef.current;
     prevJsonRef.current = currentJson;
     if (prevJson !== null && currentJson !== prevJson && currentJson !== lastSyncedRef.current) {
-      try { localStorage.setItem(LOCAL_REV_KEY, new Date().toISOString()); } catch { /* best-effort */ }
+      localRevRef.current = new Date().toISOString();
+      try { localStorage.setItem(LOCAL_REV_KEY, localRevRef.current); } catch { /* best-effort */ }
+    }
+    try {
+      persistAccountLibrary(ownerRef.current, { schedule, watchedList, watchLater, customLists }, localRevRef.current);
+      window.dispatchEvent(new CustomEvent('anitracker-storage-restored', { detail: { key: 'anitracker-account-state' } }));
+    } catch (error) {
+      window.dispatchEvent(new CustomEvent('anitracker-storage-error', { detail: { key: 'anitracker-account-state', error } }));
     }
 
     if (!user) return;
@@ -330,46 +422,46 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
   }, [user]);
 
   const loginWithGoogle = async () => {
-    if (!FIREBASE_ENABLED) { alert('Firebase no está configurado.'); return; }
-
-    // If Firebase isn't ready yet, init and wait — but this should rarely happen
-    // since initFirebase runs on mount. The key issue is that any `await` before
-    // signInWithPopup breaks Safari's user-gesture chain, causing silent failure.
+    if (loginPending.current) return;
+    setAuthError('');
+    // Never await SDK initialization and then open a popup: Safari needs the
+    // original tap. Initialization normally finishes before enabling the button.
     if (!firebaseAuth || !auth) {
-      await initFirebase();
-      if (!firebaseAuth || !auth) return;
-    }
-
-    const provider = new firebaseAuth.GoogleAuthProvider();
-    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
-
-    // PWA (installed to home screen): use redirect — it works reliably in standalone mode.
-    // Browser (including mobile Safari): use popup — redirect fails in iOS Safari due to
-    // ITP (Intelligent Tracking Prevention) dropping the auth state after navigation.
-    if (isStandalone) {
-      try { await firebaseAuth.signInWithRedirect(auth, provider); } catch { /* Auth fallback is best-effort. */ }
-    } else {
+      setAuthReady(false);
       try {
-        await firebaseAuth.signInWithPopup(auth, provider);
-      } catch (e) {
-        if (e.code === 'auth/popup-blocked' || e.code === 'auth/popup-closed-by-user') {
-          try { await firebaseAuth.signInWithRedirect(auth, provider); } catch { /* Auth fallback is best-effort. */ }
-        }
-      }
+        await initFirebase();
+        setAuthError('Google está listo. Tocá el botón para continuar.');
+      } catch (error) { setAuthError(authMessage(error)); }
+      setAuthReady(true);
+      return;
+    }
+    loginPending.current = true;
+    setAuthBusy(true);
+    const provider = new firebaseAuth.GoogleAuthProvider();
+    try {
+      // Also in installed iPad PWAs: cross-domain redirect loses its state
+      // when Safari blocks third-party storage. Do not fall back to that flow.
+      await firebaseAuth.signInWithPopup(auth, provider);
+    } catch (error) {
+      setAuthError(authMessage(error));
+    } finally {
+      loginPending.current = false;
+      setAuthBusy(false);
     }
   };
 
   const logout = async () => {
     if (!firebaseAuth || !auth) return;
-    unsubscribeFromCloud();
-    if (syncTimer.current) { clearTimeout(syncTimer.current); syncTimer.current = null; }
-    // Drop the local edit timestamp: it dates *this* account's edits, and if
-    // another account logs in next it must not shield this data from that
-    // account's cloud snapshot.
-    try { localStorage.removeItem(LOCAL_REV_KEY); } catch { /* best-effort */ }
-    await firebaseAuth.signOut(auth);
-    setUser(null);
+    try {
+      persistAccountLibrary(ownerRef.current, dataRef.current, localRevRef.current);
+      await firebaseAuth.signOut(auth);
+      unsubscribeFromCloud();
+      window.dispatchEvent(new Event('anitracker-account-changed'));
+      setUser(null);
+    } catch {
+      setAuthError('No se pudo cerrar la sesión. Tus datos siguen en esta cuenta. Volvé a intentarlo.');
+    }
   };
 
-  return { user, syncing, syncError, loginWithGoogle, logout, FIREBASE_ENABLED };
+  return { user, syncing, syncError, retrySync, authError, authReady, authBusy, loginWithGoogle, logout, FIREBASE_ENABLED };
 }

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useState } from 'react';
 import { useFirebase, serializeData, shouldKeepLocal } from '../hooks/useFirebase';
+import { signInWithPopup, signInWithRedirect } from 'firebase/auth';
 import { normalizeAnime } from '../schemas/anime';
 
 // Shared, resettable handles into the Firebase mocks. `vi.hoisted` lets the
@@ -31,9 +32,9 @@ vi.mock('firebase/auth', () => ({
 
 vi.mock('firebase/firestore', () => ({
   getFirestore: vi.fn(() => ({})),
-  doc: vi.fn(() => ({})),
+  doc: vi.fn((db, collection, uid) => ({uid})),
   setDoc: (...args) => h.setDoc(...args),
-  onSnapshot: vi.fn((ref, next) => { h.snapshotCb = next; return h.onSnapshotUnsub; }),
+  onSnapshot: vi.fn((ref, next, error) => { h.snapshotError = error; h.snapshotCb = next; return h.onSnapshotUnsub; }),
   serverTimestamp: vi.fn(() => 'ts'),
 }));
 
@@ -228,4 +229,100 @@ describe('serializeData (payload canónico)', () => {
     const payload = JSON.parse(serializeData({ schedule: {}, watchedList: [done], watchLater: [], customLists: [] }));
     expect(payload.watchedList[0].finishedDate).toBe('2026-07-01');
   });
+});
+
+describe('account isolation, auth and read recovery', () => {
+ beforeEach(() => {
+   vi.useFakeTimers(); h.authCb=null; h.snapshotCb=null; h.redirectResult={user:null};
+   h.setDoc.mockClear(); h.setDoc.mockImplementation(()=>Promise.resolve()); localStorage.clear();
+   signInWithPopup.mockReset(); signInWithPopup.mockResolvedValue({}); signInWithRedirect.mockClear();
+ });
+ afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+ it('reports cloud read failure and recovers through a fresh subscription', async () => {
+   const { result } = await loginAndSubscribe();
+   const oldNext = h.snapshotCb;
+   await act(async () => h.snapshotError(new Error('permission-denied')));
+   expect(result.current.syncError).toBe(true);
+   await act(async () => result.current.retrySync());
+   expect(h.snapshotCb).not.toBe(oldNext);
+   await act(async () => h.snapshotCb(cloudSnap({watchedList:[{id:7}]})));
+   expect(result.current.syncError).toBe(false);
+   expect(result.current.watchedList).toEqual([{id:7}]);
+ });
+ it('retries a failed cloud listener automatically', async () => {
+   await loginAndSubscribe();
+   const oldNext=h.snapshotCb;
+   await act(async () => h.snapshotError(new Error('unavailable')));
+   await tick(60000);
+   expect(h.snapshotCb).not.toBe(oldNext);
+ });
+ it('keeps account A offline edits separate from new account B and restores A', async () => {
+   const { result } = await loginAndSubscribe();
+   await act(async () => h.snapshotCb(cloudSnap({watchedList:[{id:77}]})));
+   await act(async () => result.current.setWatchedList([{id:77},{id:78}]));
+   await act(async () => result.current.logout());
+   const oldNext=h.snapshotCb;
+   await act(async () => h.authCb({uid:'u2'}));
+   expect(result.current.watchedList).toEqual([]);
+   await act(async () => oldNext(cloudSnap({watchedList:[{id:99}]})));
+   expect(result.current.watchedList).toEqual([]);
+   await act(async () => h.snapshotCb({metadata:{hasPendingWrites:false},exists:()=>false}));
+   await tick(2100);
+   for (const [ref,payload] of h.setDoc.mock.calls) {
+     expect(ref.uid).toBe('u2');
+     expect(payload.watchedList).toEqual([]);
+   }
+   expect(JSON.parse(localStorage.getItem('anitracker-account-state')).owner).toBe('u2');
+   await act(async () => result.current.logout());
+   await act(async () => h.authCb({uid:'u1'}));
+   expect(result.current.watchedList).toEqual([{id:77},{id:78}]);
+ });
+ it('aborts switching when the outgoing backup cannot be saved', async () => {
+   const { result } = await loginAndSubscribe();
+   await act(async () => h.snapshotCb(cloudSnap({watchedList:[{id:77}]})));
+   const original=Storage.prototype.setItem;
+   vi.spyOn(Storage.prototype,'setItem').mockImplementation(function(key,value){
+     if(key==='anitracker-account:u1') throw new Error('Quota exceeded');
+     return original.call(this,key,value);
+   });
+   await act(async () => h.authCb({uid:'u2'}));
+   expect(result.current.syncError).toBe(true);
+   expect(result.current.watchedList).toEqual([{id:77}]);
+   await tick(2100);
+   expect(h.setDoc).not.toHaveBeenCalled();
+ });
+ it('opens Google directly as a popup even in installed iPad mode', async () => {
+   const { result } = await loginAndSubscribe();
+   Object.defineProperty(navigator,'standalone',{configurable:true,value:true});
+   try {
+     let pending;
+     act(()=>{pending=result.current.loginWithGoogle(); expect(signInWithPopup).toHaveBeenCalledTimes(1);});
+     await act(async()=>pending);
+     expect(signInWithRedirect).not.toHaveBeenCalled();
+   } finally { delete navigator.standalone; }
+ });
+ it.each(['auth/popup-blocked','auth/popup-closed-by-user','auth/unauthorized-domain','auth/network-request-failed'])(
+   'shows auth error %s without redirecting', async (code) => {
+     const {result}=await loginAndSubscribe();
+     signInWithPopup.mockRejectedValueOnce({code});
+     await act(async()=>result.current.loginWithGoogle());
+     expect(result.current.authError).not.toBe('');
+     expect(result.current.authBusy).toBe(false);
+     expect(signInWithRedirect).not.toHaveBeenCalled();
+   }
+ );
+ it('does not let an old in-flight save mark the new account as synced', async () => {
+   const {result}=await loginAndSubscribe();
+   await act(async()=>h.snapshotCb(cloudSnap({watchedList:[]})));
+   let resolve;
+   h.setDoc.mockImplementationOnce(()=>new Promise(r=>{resolve=r;}));
+   await act(async()=>result.current.setWatchedList([{id:77}]));
+   await tick(2000);
+   await act(async()=>h.authCb({uid:'u2'}));
+   await act(async()=>resolve());
+   await act(async()=>result.current.setWatchedList([{id:88}]));
+   await tick(2100);
+   expect(h.setDoc).toHaveBeenCalledTimes(1);
+   expect(h.setDoc.mock.calls[0][0].uid).toBe('u1');
+ });
 });

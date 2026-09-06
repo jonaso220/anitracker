@@ -79,6 +79,19 @@ tu proyecto antes de habilitar la sincronización:
 firebase deploy --only firestore:rules
 ```
 
+El acceso con Google utiliza una ventana emergente también en la PWA instalada
+en iPad, para evitar perder la sesión durante una redirección entre dominios.
+El botón espera a que Firebase esté listo y muestra los errores de acceso.
+Agregá el dominio publicado a los dominios autorizados de Firebase Auth.
+
+Al cambiar de cuenta, se conserva una copia local de la biblioteca anterior y
+se recupera la biblioteca de la cuenta elegida. Los cambios sin conexión quedan
+asociados a su cuenta; una cuenta nueva no recibe los datos de la anterior.
+La primera conexión conserva los datos locales de versiones anteriores.
+Los errores de sincronización se muestran en el menú de usuario, con una opción
+para reintentar. No borres el almacenamiento del navegador si tenés cambios
+pendientes: exportá primero una copia de seguridad.
+
 > Las claves Web de Firebase **no son secretas** — la seguridad se hace con
 > Firebase Security Rules, no ocultando estos valores. Aun así, `.env*` está en
 > `.gitignore`.
