@@ -8,6 +8,7 @@ import Toast from './components/Toast';
 import UpdateBanner from './components/UpdateBanner';
 import StorageErrorBanner from './components/StorageErrorBanner';
 import ScheduleView from './components/views/ScheduleView';
+import WeekOnboarding from './components/views/WeekOnboarding';
 
 // Lazy: non-default tabs and modals are only fetched the first time they're
 // opened, keeping the initial JS bundle small. (Firebase is already code-split
@@ -41,6 +42,7 @@ import { daysOfWeek } from './constants';
 import { totalTrackedEpisodes } from './tracking';
 import { buildBackup } from './utils';
 import { readActiveLibrary } from './accountStorage';
+import { t } from './i18n';
 
 const EMPTY_SCHEDULE = { 'Lunes': [], 'Martes': [], 'Miércoles': [], 'Jueves': [], 'Viernes': [], 'Sábado': [], 'Domingo': [] };
 
@@ -80,7 +82,7 @@ export default function AnimeTracker() {
 
   // --- Hooks ---
   const { toast, showToast, dismissToast, undoToast, runToastAction } = useToast();
-  const { user, syncing, syncError, syncTooLarge, retrySync, authError, authReady, authBusy, loginWithGoogle, logout, FIREBASE_ENABLED } = useFirebase(
+  const { user, cloudLoaded, syncing, syncError, syncTooLarge, retrySync, authError, authReady, authBusy, loginWithGoogle, logout, FIREBASE_ENABLED } = useFirebase(
     schedule, watchedList, watchLater, customLists, setSchedule, setWatchedList, setWatchLater, setCustomLists
   );
   const { searchQuery, setSearchQuery, searchResults, setSearchResults, isSearching, searchPartial, airingData, airingError, retryAiring, handleSearch } = useAnimeData(schedule);
@@ -148,6 +150,8 @@ export default function AnimeTracker() {
   const openListDetail = useCallback((a) => setShowAnimeDetail(a), []);
   const openSeasonDetail = useCallback((a) => setShowAnimeDetail({ ...a, _isWatchLater: false, _isWatched: false, _isSeason: true }), []);
   const openDirectoryDetail = useCallback((a) => setShowAnimeDetail({ ...a, _isWatchLater: false, _isWatched: false, _isSeason: false, _isDirectory: true }), []);
+  const openSeasonTab = useCallback(() => handleTabChange('season'), [handleTabChange]);
+  const openWatchLaterTab = useCallback(() => handleTabChange('watchLater'), [handleTabChange]);
   const tabCounts = useMemo(
     () => ({ watchLater: watchLater.length, watched: watchedList.length, lists: customLists.length }),
     [watchLater.length, watchedList.length, customLists.length],
@@ -216,6 +220,9 @@ export default function AnimeTracker() {
     return ids;
   }, [schedule, watchedList, watchLater]);
 
+  // Semana sin nada (ni en pausa): bienvenida en vez de siete días vacíos.
+  const weekEmpty = useMemo(() => daysOfWeek.every((d) => !(schedule[d] || []).length), [schedule]);
+
   // --- Stats ---
   const stats = useMemo(() => {
     const allSchedule = daysOfWeek.flatMap((d) => schedule[d] || []);
@@ -262,7 +269,20 @@ export default function AnimeTracker() {
 
       <main className="main-content" id="main-content" role="main">
         <Suspense fallback={<div className="route-loading" role="status" aria-live="polite">Cargando…</div>}>
-        {activeTab === 'schedule' && (
+        {activeTab === 'schedule' && weekEmpty && user && !cloudLoaded && (
+          <div className="week-loading" role="status" aria-live="polite">{t('onboarding.loadingCloud')}</div>
+        )}
+
+        {activeTab === 'schedule' && weekEmpty && (!user || cloudLoaded) && (
+          <WeekOnboarding
+            watchLaterCount={watchLater.length}
+            onSearch={openSearch} onSeason={openSeasonTab} onImport={openImport}
+            onWatchLater={openWatchLaterTab} onBackup={openBackup}
+            canLogin={FIREBASE_ENABLED && !user} loginDisabled={!authReady || authBusy} onLogin={loginWithGoogle}
+          />
+        )}
+
+        {activeTab === 'schedule' && !weekEmpty && (
           <ScheduleView
             schedule={schedule} airingData={airingData} setShowAnimeDetail={setShowAnimeDetail}
             airingError={airingError} retryAiring={retryAiring}

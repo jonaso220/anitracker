@@ -99,6 +99,9 @@ const LOGOUT_FLUSH_TIMEOUT_MS = 8000;
 export function useFirebase(schedule, watchedList, watchLater, customLists, setSchedule, setWatchedList, setWatchLater, setCustomLists) {
   const [user, setUser] = useState(null);
   const [syncing, setSyncing] = useState(false);
+  // Llegó la primera respuesta de la nube para la sesión actual (o falló):
+  // hasta entonces una biblioteca vacía puede ser solo que todavía no bajó.
+  const [cloudLoaded, setCloudLoaded] = useState(false);
   // True while saves are failing (rules, red, datos inválidos). Surfaced in the
   // header so a broken sync is visible instead of dying in la consola.
   const [syncError, setSyncError] = useState(false);
@@ -291,9 +294,11 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
     } catch {
       setSyncError(true);
       setSyncing(false);
+      setCloudLoaded(true);
       return;
     }
     setSyncing(true);
+    setCloudLoaded(false);
     cloudUnsub.current = firebaseDb.onSnapshot(
       firebaseDb.doc(db, 'users', uid),
       (snap) => {
@@ -314,10 +319,12 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
               if (session !== sessionRef.current || seq !== snapshotSeq.current) return;
               applyCloudData(uid, { ...fields, updatedAtIso: data.updatedAtIso });
               setSyncing(false);
+              setCloudLoaded(true);
             }).catch((e) => {
               if (session !== sessionRef.current) return;
               console.error('Cloud decode error:', e);
               setSyncing(false);
+              setCloudLoaded(true);
               setSyncError(true);
             });
             return;
@@ -330,11 +337,13 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
           scheduleSave(0);
         }
         setSyncing(false);
+        setCloudLoaded(true);
       },
       (e) => {
         if (session !== sessionRef.current) return;
         console.error('Snapshot error:', e);
         setSyncing(false);
+        setCloudLoaded(true);
         setSyncError(true);
         // A failed listener is terminal in Firestore. Recreate it explicitly.
         readRetryTimer.current = setTimeout(() => retrySyncRef.current?.(), RETRY_MAX_MS);
@@ -359,6 +368,7 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
     setSyncError(false);
     setSyncTooLarge(false);
     setSyncing(false);
+    setCloudLoaded(false);
   }, []);
 
   // Inicializar Auth
@@ -522,5 +532,5 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
     }
   }, [flushSave, unsubscribeFromCloud]);
 
-  return { user, syncing, syncError, syncTooLarge, retrySync, authError, authReady, authBusy, loginWithGoogle, logout, FIREBASE_ENABLED };
+  return { user, cloudLoaded, syncing, syncError, syncTooLarge, retrySync, authError, authReady, authBusy, loginWithGoogle, logout, FIREBASE_ENABLED };
 }

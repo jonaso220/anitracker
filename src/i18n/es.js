@@ -21,6 +21,21 @@ export const es = {
   'header.backup': 'Copia de seguridad',
   'header.logout': 'Salir',
 
+  'onboarding.eyebrow': 'EMPEZÁ ACÁ',
+  'onboarding.title': 'Armá tu semana',
+  'onboarding.intro': 'Agregá lo que estás viendo al día en que lo mirás y AniTracker te muestra qué toca hoy, cuándo sale el próximo episodio y por dónde vas.',
+  'onboarding.search': 'Buscar',
+  'onboarding.searchHint': 'Anime, doramas de Viki, series y películas',
+  'onboarding.season': 'Ver la temporada',
+  'onboarding.seasonHint': 'Lo que se está emitiendo ahora',
+  'onboarding.import': 'Importar de AniList',
+  'onboarding.importHint': 'Traé tu lista con tu usuario',
+  'onboarding.watchLater': 'Pasar de Después',
+  'onboarding.otherDevice': '¿Ya la usabas en otro dispositivo?',
+  'onboarding.login': 'Iniciá sesión con Google',
+  'onboarding.restore': 'Restaurar una copia',
+  'onboarding.loadingCloud': 'Trayendo tu semana…',
+
   'toast.undo': 'Deshacer',
   'toast.close': 'Cerrar notificación',
 

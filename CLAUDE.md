@@ -44,6 +44,9 @@ store global ni context; el estado vive en `App.jsx` y baja por props.
     que nunca sincronizó acá, p. ej. datos de invitado) se fusiona todo.
     `cloudCodec.js` comprime la biblioteca con gzip si supera ~900 KB (límite
     de 1 MiB por documento); al cerrar sesión se sube lo pendiente primero.
+    `cloudLoaded` avisa cuándo llegó el primer snapshot de la sesión: hasta
+    entonces una semana vacía puede ser solo que todavía no bajó (App muestra
+    "Trayendo tu semana…" en vez de la bienvenida `WeekOnboarding`).
   - `useDirectory` — catálogo navegable ("Directorio") con filtros de AniList
     (género, demografía, formato, estado, año, temporada, orden) y paginado
     acumulativo con "cargar más".

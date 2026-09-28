@@ -122,6 +122,21 @@ describe('useFirebase realtime sync', () => {
     expect(result.current.watchedList).toEqual([{ id: 1 }, { id: 2 }]);
   });
 
+  it('marca cloudLoaded recién con el primer snapshot (y lo resetea al cerrar sesión)', async () => {
+    const { result } = await loginAndSubscribe();
+    expect(result.current.cloudLoaded).toBe(false);
+    await act(async () => { h.snapshotCb(cloudSnap({ watchedList: [] })); });
+    expect(result.current.cloudLoaded).toBe(true);
+    await act(async () => { h.authCb(null); });
+    expect(result.current.cloudLoaded).toBe(false);
+  });
+
+  it('una cuenta nueva (sin doc en la nube) también cuenta como cargada', async () => {
+    const { result } = await loginAndSubscribe();
+    await act(async () => { h.snapshotCb({ metadata: { hasPendingWrites: false }, exists: () => false }); });
+    expect(result.current.cloudLoaded).toBe(true);
+  });
+
   it('does not echo a cloud load back to the cloud as a save', async () => {
     await loginAndSubscribe();
     await act(async () => { h.snapshotCb(cloudSnap({ watchedList: [{ id: 1 }] })); });
