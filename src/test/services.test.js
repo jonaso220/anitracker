@@ -253,7 +253,8 @@ describe('vikiService.searchViki', () => {
     globalThis.fetch.mockImplementation((url) => {
       if (url.includes('/search.json')) {
         return Promise.resolve({ ok: true, json: () => Promise.resolve([
-          { id: '41650c', t: 'series', tt: 'The Ordinary Jackpot', u: { w: '/tv/41650c-x' } },
+          { id: '41650c', t: 'series', tt: 'The Ordinary Jackpot', te: 'El oficinista que ganó la lotería', u: { w: '/tv/41650c-x' } },
+          { id: '30308c', t: 'series', tt: 'Love in the Moonlight' },
           { id: '123pr', t: 'person', tt: 'Lee Jun Hyuk' },
         ]) });
       }
@@ -263,7 +264,9 @@ describe('vikiService.searchViki', () => {
       return Promise.reject(new Error(`unexpected ${url}`));
     });
     const results = await searchViki('oficinista loteria');
+    // El drama sin ninguna palabra en común se descarta sin pedir su ficha.
     expect(results).toHaveLength(1);
+    expect(globalThis.fetch.mock.calls.some(([url]) => url.includes('30308c'))).toBe(false);
     expect(results[0].title).toBe('El oficinista que ganó la lotería');
     expect(globalThis.fetch.mock.calls[0][0]).toContain('c=oficinista+loteria');
   });

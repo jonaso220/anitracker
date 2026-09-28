@@ -143,7 +143,13 @@ export function useAnimeData(schedule) {
 
     setIsSearching(true);
     try {
-      const { results, failedApis } = await searchAnime(query, { signal: controller.signal });
+      const { results, failedApis } = await searchAnime(query, {
+        signal: controller.signal,
+        // Mostrar lo que ya llegó sin esperar a la API más lenta.
+        onProgress: (partial) => {
+          if (id === searchIdRef.current && !controller.signal.aborted) setSearchResults(partial);
+        },
+      });
       if (id === searchIdRef.current && !controller.signal.aborted) {
         setSearchResults(results);
         setSearchPartial(failedApis);

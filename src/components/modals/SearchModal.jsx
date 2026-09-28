@@ -133,7 +133,10 @@ const SearchModal = ({ setShowSearch, searchQuery, handleSearch, searchResults, 
               <span>Buscando <strong>{parsedSearch.searchTerm}</strong>. El enlace de {parsedSearch.site} quedará listo para guardar.</span>
             </div>
           )}
-          {isSearching ? <div className="skeleton-search-list">{Array.from({ length: 5 }).map((_, i) => (
+          {isSearching && searchResults.length > 0 && (
+            <div className="search-progress" role="status">Buscando en más fuentes…</div>
+          )}
+          {isSearching && searchResults.length === 0 ? <div className="skeleton-search-list">{Array.from({ length: 5 }).map((_, i) => (
             <div key={i} className="skeleton-search-item">
               <div className="skeleton skeleton-search-img"></div>
               <div className="skeleton-search-body">

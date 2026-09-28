@@ -6,8 +6,8 @@ import { searchItunes } from './itunesService';
 import { searchTmdb, TMDB_ENABLED } from './tmdbService';
 import { searchViki } from './vikiService';
 import { searchViaSpanishWikipedia, searchViaEnglishWikipedia } from './wikipediaBridge';
+import { normalize, wordMatchRatio } from './searchText';
 
-const normalize = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
 const URL_SITE_NAMES = [
   ['crunchyroll.com', 'Crunchyroll'],
@@ -107,10 +107,31 @@ function titlesOf(a) {
   return [a.title, a.titleOriginal, a.titleEn, a.titleJp, ...(a.altTitles || [])].filter(Boolean);
 }
 
-function isDuplicate(existing, candidate) {
-  const exTitles = titlesOf(existing).map(normalize);
-  const candTitles = titlesOf(candidate).map(normalize);
-  return candTitles.some((c) => c && exTitles.includes(c));
+// Solo los títulos principales: los sinónimos ("Furuba") los comparten
+// temporadas y remakes distintos, y fusionaban Fruits Basket 2019 con la de 2001.
+// Un año final entre paréntesis ("Fruits Basket (2019)") es desambiguación de
+// la fuente: el año ya se compara aparte. La puntuación no cuenta (’ vs ').
+const primaryTitles = (a) => [a.title, a.titleOriginal, a.titleEn, a.titleJp]
+  .filter(Boolean)
+  .map((t) => normalize(t).replace(/\s*\(\d{4}\)$/, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim());
+
+const isMovie = (a) => /^(película|movie)$/i.test(a.type || '');
+
+/**
+ * ¿Dos resultados de fuentes distintas son la misma obra? Por malId si ambos
+ * lo tienen; si no, por título principal con año (±1) y formato compatibles
+ * (Dororo 1969 y 2019 comparten título en inglés). Nunca dentro de una misma
+ * fuente: ahí cada resultado ya es una obra distinta.
+ */
+function isSameWork(existing, candidate) {
+  if (existing.source === candidate.source) return false;
+  if (existing.malId && candidate.malId) return existing.malId === candidate.malId;
+  const ya = Number(existing.year);
+  const yb = Number(candidate.year);
+  if (ya && yb && Math.abs(ya - yb) > 1) return false;
+  if (existing.type && candidate.type && isMovie(existing) !== isMovie(candidate)) return false;
+  const exTitles = primaryTitles(existing);
+  return primaryTitles(candidate).some((t) => t && exTitles.includes(t));
 }
 
 // When a candidate duplicates an existing entry, steal the data-rich fields the
@@ -124,35 +145,68 @@ function mergeMissingFields(existing, candidate) {
   if (existing.episodes == null && candidate.episodes != null) existing.episodes = candidate.episodes;
 }
 
+// Mismo id interno = misma obra solo dentro de una fuente o en el rango de MAL
+// (AniList con idMal usa el id de MAL); entre otras fuentes los rangos se pisan.
+const sameId = (a, b) => a.id === b.id && (a.source === b.source || a.id < 100000);
+
+// Devuelve la entrada de la colección que representa a cada anime (la nueva
+// o la existente con la que se fusionó).
 function dedupeInto(collection, animes) {
-  const added = [];
+  const entries = [];
   for (const a of animes) {
     if (!a) continue;
-    const dup = collection.find((e) => e.id === a.id) || collection.find((e) => isDuplicate(e, a));
-    if (dup) { mergeMissingFields(dup, a); continue; }
-    collection.push(a);
-    added.push(a);
+    const dup = collection.find((e) => sameId(e, a)) || collection.find((e) => isSameWork(e, a));
+    if (dup) { mergeMissingFields(dup, a); entries.push(dup); continue; }
+    // Copia: las fusiones mutan la entrada y los resultados parciales ya
+    // entregados no deben cambiar por debajo.
+    const copy = { ...a };
+    collection.push(copy);
+    entries.push(copy);
   }
-  return added;
+  return entries;
 }
 
-function scoreRelevance(item, qNorm) {
+function scoreAgainst(item, qNorm, query) {
   const titles = titlesOf(item).map(normalize);
   if (titles.some((t) => t === qNorm)) return 100;
   if (titles.some((t) => t.startsWith(qNorm))) return 80;
-  if (titles.some((t) => qNorm.startsWith(t))) return 70;
+  if (titles.some((t) => qNorm.startsWith(t) && t.length >= 4)) return 70;
   if (titles.some((t) => t.includes(qNorm))) return 60;
-  if (titles.some((t) => qNorm.includes(t))) return 40;
-  const qWords = qNorm.split(/\s+/);
-  const matchCount = qWords.filter((w) => titles.some((t) => t.includes(w))).length;
-  return (matchCount / Math.max(qWords.length, 1)) * 30;
+  if (titles.some((t) => qNorm.includes(t) && t.length >= 4)) return 40;
+  return wordMatchRatio(titles, query) * 30;
+}
+
+/**
+ * Relevancia 0–100. Lo que llegó por el puente de Wikipedia se compara también
+ * contra el título del artículo ("los simpson" → "The Simpsons"), un poco por
+ * debajo de un match directo. Los videos musicales solo cuentan si el título
+ * es exacto: Kitsu los devuelve para casi cualquier búsqueda.
+ */
+function scoreRelevance(item, query, bridgeTitles) {
+  const qNorm = normalize(query);
+  let score = scoreAgainst(item, qNorm, query);
+  for (const title of bridgeTitles.get(item) || []) {
+    score = Math.max(score, scoreAgainst(item, normalize(title), title) * 0.95);
+  }
+  if (/^music$/i.test(item.type || '') && score < 100) return 0;
+  return score;
 }
 
 function hasGoodMatch(collection, qNorm) {
   return collection.some((v) => {
     const titles = titlesOf(v).map(normalize);
-    return titles.some((t) => t.includes(qNorm) || qNorm.includes(t));
+    return titles.some((t) => t.includes(qNorm) || (qNorm.includes(t) && t.length >= 4));
   });
+}
+
+// Ordena por relevancia y descarta lo que no comparte ninguna palabra con la
+// búsqueda (si todo quedara afuera, se devuelve igual lo que hay).
+function rank(collection, query, bridgeTitles) {
+  const scored = collection
+    .map((item, i) => ({ item, i, score: scoreRelevance(item, query, bridgeTitles) }))
+    .sort((a, b) => b.score - a.score || a.i - b.i);
+  const relevant = scored.filter((s) => s.score > 0);
+  return (relevant.length ? relevant : scored).map((s) => s.item);
 }
 
 const SOURCES = [
@@ -170,6 +224,36 @@ const SOURCES = [
 /** Names of the active search sources, for UI hints. */
 export const SEARCH_SOURCE_NAMES = SOURCES.map((s) => s.name);
 
+// Una fuente que no responde en este tiempo se da por caída: la búsqueda no
+// espera a la API más lenta.
+export const SOURCE_TIMEOUT_MS = 6000;
+
+// Señal que se cancela con la búsqueda o al vencer el tiempo.
+function timedSignal(signal, ms) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(new DOMException('Timeout', 'TimeoutError')), ms);
+  const onAbort = () => controller.abort(signal.reason);
+  if (signal?.aborted) controller.abort(signal.reason);
+  else signal?.addEventListener('abort', onAbort, { once: true });
+  return {
+    signal: controller.signal,
+    done: () => { clearTimeout(timer); signal?.removeEventListener('abort', onAbort); },
+  };
+}
+
+async function withTimeout(fn, signal, ms = SOURCE_TIMEOUT_MS) {
+  const timed = timedSignal(signal, ms);
+  try {
+    return await fn(timed.signal);
+  } finally {
+    timed.done();
+  }
+}
+
+const throwIfAborted = (signal) => {
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+};
+
 // Short-lived cache so retyping a recent query (or reopening the modal) doesn't
 // hammer 5-6 APIs again. Only fully-successful searches are cached, so a flaky
 // API gets retried on the next attempt.
@@ -183,9 +267,11 @@ export function clearSearchCache() {
 
 /**
  * Multi-API search with Wikipedia bridge fallback. Returns { results, failedApis }.
- * Accepts an AbortSignal to cancel in-flight requests.
+ * Accepts an AbortSignal to cancel in-flight requests, and `onProgress(results)`,
+ * called with the ranked partial results each time a source answers so the UI
+ * doesn't wait for the slowest API. Each source has SOURCE_TIMEOUT_MS.
  */
-export async function searchAnime(query, { signal } = {}) {
+export async function searchAnime(query, { signal, onProgress } = {}) {
   const input = parseAnimeSearchInput(query);
   const searchTerm = input.searchTerm;
   if (!searchTerm || searchTerm.length < 2) return { results: [], failedApis: [] };
@@ -197,33 +283,50 @@ export async function searchAnime(query, { signal } = {}) {
     return { results: attachProvidedUrl(cached.results, input), failedApis: [] };
   }
 
-  const settled = await Promise.allSettled(SOURCES.map((s) => s.search(searchTerm, { signal })));
+  const bridgeTitles = new Map();
+  // Resultados por fuente, en el orden de SOURCES: la fusión siempre se arma
+  // en ese orden, así el resultado final no depende de quién respondió antes.
+  const bySource = new Array(SOURCES.length).fill(null);
+  const build = () => {
+    const collection = [];
+    for (const list of bySource) if (list) dedupeInto(collection, list);
+    return collection;
+  };
+  const report = () => {
+    if (!onProgress || signal?.aborted) return;
+    onProgress(attachProvidedUrl(rank(build(), searchTerm, bridgeTitles), input));
+  };
+
+  const settled = await Promise.allSettled(SOURCES.map((s, i) => withTimeout((sig) => s.search(searchTerm, { signal: sig }), signal)
+    .then((list) => { bySource[i] = list; report(); return list; })));
+  throwIfAborted(signal);
 
   const failedApis = settled.map((s, i) => (s.status === 'rejected' ? SOURCES[i].name : null)).filter(Boolean);
-  const collection = [];
-  for (const s of settled) {
-    if (s.status === 'fulfilled') dedupeInto(collection, s.value);
-  }
+  let complete = failedApis.length === 0;
+  const collection = build();
 
-  // Round 2: Spanish Wikipedia bridge if no good hit
-  if (!hasGoodMatch(collection, qNorm) && searchTerm.length >= 4) {
+  // Rounds 2 and 3: Wikipedia bridges (Spanish, then English) if no good hit.
+  for (const bridge of [searchViaSpanishWikipedia, searchViaEnglishWikipedia]) {
+    if (hasGoodMatch(collection, qNorm) || searchTerm.length < 4) break;
     try {
-      const esHits = await searchViaSpanishWikipedia(searchTerm, { signal });
-      dedupeInto(collection, esHits);
-    } catch { /* continue */ }
+      const { hits, titles } = await withTimeout((sig) => bridge(searchTerm, { signal: sig }), signal);
+      // También las entradas que ya estaban: "The Simpsons" pudo llegar antes
+      // por TVMaze y es justo lo que el puente confirma.
+      for (const item of dedupeInto(collection, hits)) {
+        bridgeTitles.set(item, [...new Set([...(bridgeTitles.get(item) || []), ...titles])]);
+      }
+      if (hits.length && onProgress) onProgress(attachProvidedUrl(rank(collection, searchTerm, bridgeTitles), input));
+    } catch (err) {
+      throwIfAborted(signal);
+      if (err?.name !== 'AbortError') console.warn('[AniTracker] Wikipedia bridge failed:', err);
+      complete = false;
+    }
   }
+  throwIfAborted(signal);
 
-  // Round 3: English Wikipedia bridge fallback
-  if (!hasGoodMatch(collection, qNorm) && searchTerm.length >= 4) {
-    try {
-      const enHits = await searchViaEnglishWikipedia(searchTerm, { signal });
-      dedupeInto(collection, enHits);
-    } catch { /* continue */ }
-  }
+  const results = rank(collection, searchTerm, bridgeTitles);
 
-  const results = collection.sort((a, b) => scoreRelevance(b, qNorm) - scoreRelevance(a, qNorm));
-
-  if (failedApis.length === 0) {
+  if (complete) {
     if (searchCache.size >= CACHE_MAX) {
       searchCache.delete(searchCache.keys().next().value);
     }

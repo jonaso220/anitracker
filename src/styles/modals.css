@@ -1028,3 +1028,24 @@ a.provider-chip:hover { border-color: var(--border-brand-strong); transform: tra
   select,
   textarea { font-size: max(16px, 1em); }
 }
+
+/* Resultados parciales: quedan fuentes por responder. */
+.search-progress {
+  margin: 0 0 0.6rem;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+.search-progress::before {
+  content: '';
+  display: inline-block;
+  width: 0.6rem;
+  height: 0.6rem;
+  margin-right: 0.45rem;
+  border: 2px solid var(--border-brand);
+  border-top-color: transparent;
+  border-radius: 50%;
+  vertical-align: -0.05rem;
+  animation: searchProgressSpin 0.8s linear infinite;
+}
+@keyframes searchProgressSpin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .search-progress::before { animation: none; } }

@@ -48,9 +48,13 @@ store global ni context; el estado vive en `App.jsx` y baja por props.
 - **`services/`** — una API por archivo (`jikanService`, `kitsuService`,
   `anilistService`, `tvmazeService`, `itunesService`, `tmdbService`,
   `vikiService`, `wikipediaBridge`). `searchAnime.js` las orquesta en paralelo
-  (`Promise.allSettled`), deduplica (mergeando streaming links / trailer del
-  duplicado descartado), cachea consultas recientes (TTL 10 min) y rankea por
-  relevancia, con *fallback* a Wikipedia si no hay buen match. `tmdbService`
+  (`Promise.allSettled`, 6 s máximo por fuente, `onProgress` con resultados
+  parciales), deduplica entre fuentes por `malId` o título principal + año +
+  formato (nunca dentro de una misma fuente ni por sinónimos; mergea
+  streaming links / trailer del duplicado descartado), cachea consultas
+  completas (TTL 10 min) y rankea por relevancia ignorando artículos
+  (`searchText.js`), con *fallback* a Wikipedia si no hay buen match: el
+  título del artículo se usa para rankear, nunca se agrega a `altTitles`. `tmdbService`
   solo se activa con `VITE_TMDB_API_KEY` y expone además "dónde ver" por país
   (providers de JustWatch, cache localStorage 24 h) y trailers. `vikiService`
   (Rakuten Viki, dramas asiáticos) usa la API pública v4 sin key y completa

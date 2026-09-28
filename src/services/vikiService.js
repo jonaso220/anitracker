@@ -1,6 +1,7 @@
 import { normalizeAnime } from '../schemas/anime';
 import { daysOfWeek } from '../constants';
 import { buildAiringInfo } from '../utils';
+import { normalize, wordMatchRatio } from './searchText';
 
 // Rakuten Viki — K-dramas, C-dramas y películas asiáticas. La API pública v4
 // responde con CORS abierto y solo pide el `app` id del cliente web. La
@@ -15,7 +16,20 @@ const VIKI_WEB = 'https://www.viki.com';
 // Series y películas comparten el espacio de ids de Viki ("41650c").
 export const VIKI_ID_BASE = 700000000;
 
-const DETAIL_LIMIT = 8;
+const DETAIL_LIMIT = 6;
+
+// Títulos de un hit de búsqueda (claves cortas por idioma: tt inglés, te
+// español/local, ko, tj, tzh, tzt, pt, tf…).
+const HIT_TITLE_KEYS = ['tt', 'te', 'ko', 'tj', 'tzh', 'tzt', 'pt', 'tf'];
+const hitTitles = (h) => HIT_TITLE_KEYS.map((k) => h[k]).filter((t) => typeof t === 'string' && t);
+
+// La búsqueda de Viki es muy difusa ("shaman king" trae dramas de brujas):
+// solo se quedan los hits que comparten alguna palabra con la consulta.
+const isRelevantHit = (h, query) => {
+  const titles = hitTitles(h);
+  const q = normalize(query);
+  return titles.some((t) => normalize(t).includes(q)) || wordMatchRatio(titles, query) > 0;
+};
 
 // Ids de género estables de /v4/genres.json; el mapa estático evita un request
 // extra por búsqueda.
@@ -57,7 +71,7 @@ export function parseVikiId(id) {
 export async function searchViki(query, { signal, limit = 10 } = {}) {
   const json = await vikiFetch('/search.json', { c: query, per_page: limit, with_people: 'false' }, { signal });
   const hits = (Array.isArray(json) ? json : [])
-    .filter((h) => h && (h.t === 'series' || h.t === 'film') && parseVikiId(h.id));
+    .filter((h) => h && (h.t === 'series' || h.t === 'film') && parseVikiId(h.id) && isRelevantHit(h, query));
 
   // La ficha es opcional: si falla, el resultado se arma con lo de la búsqueda.
   const details = await Promise.allSettled(hits.map((h, i) => (

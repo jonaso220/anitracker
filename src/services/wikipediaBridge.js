@@ -4,11 +4,19 @@
  * in Spanish for a title that only has an English or Japanese canonical name), we
  * use Wikipedia's interwiki links as a translation layer, then re-query TVMaze/MAL
  * with the translated title.
+ *
+ * Both rounds return { hits, titles }: `titles` are the Wikipedia titles the
+ * hits were found through, so the caller can rank against them. They are NOT
+ * added to the hits' altTitles (that faked a perfect match for every hit, only
+ * the first one survived the dedupe, and the query got saved into the anime).
  */
 
 import { searchJikan } from './jikanService';
 import { searchTvmaze } from './tvmazeService';
 import { searchItunes } from './itunesService';
+
+// "Los Simpson (serie de televisión)" → "Los Simpson"
+const stripDisambiguation = (title) => title.replace(/\s*\([^)]*\)\s*$/, '');
 
 async function wikiSearch(lang, terms, { signal } = {}) {
   const results = await Promise.allSettled(
@@ -31,7 +39,9 @@ async function wikiSearch(lang, terms, { signal } = {}) {
 }
 
 async function getLanglinks(lang, title, { signal } = {}) {
-  const url = `https://${lang}.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(title)}&prop=langlinks&lllimit=10&lllang=ja|en&format=json&origin=*`;
+  // `lllang` acepta un solo idioma (con "ja|en" no devolvía nada): se piden
+  // todos los links y se filtra acá.
+  const url = `https://${lang}.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(title)}&prop=langlinks&lllimit=500&format=json&origin=*`;
   const json = await fetch(url, { signal }).then((r) => r.json());
   const pages = json?.query?.pages || {};
   const page = Object.values(pages)[0];
@@ -48,7 +58,6 @@ async function getLanglinks(lang, title, { signal } = {}) {
  */
 export async function searchViaSpanishWikipedia(query, { signal } = {}) {
   const wikiResults = await wikiSearch('es', [`${query} serie`, `${query} película`, `${query} anime`], { signal });
-  const hits = [];
   for (const result of wikiResults) {
     try {
       const { en, ja } = await getLanglinks('es', result.title, { signal });
@@ -63,14 +72,13 @@ export async function searchViaSpanishWikipedia(query, { signal } = {}) {
         queries.push(searchTvmaze(result.title, { signal, limit: 5 }).catch(() => []));
       }
       const [jikan, tv, tvAlt] = await Promise.all(queries);
-      const bridgeHits = [...jikan, ...tv, ...(tvAlt || [])].map((a) => ({
-        ...a,
-        altTitles: [...(a.altTitles || []), result.title].filter((t, i, arr) => arr.indexOf(t) === i),
-      }));
-      if (bridgeHits.length > 0) { hits.push(...bridgeHits); break; }
-    } catch { /* continue */ }
+      const hits = [...jikan, ...tv, ...(tvAlt || [])];
+      if (hits.length > 0) return { hits, titles: [searchTitle, result.title].map(stripDisambiguation) };
+    } catch (err) {
+      if (err?.name === 'AbortError') throw err;
+    }
   }
-  return hits;
+  return { hits: [], titles: [] };
 }
 
 /**
@@ -78,19 +86,17 @@ export async function searchViaSpanishWikipedia(query, { signal } = {}) {
  */
 export async function searchViaEnglishWikipedia(query, { signal } = {}) {
   const wikiResults = await wikiSearch('en', [`${query} TV series`, `${query} film`], { signal });
-  const hits = [];
   for (const result of wikiResults) {
     try {
       const [tv, itunes] = await Promise.all([
         searchTvmaze(result.title, { signal, limit: 3 }).catch(() => []),
         searchItunes(result.title, { signal, limit: 3 }).catch(() => []),
       ]);
-      const bridgeHits = [...tv, ...itunes].map((a) => ({
-        ...a,
-        altTitles: [...(a.altTitles || []), query].filter((t, i, arr) => arr.indexOf(t) === i),
-      }));
-      if (bridgeHits.length > 0) { hits.push(...bridgeHits); break; }
-    } catch { /* continue */ }
+      const hits = [...tv, ...itunes];
+      if (hits.length > 0) return { hits, titles: [stripDisambiguation(result.title)] };
+    } catch (err) {
+      if (err?.name === 'AbortError') throw err;
+    }
   }
-  return hits;
+  return { hits: [], titles: [] };
 }
