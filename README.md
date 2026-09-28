@@ -24,7 +24,7 @@ opcional en la nube.
   fecha, rating o título.
 - **📋 Listas personalizadas** — agrupá animes como quieras.
 - **🔍 Búsqueda multi-fuente** — consulta en paralelo a MyAnimeList (Jikan),
-  Kitsu, AniList, TVMaze, iTunes y TMDB (opcional), con deduplicado,
+  Kitsu, AniList, Rakuten Viki, TVMaze, iTunes y TMDB (opcional), con deduplicado,
   cache de búsquedas recientes y *fallback* vía Wikipedia.
 - **📺 Dónde ver** — links de streaming (Crunchyroll, Netflix, etc.) desde
   AniList/Kitsu, y con TMDB configurado, disponibilidad por país de películas
@@ -47,7 +47,7 @@ opcional en la nube.
 | Lint | ESLint 9 |
 | Backend opcional | Firebase (Auth + Firestore) |
 | Datos de anime | AniList, Jikan (MAL), Kitsu, TVMaze, iTunes |
-| Películas y series | TMDB (opcional, con disponibilidad por país vía JustWatch) |
+| Películas y series | Rakuten Viki (dramas asiáticos), TMDB (opcional, con disponibilidad por país vía JustWatch) |
 
 ## Cómo empezar
 

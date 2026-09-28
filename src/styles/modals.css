@@ -987,6 +987,28 @@ a.provider-chip:hover { border-color: var(--border-brand-strong); transform: tra
   transform: translateY(-1px);
   box-shadow: var(--shadow-sm);
 }
+.day-btn.suggested {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  background: var(--gradient-brand-soft);
+  border-color: var(--border-brand);
+}
+.day-btn-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--radius-pill);
+  background: var(--gradient-brand);
+  color: #fff;
+}
+.day-picker-hint {
+  margin: -0.75rem 0 1rem;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
 
 .ep-control-btn:disabled,
 .binge-quick-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }

@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v13';
+const CACHE_VERSION = 'v14';
 const STATIC_CACHE = `anitracker-static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `anitracker-runtime-${CACHE_VERSION}`;
 const IMAGE_CACHE = `anitracker-images-${CACHE_VERSION}`;
@@ -23,6 +23,7 @@ const NO_CACHE_HOSTS = [
   'api.mymemory.translated.net',
   'translate.googleapis.com',
   'api.themoviedb.org',
+  'api.viki.io',
   'es.wikipedia.org',
   'en.wikipedia.org',
   'firestore.googleapis.com',
@@ -38,6 +39,7 @@ const IMAGE_HOSTS = [
   'media.kitsu.app',
   's4.anilist.co',
   'static.tvmaze.com',
+  'vikiplatform.com',
   'is1-ssl.mzstatic.com',
   'is2-ssl.mzstatic.com',
   'is3-ssl.mzstatic.com',

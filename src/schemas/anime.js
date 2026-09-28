@@ -18,7 +18,7 @@ const parseEpisodesNullable = (v) => {
   return Number.isNaN(n) || n <= 0 ? null : n;
 };
 
-export const ANIME_SOURCES = ['MAL', 'Kitsu', 'AniList', 'TVMaze', 'iTunes'];
+export const ANIME_SOURCES = ['MAL', 'Kitsu', 'AniList', 'TVMaze', 'iTunes', 'TMDB', 'Viki'];
 
 /**
  * Normalize a raw anime-like object to the canonical shape used in the app.
@@ -57,6 +57,8 @@ export function normalizeAnime(raw) {
           .filter((l) => l && typeof l.url === 'string' && typeof l.site === 'string')
           .map((l) => ({ site: l.site, url: l.url, language: toStr(l.language) }))
       : [],
+    // Día de emisión sugerido (p. ej. 'Jueves'), cuando la fuente lo informa.
+    airDay: toStr(raw.airDay),
     currentEp: toNumber(raw.currentEp, 0),
     userRating: toNumber(raw.userRating, 0),
     // Optional user-list flags

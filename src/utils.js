@@ -34,6 +34,7 @@ export const getPlatformInfo = (url) => {
   if (u.includes('tv.apple.com'))     return { label: 'TV+', name: 'Apple TV+',   color: '#a6a6a6' };
   if (u.includes('jkanime.net'))      return { label: 'JK', name: 'JKAnime',     color: '#a855f7' };
   if (u.includes('animeflv'))         return { label: 'FLV',name: 'AnimeFLV',    color: '#4ecdc4' };
+  if (u.includes('viki.com'))        return { label: 'V',  name: 'Viki',        color: '#1dabe3' };
   if (u.includes('youtube.com') || u.includes('youtu.be')) return { label: 'YT', name: 'YouTube', color: '#ff0000' };
   return { label: '▶', name: 'Ver', color: '#22c55e' };
 };
@@ -140,6 +141,27 @@ export const pickAutoWatchLink = (anime) => {
   const bestRank = streamingRank(links[0].url);
   const spanish = links.find((l) => streamingRank(l.url) === bestRank && /spanish|español/i.test(l.language || ''));
   return (spanish || links[0]).url;
+};
+
+/**
+ * Info de "próximo episodio" con la forma que consumen las tarjetas y la
+ * agenda. `airingAt` en segundos unix. Compartido por AniList y Viki.
+ */
+export const buildAiringInfo = ({ episode, airingAt, totalEpisodes = null, title = '' }, now = new Date()) => {
+  const airingDate = new Date(airingAt * 1000);
+  const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate() + 1);
+  const diffHours = (airingDate - now) / (1000 * 60 * 60);
+  return {
+    episode,
+    airingAt,
+    timeUntilAiring: Math.round(airingAt - now.getTime() / 1000),
+    isToday: airingDate.toDateString() === now.toDateString(),
+    isTomorrow: airingDate.toDateString() === tomorrow.toDateString(),
+    isThisWeek: diffHours > 0 && diffHours <= 7 * 24,
+    hasAired: diffHours <= 0 && diffHours > -24,
+    totalEpisodes,
+    title,
+  };
 };
 
 /**

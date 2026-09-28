@@ -4,6 +4,7 @@ import { toAnime as kitsuToAnime, searchKitsu, mapIncludedStreamingLinks, siteNa
 import { toAnime as anilistToAnime, fetchAiringInfo, fetchAnilistUserAnimeLists, fetchSeason, fetchLatestAired, fetchDirectory, fetchAnilistRelations, clearRelationsCache } from '../services/anilistService';
 import { toAnime as tvmazeToAnime } from '../services/tvmazeService';
 import { toAnime as itunesToAnime } from '../services/itunesService';
+import { toAnime as vikiToAnime, searchViki, parseVikiId, vikiIdOf, fetchVikiAiringInfo, VIKI_ID_BASE } from '../services/vikiService';
 import { toAnime as tmdbToAnime, parseTmdbKey, extractExtras, TMDB_MOVIE_ID_BASE, TMDB_TV_ID_BASE } from '../services/tmdbService';
 import { searchAnime, clearSearchCache, parseAnimeSearchInput } from '../services/searchAnime';
 
@@ -180,6 +181,150 @@ describe('adapter: tmdbService.toAnime', () => {
 
   it('returns null for items with no title', () => {
     expect(tmdbToAnime({ media_type: 'movie', id: 1 })).toBeNull();
+  });
+});
+
+describe('adapter: vikiService.toAnime', () => {
+  const hit = {
+    id: '41650c', t: 'series', tt: 'The Ordinary Jackpot', te: 'El oficinista que ganó la lotería',
+    ko: '로또 1등도 출근합니다', i: 'https://1.vikiplatform.com/c/41650c/p.jpg', e: 6,
+    u: { w: '/tv/41650c-the-ordinary-jackpot' },
+  };
+  const detail = {
+    id: '41650c', type: 'series', origin: { country: 'kr', language: 'ko' },
+    titles: { es: 'El oficinista que ganó la lotería', en: 'The Ordinary Jackpot', ko: '로또 1등도 출근합니다' },
+    descriptions: { es: 'Gong Eun Tae gana la lotería.', en: 'He wins.' },
+    genres: ['9g', '6g'], flags: { on_air: true }, review_stats: { average_rating: 9.54 },
+    planned_episodes: 10, day_of_week: ['thu'], subtitle_completions: { es: 100 },
+    distributors: [{ from: '2026-09-10' }],
+    images: { poster: { url: 'https://1.vikiplatform.com/c/41650c/poster.jpg' } },
+    url: { web: 'https://www.viki.com/tv/41650c-the-ordinary-jackpot' },
+  };
+
+  it('maps a series with its detail into the Viki id range, in Spanish', () => {
+    const a = vikiToAnime(hit, detail);
+    expect(a).toMatchObject({
+      id: VIKI_ID_BASE + 41650, source: 'Viki', sourceKey: 'viki:41650c',
+      title: 'El oficinista que ganó la lotería', titleEn: 'The Ordinary Jackpot',
+      titleOriginal: '로또 1등도 출근합니다', titleJp: '로또 1등도 출근합니다', synopsis: 'Gong Eun Tae gana la lotería.',
+      genres: ['Drama', 'Comedia'], rating: 9.5, episodes: 10, status: 'En emisión',
+      year: '2026', type: 'Serie', airDay: 'Jueves',
+      image: 'https://1.vikiplatform.com/c/41650c/poster.jpg',
+      malUrl: 'https://www.viki.com/tv/41650c-the-ordinary-jackpot',
+    });
+    expect(a.altTitles).toEqual(['The Ordinary Jackpot', '로또 1등도 출근합니다']);
+    expect(a.streamingLinks).toEqual([
+      { site: 'Viki', url: 'https://www.viki.com/tv/41650c-the-ordinary-jackpot', language: 'subtítulos en español' },
+    ]);
+  });
+
+  it('falls back to the search hit when the detail is missing', () => {
+    const a = vikiToAnime(hit, null);
+    expect(a).toMatchObject({ title: 'El oficinista que ganó la lotería', episodes: 6, airDay: '', status: '' });
+    expect(a.malUrl).toBe('https://www.viki.com/tv/41650c-the-ordinary-jackpot');
+  });
+
+  it('maps films as Película without an air day', () => {
+    const a = vikiToAnime(
+      { id: '38609c', t: 'film', tt: 'Mood of the Day', te: 'El humor del día', u: { w: '/movies/38609c-mood-of-the-day' } },
+      { id: '38609c', type: 'film', flags: { on_air: true }, day_of_week: ['fri'] },
+    );
+    expect(a).toMatchObject({ type: 'Película', episodes: null, airDay: '' });
+  });
+
+  it('parses Viki container ids', () => {
+    expect(parseVikiId('41650c')).toBe(41650);
+    expect(parseVikiId('')).toBeNull();
+  });
+});
+
+describe('vikiService.searchViki', () => {
+  beforeEach(() => { vi.spyOn(globalThis, 'fetch'); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it('enriches series hits with their detail and skips people/other types', async () => {
+    globalThis.fetch.mockImplementation((url) => {
+      if (url.includes('/search.json')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve([
+          { id: '41650c', t: 'series', tt: 'The Ordinary Jackpot', u: { w: '/tv/41650c-x' } },
+          { id: '123pr', t: 'person', tt: 'Lee Jun Hyuk' },
+        ]) });
+      }
+      if (url.includes('/series/41650c.json')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: '41650c', type: 'series', titles: { es: 'El oficinista que ganó la lotería' } }) });
+      }
+      return Promise.reject(new Error(`unexpected ${url}`));
+    });
+    const results = await searchViki('oficinista loteria');
+    expect(results).toHaveLength(1);
+    expect(results[0].title).toBe('El oficinista que ganó la lotería');
+    expect(globalThis.fetch.mock.calls[0][0]).toContain('c=oficinista+loteria');
+  });
+
+  it('still returns the hit when its detail request fails', async () => {
+    globalThis.fetch.mockImplementation((url) => (url.includes('/search.json')
+      ? Promise.resolve({ ok: true, json: () => Promise.resolve([{ id: '41650c', t: 'series', tt: 'The Ordinary Jackpot' }]) })
+      : Promise.resolve({ ok: false, status: 500 })));
+    const results = await searchViki('jackpot');
+    expect(results[0].title).toBe('The Ordinary Jackpot');
+  });
+});
+
+describe('vikiService.fetchVikiAiringInfo', () => {
+  const NOW = new Date('2026-09-28T12:00:00Z');
+  const nowSec = NOW.getTime() / 1000;
+  const detail = (id, extra) => ({ id, flags: { on_air: true }, planned_episodes: 10, titles: { es: `Serie ${id}` }, ...extra });
+
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(NOW); vi.spyOn(globalThis, 'fetch'); });
+  afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+
+  const respond = (byId) => globalThis.fetch.mockImplementation((url) => {
+    const id = /\/series\/(\w+)\.json/.exec(url)?.[1];
+    const body = byId[id];
+    return body instanceof Error ? Promise.reject(body) : Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  });
+
+  it('usa watch_next para el próximo episodio, con la forma de AniList', async () => {
+    respond({ '41650c': detail('41650c', { watch_next: { episode: 7, viki_air_time: nowSec + 3 * 86400 } }) });
+    const data = await fetchVikiAiringInfo({ vikiIds: ['41650c'] });
+    expect(data[VIKI_ID_BASE + 41650]).toMatchObject({
+      episode: 7, airingAt: nowSec + 3 * 86400, timeUntilAiring: 3 * 86400,
+      isToday: false, isThisWeek: true, hasAired: false, totalEpisodes: 10, title: 'Serie 41650c',
+    });
+  });
+
+  it('omite series finalizadas, sin watch_next o con fecha vieja', async () => {
+    respond({
+      '1c': detail('1c', { flags: { on_air: false }, watch_next: { episode: 3, viki_air_time: nowSec + 3600 } }),
+      '2c': detail('2c'),
+      '3c': detail('3c', { watch_next: { episode: 2, viki_air_time: nowSec - 3 * 86400 } }),
+      '4c': detail('4c', { watch_next: { episode: 5, viki_air_time: nowSec - 3600 } }),
+    });
+    const data = await fetchVikiAiringInfo({ vikiIds: ['1c', '2c', '3c', '4c'] });
+    expect(Object.keys(data)).toEqual([String(VIKI_ID_BASE + 4)]);
+    expect(data[VIKI_ID_BASE + 4].hasAired).toBe(true);
+  });
+
+  it('tolera fichas que fallan, pero lanza si fallan todas', async () => {
+    respond({ '1c': new Error('down'), '2c': detail('2c', { watch_next: { episode: 1, viki_air_time: nowSec + 60 } }) });
+    expect(Object.keys(await fetchVikiAiringInfo({ vikiIds: ['1c', '2c'] }))).toHaveLength(1);
+
+    respond({ '1c': new Error('down') });
+    await expect(fetchVikiAiringInfo({ vikiIds: ['1c'] })).rejects.toThrow('down');
+  });
+
+  it('no hace requests sin ids', async () => {
+    expect(await fetchVikiAiringInfo({ vikiIds: [] })).toEqual({});
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe('vikiService.vikiIdOf', () => {
+  it('resuelve el id de Viki de un anime guardado', () => {
+    expect(vikiIdOf({ id: VIKI_ID_BASE + 41650, sourceKey: 'viki:41650c' })).toBe('41650c');
+    expect(vikiIdOf({ id: VIKI_ID_BASE + 41650 })).toBe('41650c');
+    expect(vikiIdOf({ id: 20 })).toBeNull();
+    expect(vikiIdOf({ id: 900000001 })).toBeNull();
   });
 });
 
@@ -544,6 +689,11 @@ describe('parseAnimeSearchInput', () => {
     expect(parsed.searchTerm).toBe('');
   });
 
+  it('extracts the title from a Viki series URL without the content id', () => {
+    const parsed = parseAnimeSearchInput('https://www.viki.com/tv/41650c-the-ordinary-jackpot');
+    expect(parsed).toMatchObject({ isUrl: true, searchTerm: 'the ordinary jackpot', site: 'Viki' });
+  });
+
   it('extracts title slugs from other streaming URLs when available', () => {
     const parsed = parseAnimeSearchInput('https://example.com/anime/frieren-beyond-journeys-end');
     expect(parsed.searchTerm).toBe('frieren beyond journeys end');
@@ -570,6 +720,7 @@ describe('searchAnime integration (mocked)', () => {
       if (url.includes('anilist')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: { Page: { media: [] } } }) });
       if (url.includes('tvmaze')) return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
       if (url.includes('itunes')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ results: [] }) });
+      if (url.includes('viki')) return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
       return Promise.reject(new Error(`unexpected ${url}`));
     });
     const { results, failedApis } = await searchAnime('Naruto');
@@ -586,6 +737,7 @@ describe('searchAnime integration (mocked)', () => {
       if (url.includes('anilist')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: { Page: { media: [] } } }) });
       if (url.includes('tvmaze')) return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
       if (url.includes('itunes')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ results: [] }) });
+      if (url.includes('viki')) return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
       return Promise.reject(new Error(`unexpected ${url}`));
     });
 
@@ -608,6 +760,7 @@ describe('searchAnime integration (mocked)', () => {
       if (url.includes('anilist')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: { Page: { media: [] } } }) });
       if (url.includes('tvmaze')) return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
       if (url.includes('itunes')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ results: [] }) });
+      if (url.includes('viki')) return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
       return Promise.reject(new Error(`unexpected ${url}`));
     });
     const { results, failedApis } = await searchAnime('Naruto');
@@ -622,6 +775,7 @@ describe('searchAnime integration (mocked)', () => {
       if (url.includes('anilist')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: { Page: { media: [] } } }) });
       if (url.includes('tvmaze')) return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
       if (url.includes('itunes')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ results: [] }) });
+      if (url.includes('viki')) return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
       return Promise.reject(new Error(`unexpected ${url}`));
     });
     await searchAnime('Naruto');
@@ -638,6 +792,7 @@ describe('searchAnime integration (mocked)', () => {
       if (url.includes('anilist')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: { Page: { media: [] } } }) });
       if (url.includes('tvmaze')) return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
       if (url.includes('itunes')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ results: [] }) });
+      if (url.includes('viki')) return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
       return Promise.reject(new Error(`unexpected ${url}`));
     });
     await searchAnime('Naruto');
@@ -660,6 +815,7 @@ describe('searchAnime integration (mocked)', () => {
       });
       if (url.includes('tvmaze')) return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
       if (url.includes('itunes')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ results: [] }) });
+      if (url.includes('viki')) return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
       return Promise.reject(new Error(`unexpected ${url}`));
     });
     const { results } = await searchAnime('Naruto');

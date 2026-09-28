@@ -41,12 +41,15 @@ store global ni context; el estado vive en `App.jsx` y baja por props.
     `useToast`, `useServiceWorkerUpdate`.
 - **`services/`** — una API por archivo (`jikanService`, `kitsuService`,
   `anilistService`, `tvmazeService`, `itunesService`, `tmdbService`,
-  `wikipediaBridge`). `searchAnime.js` las orquesta en paralelo
+  `vikiService`, `wikipediaBridge`). `searchAnime.js` las orquesta en paralelo
   (`Promise.allSettled`), deduplica (mergeando streaming links / trailer del
   duplicado descartado), cachea consultas recientes (TTL 10 min) y rankea por
   relevancia, con *fallback* a Wikipedia si no hay buen match. `tmdbService`
   solo se activa con `VITE_TMDB_API_KEY` y expone además "dónde ver" por país
-  (providers de JustWatch, cache localStorage 24 h) y trailers.
+  (providers de JustWatch, cache localStorage 24 h) y trailers. `vikiService`
+  (Rakuten Viki, dramas asiáticos) usa la API pública v4 sin key y completa
+  cada resultado con su ficha (sinopsis en español, día de emisión → `airDay`,
+  que `DayPickerModal` sugiere).
 - **`components/`** — UI. `views/` = contenido de cada pestaña; `modals/` =
   diálogos.
 - **`utils.js`** — helpers puros y testeables (`clean`, `filterByLocalSearch`,
@@ -71,7 +74,7 @@ store global ni context; el estado vive en `App.jsx` y baja por props.
 
 Los IDs de anime codifican la fuente: MAL `< 100000`, Kitsu `+100000`, AniList
 `300000–400000`, TVMaze `+400000`, iTunes `+500000`, TMDB película
-`+600000000` / serie `+900000000` (ver `useAnimeData` y cada service).
+`+600000000` / serie `+900000000`, Viki `+700000000` (ver `useAnimeData` y cada service).
 
 ## Convenciones
 

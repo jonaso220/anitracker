@@ -1,4 +1,5 @@
 import { normalizeAnime } from '../schemas/anime';
+import { buildAiringInfo } from '../utils';
 
 const ANILIST_URL = 'https://graphql.anilist.co';
 
@@ -366,7 +367,6 @@ export async function fetchAiringInfo({ malIds = [], anilistIds = [], signal } =
   const data = await anilistFetch(query, undefined, { signal });
 
   const now = new Date();
-  const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate() + 1);
   const result = {};
   const processMedia = (media) => {
     if (!media) return;
@@ -374,18 +374,15 @@ export async function fetchAiringInfo({ malIds = [], anilistIds = [], signal } =
       const appId = m.idMal && m.idMal < 100000 ? m.idMal : (m.id + 300000);
       const airing = m.nextAiringEpisode;
       if (!airing) continue;
-      const airingDate = new Date(airing.airingAt * 1000);
-      const diffHours = (airingDate - now) / (1000 * 60 * 60);
       result[appId] = {
-        episode: airing.episode,
-        airingAt: airing.airingAt,
+        ...buildAiringInfo({
+          episode: airing.episode,
+          airingAt: airing.airingAt,
+          totalEpisodes: m.episodes,
+          title: m.title?.english || m.title?.romaji || '',
+        }, now),
+        // AniList ya lo calcula en el servidor; se respeta su valor.
         timeUntilAiring: airing.timeUntilAiring,
-        isToday: airingDate.toDateString() === now.toDateString(),
-        isTomorrow: airingDate.toDateString() === tomorrow.toDateString(),
-        isThisWeek: diffHours > 0 && diffHours <= 7 * 24,
-        hasAired: diffHours <= 0 && diffHours > -24,
-        totalEpisodes: m.episodes,
-        title: m.title?.english || m.title?.romaji || '',
       };
     }
   };

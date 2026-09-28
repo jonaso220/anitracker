@@ -4,6 +4,7 @@ import { searchAnilist } from './anilistService';
 import { searchTvmaze } from './tvmazeService';
 import { searchItunes } from './itunesService';
 import { searchTmdb, TMDB_ENABLED } from './tmdbService';
+import { searchViki } from './vikiService';
 import { searchViaSpanishWikipedia, searchViaEnglishWikipedia } from './wikipediaBridge';
 
 const normalize = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -21,6 +22,7 @@ const URL_SITE_NAMES = [
   ['tv.apple.com', 'Apple TV+'],
   ['jkanime.net', 'JKAnime'],
   ['animeflv', 'AnimeFLV'],
+  ['viki.com', 'Viki'],
 ];
 
 const URL_PATH_WORDS = new Set([
@@ -75,6 +77,11 @@ export function parseAnimeSearchInput(rawInput) {
     if (seriesIndex >= 0) {
       slug = [...parts.slice(seriesIndex + 1)].reverse().find((part) => !isOpaquePathPart(part)) || '';
     }
+  } else if (host.includes('viki.com')) {
+    // Viki: /tv/41650c-the-ordinary-jackpot o /movies/38609c-… — el slug lleva
+    // delante el id del contenido.
+    const idx = lowerParts.findIndex((part) => part === 'tv' || part === 'movies');
+    slug = idx >= 0 ? (parts[idx + 1] || '').replace(/^\d+[a-z]{1,2}-/i, '') : '';
   } else {
     slug = [...parts].reverse().find((part) => !isOpaquePathPart(part)) || '';
   }
@@ -152,6 +159,9 @@ const SOURCES = [
   { name: 'MAL', search: searchJikan },
   { name: 'Kitsu', search: searchKitsu },
   { name: 'AniList', search: searchAnilist },
+  // Antes que TVMaze/iTunes/TMDB: para dramas asiáticos gana la dedupe con
+  // título y sinopsis en español y el link de Viki.
+  { name: 'Viki', search: searchViki },
   { name: 'TVMaze', search: searchTvmaze },
   { name: 'iTunes', search: searchItunes },
   ...(TMDB_ENABLED ? [{ name: 'TMDB', search: searchTmdb }] : []),

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { clean, filterByLocalSearch, getFilteredWatched, parseEpisodes, hashString, buildBackup, parseBackup, getPlatformInfo, pickAutoWatchLink, sortStreamingLinks, isDeadPlatformUrl, buildFanStreamingLinks, getDisplayStreamingLinks, formatAiringWhen, formatAiringDate, formatTimeAgo, formatTimeUntil, getAiringDayIndex, groupSeasonByDay, looksSpanish } from '../utils';
+import { clean, filterByLocalSearch, getFilteredWatched, parseEpisodes, hashString, buildBackup, parseBackup, getPlatformInfo, pickAutoWatchLink, sortStreamingLinks, isDeadPlatformUrl, buildFanStreamingLinks, getDisplayStreamingLinks, formatAiringWhen, formatAiringDate, buildAiringInfo, formatTimeAgo, formatTimeUntil, getAiringDayIndex, groupSeasonByDay, looksSpanish } from '../utils';
 
 describe('clean', () => {
   it('removes internal flags from anime object', () => {
@@ -470,5 +470,21 @@ describe('formatAiringDate', () => {
     const text = formatAiringDate(1783771200);
     expect(text).toMatch(/^Sábado, 11 de julio/);
     expect(text).toMatch(/\d{1,2}:\d{2}$/);
+  });
+});
+
+describe('buildAiringInfo', () => {
+  const now = new Date(2026, 8, 28, 12, 0, 0);
+  const at = (hoursFromNow) => now.getTime() / 1000 + hoursFromNow * 3600;
+
+  it('marca hoy, mañana y esta semana según la hora local', () => {
+    expect(buildAiringInfo({ episode: 3, airingAt: at(2) }, now)).toMatchObject({ episode: 3, isToday: true, isTomorrow: false, isThisWeek: true, hasAired: false, timeUntilAiring: 7200 });
+    expect(buildAiringInfo({ episode: 3, airingAt: at(24) }, now)).toMatchObject({ isToday: false, isTomorrow: true });
+    expect(buildAiringInfo({ episode: 3, airingAt: at(24 * 8) }, now).isThisWeek).toBe(false);
+  });
+
+  it('considera emitido lo de las últimas 24 h', () => {
+    expect(buildAiringInfo({ episode: 3, airingAt: at(-2) }, now).hasAired).toBe(true);
+    expect(buildAiringInfo({ episode: 3, airingAt: at(-30) }, now).hasAired).toBe(false);
   });
 });

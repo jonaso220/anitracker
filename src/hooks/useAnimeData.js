@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { daysOfWeek } from '../constants';
 import { searchAnime } from '../services/searchAnime';
 import { fetchAiringInfo } from '../services/anilistService';
+import { fetchVikiAiringInfo, vikiIdOf } from '../services/vikiService';
 
 const AIRING_CACHE_KEY = 'anitracker-airing-cache';
 const AIRING_TIME_KEY = 'anitracker-airing-time';
@@ -49,10 +50,11 @@ export function useAnimeData(schedule) {
     const allAnime = daysOfWeek.flatMap((d) => schedule[d] || []);
     const malIds = allAnime.filter((a) => a.id && a.id < 100000).map((a) => a.id);
     const anilistIds = allAnime.filter((a) => a.id >= 300000 && a.id < 400000).map((a) => a.id - 300000);
+    const vikiIds = [...new Set(allAnime.filter((a) => a.type !== 'Película').map(vikiIdOf).filter(Boolean))];
 
-    if (malIds.length === 0 && anilistIds.length === 0) { setAiringData({}); setAiringError(null); return; }
+    if (malIds.length === 0 && anilistIds.length === 0 && vikiIds.length === 0) { setAiringData({}); setAiringError(null); return; }
 
-    const currentIds = [...malIds, ...anilistIds].sort().join(',');
+    const currentIds = [...malIds, ...anilistIds, ...vikiIds].sort().join(',');
     const cached = readAiringCache(currentIds);
     if (cached && !airingForceRef.current) { setAiringData(cached); setAiringError(null); return; }
     airingForceRef.current = false;
@@ -63,17 +65,31 @@ export function useAnimeData(schedule) {
     airingAbortRef.current = controller;
 
     airingDebounceRef.current = setTimeout(async () => {
+      const toError = (err) => ({ kind: !navigator.onLine ? 'offline' : String(err?.message).includes('429') ? 'rate-limit' : 'service' });
       try {
-        const data = await fetchAiringInfo({ malIds, anilistIds, signal: controller.signal });
+        // AniList y Viki en paralelo: si una falla se muestra lo de la otra,
+        // con el aviso de reintento y sin cachear.
+        const settled = await Promise.allSettled([
+          ...(malIds.length || anilistIds.length ? [fetchAiringInfo({ malIds, anilistIds, signal: controller.signal })] : []),
+          ...(vikiIds.length ? [fetchVikiAiringInfo({ vikiIds, signal: controller.signal })] : []),
+        ]);
+        const failed = settled.filter((s) => s.status === 'rejected');
+        if (failed.length === settled.length) throw failed[0].reason;
         if (!controller.signal.aborted) {
+          const data = Object.assign({}, ...settled.map((s) => (s.status === 'fulfilled' ? s.value : {})));
           setAiringData(data);
-          setAiringError(null);
-          writeAiringCache(data, currentIds);
+          if (failed.length === 0) {
+            setAiringError(null);
+            writeAiringCache(data, currentIds);
+          } else {
+            console.error('[AniTracker] Partial airing check failed:', failed[0].reason);
+            setAiringError(toError(failed[0].reason));
+          }
         }
       } catch (err) {
         if (err.name !== 'AbortError') {
           console.error('[AniTracker] Airing check failed:', err);
-          setAiringError({ kind: !navigator.onLine ? 'offline' : String(err?.message).includes('429') ? 'rate-limit' : 'service' });
+          setAiringError(toError(err));
         }
       }
     }, 1000);

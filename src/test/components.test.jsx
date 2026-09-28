@@ -7,6 +7,7 @@ import SeasonSection from '../components/SeasonSection';
 import DirectorySection from '../components/DirectorySection';
 import AnimeDetailModal from '../components/modals/AnimeDetailModal';
 import SearchModal from '../components/modals/SearchModal';
+import DayPickerModal from '../components/modals/DayPickerModal';
 import TodayPanel from '../components/TodayPanel';
 import { buildAgenda } from '../agenda';
 import { clearRelationsCache } from '../services/anilistService';
@@ -490,5 +491,28 @@ describe('StatsPanel', () => {
     expect(screen.queryByText('Géneros favoritos')).not.toBeInTheDocument();
     expect(screen.queryByText('Composición de tu biblioteca')).not.toBeInTheDocument();
     expect(screen.queryByText('Tus puntuaciones')).not.toBeInTheDocument();
+  });
+});
+
+describe('DayPickerModal', () => {
+  const renderPicker = (anime, addToSchedule = vi.fn()) => render(
+    <DayPickerModal showDayPicker={anime} setShowDayPicker={vi.fn()} watchLater={[]} addToSchedule={addToSchedule} moveFromWatchLaterToSchedule={vi.fn()} />,
+  );
+
+  it('highlights the air day reported by the source', () => {
+    const addToSchedule = vi.fn();
+    const anime = { id: 700041650, title: 'El oficinista que ganó la lotería', source: 'Viki', airDay: 'Jueves' };
+    renderPicker(anime, addToSchedule);
+    expect(screen.getByText(/Nuevos episodios los jueves en Viki/)).toBeInTheDocument();
+    const thursday = screen.getByRole('button', { name: /Jueves/ });
+    expect(thursday).toHaveClass('suggested');
+    fireEvent.click(thursday);
+    expect(addToSchedule).toHaveBeenCalledWith(anime, 'Jueves');
+  });
+
+  it('shows no suggestion without an air day', () => {
+    renderPicker({ id: 1, title: 'Naruto' });
+    expect(screen.queryByText(/Nuevos episodios/)).toBeNull();
+    expect(document.querySelector('.day-btn.suggested')).toBeNull();
   });
 });
