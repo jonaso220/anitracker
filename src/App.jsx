@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import './App.css';
 
 // Eager: part of the app shell or the default tab, so always needed on first paint.
@@ -128,13 +128,30 @@ export default function AnimeTracker() {
   });
 
   // Reset localSearch + bulk mode when switching tabs
-  const handleTabChange = (tab) => {
+  const loadSeasonCurrent = discovery.loadSeasonCurrent;
+  const loadDirectory = directory.loadInitial;
+  const handleTabChange = useCallback((tab) => {
     setActiveTab(tab);
     setLocalSearch('');
-    bulk.exitBulkMode();
-    if (tab === 'season') discovery.loadSeasonCurrent();
-    if (tab === 'directory') directory.loadInitial();
-  };
+    exitBulkMode();
+    if (tab === 'season') loadSeasonCurrent();
+    if (tab === 'directory') loadDirectory();
+  }, [exitBulkMode, loadSeasonCurrent, loadDirectory]);
+
+  // Props estables para los componentes memoizados: una función o un objeto
+  // nuevo en cada render (p. ej. al tipear en el buscador) los obligaría a
+  // volver a renderizarse enteros.
+  const openSearch = useCallback(() => setShowSearch(true), []);
+  const openImport = useCallback(() => setShowImport(true), []);
+  const openBackup = useCallback(() => setShowBackup(true), []);
+  const openBulkDayPicker = useCallback(() => setShowBulkDayPicker(true), []);
+  const openListDetail = useCallback((a) => setShowAnimeDetail(a), []);
+  const openSeasonDetail = useCallback((a) => setShowAnimeDetail({ ...a, _isWatchLater: false, _isWatched: false, _isSeason: true }), []);
+  const openDirectoryDetail = useCallback((a) => setShowAnimeDetail({ ...a, _isWatchLater: false, _isWatched: false, _isSeason: false, _isDirectory: true }), []);
+  const tabCounts = useMemo(
+    () => ({ watchLater: watchLater.length, watched: watchedList.length, lists: customLists.length }),
+    [watchLater.length, watchedList.length, customLists.length],
+  );
 
   // --- Backup (export / restore) ---
   const exportData = () => {
@@ -231,13 +248,13 @@ export default function AnimeTracker() {
         darkMode={darkMode} setDarkMode={setDarkMode}
         user={user} syncing={syncing} syncError={syncError} syncTooLarge={syncTooLarge} loginWithGoogle={loginWithGoogle} logout={logout} firebaseEnabled={FIREBASE_ENABLED}
         authError={authError} authReady={authReady} authBusy={authBusy} onRetrySync={retrySync}
-        onOpenSearch={() => setShowSearch(true)} onOpenImport={() => setShowImport(true)}
-        onOpenBackup={() => setShowBackup(true)}
+        onOpenSearch={openSearch} onOpenImport={openImport}
+        onOpenBackup={openBackup}
       />
 
       <NavTabs
         activeTab={activeTab}
-        counts={{ watchLater: watchLater.length, watched: watchedList.length, lists: customLists.length }}
+        counts={tabCounts}
         onChange={handleTabChange}
       />
 
@@ -260,7 +277,7 @@ export default function AnimeTracker() {
             enterBulkMode={bulk.enterBulkMode} exitBulkMode={bulk.exitBulkMode}
             toggleBulkSelect={bulk.toggleBulkSelect}
             bulkSelectAll={bulk.bulkSelectAll} bulkDeselectAll={bulk.bulkDeselectAll}
-            onOpenBulkDayPicker={() => setShowBulkDayPicker(true)}
+            onOpenBulkDayPicker={openBulkDayPicker}
             onBulkMarkWatched={bulkActions.bulkMarkWatched}
             onBulkDelete={bulkActions.bulkDelete}
             setShowAnimeDetail={setShowAnimeDetail}
@@ -290,7 +307,7 @@ export default function AnimeTracker() {
             onRenameList={actions.renameCustomList}
             onRemoveFromList={actions.removeFromCustomList}
             airingData={airingData}
-            onDetail={(a) => setShowAnimeDetail(a)}
+            onDetail={openListDetail}
           />
         )}
 
@@ -305,7 +322,7 @@ export default function AnimeTracker() {
             setShowDayPicker={setShowDayPicker}
             addToWatchLater={actions.addToWatchLater}
             markAsWatched={actions.markAsWatched}
-            onDetail={(a) => setShowAnimeDetail({ ...a, _isWatchLater: false, _isWatched: false, _isSeason: true })}
+            onDetail={openSeasonDetail}
           />
         )}
 
@@ -318,7 +335,7 @@ export default function AnimeTracker() {
             setShowDayPicker={setShowDayPicker}
             addToWatchLater={actions.addToWatchLater}
             markAsWatched={actions.markAsWatched}
-            onDetail={(a) => setShowAnimeDetail({ ...a, _isWatchLater: false, _isWatched: false, _isSeason: false, _isDirectory: true })}
+            onDetail={openDirectoryDetail}
           />
         )}
 

@@ -172,6 +172,11 @@ export function useAnimeData(schedule) {
     }
   }, [performSearch, setSearchQuery]);
 
+  const retryAiring = useCallback(() => {
+    airingForceRef.current = true;
+    setAiringRetry((value) => value + 1);
+  }, []);
+
   // Clean up any pending work on unmount
   useEffect(() => () => {
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
@@ -187,7 +192,7 @@ export function useAnimeData(schedule) {
     searchPartial,
     airingData,
     airingError,
-    retryAiring: () => { airingForceRef.current = true; setAiringRetry((value) => value + 1); },
+    retryAiring,
     handleSearch,
     performSearch,
   };

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchDirectory } from '../services/anilistService';
 import { readCache, writeCache } from '../utils';
 
@@ -135,5 +135,9 @@ export function useDirectory() {
   }, [fetchPage]);
 
   const retry = useCallback(() => fetchPage(filtersRef.current, 1, false), [fetchPage]);
-  return { filters, results, loading, loadingMore, hasNextPage, error, retry, updateFilter, resetFilters, loadInitial, loadMore };
+  // Mismo objeto mientras nada cambie: DirectorySection lo recibe entero y está memoizado.
+  return useMemo(
+    () => ({ filters, results, loading, loadingMore, hasNextPage, error, retry, updateFilter, resetFilters, loadInitial, loadMore }),
+    [filters, results, loading, loadingMore, hasNextPage, error, retry, updateFilter, resetFilters, loadInitial, loadMore],
+  );
 }

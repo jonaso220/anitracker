@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useMemo } from 'react';
 import AnimeCard from '../AnimeCard';
 import TodayPanel from '../TodayPanel';
 import ApiErrorState from '../ApiErrorState';
@@ -17,19 +17,34 @@ const ScheduleView = ({
   handleDrop, handleTouchStart, handleTouchMove, handleTouchEnd, handleTouchCancel, touchRef,
 }) => {
   const today = todayDayName();
-  const paused = daysOfWeek.flatMap((day) => (schedule[day] || []).filter((anime) => anime.paused).map((anime) => ({ ...anime, _day: day })));
+  const paused = useMemo(() => daysOfWeek.flatMap((day) => (schedule[day] || []).filter((anime) => anime.paused).map((anime) => ({ ...anime, _day: day }))), [schedule]);
+
+  // Callbacks estables: AnimeCard los llama con (evento, anime, día), así una
+  // tarjeta solo se vuelve a renderizar cuando cambia su propio anime.
+  const openCard = useCallback((_e, anime, day) => {
+    if (touchRef.current.moved || touchRef.current.active) return;
+    setShowAnimeDetail({ ...anime, _day: day, _isWatchLater: false, _isWatched: false, _isSeason: false });
+  }, [touchRef, setShowAnimeDetail]);
+  const openPaused = useCallback((_e, anime) => {
+    setShowAnimeDetail({ ...anime, _isWatchLater: false, _isWatched: false });
+  }, [setShowAnimeDetail]);
+  const openFromAgenda = useCallback((anime) => {
+    setShowAnimeDetail({ ...anime, _isWatchLater: false, _isWatched: false, _isSeason: false });
+  }, [setShowAnimeDetail]);
 
   return (
     <div className="schedule-rows" role="region" aria-label="Horario semanal">
       <TodayPanel
         schedule={schedule}
         airingData={airingData}
-        onDetail={(anime) => setShowAnimeDetail({ ...anime, _isWatchLater: false, _isWatched: false, _isSeason: false })}
+        onDetail={openFromAgenda}
         onIncrementEpisode={onQuickEpisode}
       />
       {airingError && <ApiErrorState error={airingError} onRetry={retryAiring} />}
       {daysOfWeek.map((day, i) => {
-        const items = (schedule[day] || []).filter((anime) => !anime.paused);
+        const dayItems = schedule[day] || [];
+        const items = dayItems.filter((anime) => !anime.paused);
+        const indexOf = new Map(dayItems.map((anime, index) => [anime.id, index]));
         const isEmpty = items.length === 0;
         const isToday = day === today;
         return (
@@ -50,9 +65,9 @@ const ScheduleView = ({
               <div className="day-animes">
                 {items.map((a, idx) => (
                   <React.Fragment key={a.id}>
-                    {dropTarget === day && dropIndex === (schedule[day] || []).findIndex((item) => item.id === a.id) && isDragging && dragState.anime?.id !== a.id && <div className="drop-indicator" />}
+                    {dropTarget === day && dropIndex === indexOf.get(a.id) && isDragging && dragState.anime?.id !== a.id && <div className="drop-indicator" />}
                     <AnimeCard
-                      anime={a} day={day} cardIndex={(schedule[day] || []).findIndex((item) => item.id === a.id)} cardDay={day} airingData={airingData} isDraggable
+                      anime={a} day={day} cardIndex={indexOf.get(a.id)} cardDay={day} airingData={airingData} isDraggable
                       onDragStart={handleDragStart}
                       onDragEnd={handleDragEnd}
                       onDragOver={handleDragOverCard}
@@ -61,12 +76,9 @@ const ScheduleView = ({
                       onTouchEnd={handleTouchEnd}
                       onTouchCancel={handleTouchCancel}
                       onIncrementEpisode={onQuickEpisode}
-                      onClick={() => {
-                        if (touchRef.current.moved || touchRef.current.active) return;
-                        setShowAnimeDetail({ ...a, _day: day, _isWatchLater: false, _isWatched: false, _isSeason: false });
-                      }}
+                      onClick={openCard}
                     />
-                    {dropTarget === day && dropIndex === (schedule[day] || []).findIndex((item) => item.id === a.id) + 1 && idx === items.length - 1 && isDragging && <div className="drop-indicator" />}
+                    {dropTarget === day && dropIndex === indexOf.get(a.id) + 1 && idx === items.length - 1 && isDragging && <div className="drop-indicator" />}
                   </React.Fragment>
                 ))}
               </div>
@@ -84,7 +96,7 @@ const ScheduleView = ({
           <div className="paused-heading"><h2 id="paused-title">En pausa <span>{paused.length}</span></h2><p>Retomá cuando quieras. Tu progreso y tu día quedan guardados.</p></div>
           <div className="paused-grid">
             {paused.map((anime) => <AnimeCard key={`${anime._day}:${anime.id}`} anime={anime} day={anime._day}
-              onClick={() => setShowAnimeDetail({ ...anime, _isWatchLater: false, _isWatched: false })} />)}
+              onClick={openPaused} />)}
           </div>
         </section>
       )}

@@ -110,6 +110,12 @@ Los IDs de anime codifican la fuente: MAL `< 100000`, Kitsu `+100000`, AniList
   el toast está visible.
 - **Async cancelable**: búsquedas y fetches usan `AbortController`; respetá el
   patrón al agregar llamadas de red.
+- **Props estables**: las vistas y `AnimeCard` están en `React.memo`, y `App`
+  se re-renderiza con cada tecla del buscador. No pases callbacks ni objetos
+  creados inline: usá `useCallback`/`useMemo` (o handlers que lean refs, como
+  `useDragDrop`). `AnimeCard` llama `onClick(e, anime, day)` para que un solo
+  callback sirva a todas las tarjetas. `src/test/renderPerf.test.jsx` cuenta
+  renders y falla si esto se rompe.
 
 ## Tests
 

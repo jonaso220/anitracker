@@ -464,7 +464,7 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
     };
   }, [user]);
 
-  const loginWithGoogle = async () => {
+  const loginWithGoogle = useCallback(async () => {
     if (loginPending.current) return;
     setAuthError('');
     // Never await SDK initialization and then open a popup: Safari needs the
@@ -494,9 +494,9 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
       loginPending.current = false;
       setAuthBusy(false);
     }
-  };
+  }, []);
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     if (!firebaseAuth || !auth) return;
     // Subir lo pendiente antes de cortar la sesión (el debounce de 2 s o un
     // error de red lo dejarían sin subir). Si no llega a tiempo no se pierde:
@@ -520,7 +520,7 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
     } catch {
       setAuthError('No se pudo cerrar la sesión. Tus datos siguen en esta cuenta. Volvé a intentarlo.');
     }
-  };
+  }, [flushSave, unsubscribeFromCloud]);
 
   return { user, syncing, syncError, syncTooLarge, retrySync, authError, authReady, authBusy, loginWithGoogle, logout, FIREBASE_ENABLED };
 }

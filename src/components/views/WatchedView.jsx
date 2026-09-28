@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import AnimeCard from '../AnimeCard';
 import BulkToolbar from './BulkToolbar';
 import { getFilteredWatched } from '../../utils';
@@ -24,6 +24,8 @@ const WatchedView = ({
   setShowAnimeDetail,
 }) => {
   const [visible, setVisible] = useState(PAGE_SIZE);
+  // Estable: al filtrar o seleccionar, las tarjetas que no cambian no se re-renderizan.
+  const openCard = useCallback((_e, anime) => setShowAnimeDetail({ ...anime, _isWatched: true, _isWatchLater: false, _isSeason: false }), [setShowAnimeDetail]);
 
   const filtered = useMemo(
     () => getFilteredWatched(watchedList, watchedFilter, watchedSort, localSearch),
@@ -111,7 +113,7 @@ const WatchedView = ({
                 )}
                 <AnimeCard
                   anime={a} isWatched airingData={airingData}
-                  onClick={bulkMode ? undefined : () => setShowAnimeDetail({ ...a, _isWatched: true, _isWatchLater: false, _isSeason: false })}
+                  onClick={bulkMode ? undefined : openCard}
                 />
               </div>
             ))}

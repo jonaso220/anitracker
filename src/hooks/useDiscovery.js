@@ -88,14 +88,19 @@ export function useDiscovery() {
     loadSeason(cur.season, cur.year);
   }, [loadSeason]);
 
+  const loadSelectedSeason = useCallback(
+    () => loadSeason(selectedSeason.season, selectedSeason.year),
+    [loadSeason, selectedSeason],
+  );
+
   return {
     selectedSeason,
     seasonAnime,
     seasonLoading,
     seasonError,
     changeSeason,
-    loadSeasonCurrent: () => loadSeason(selectedSeason.season, selectedSeason.year),
+    loadSeasonCurrent: loadSelectedSeason,
     prefetchCurrentSeason,
-    retrySeason: () => loadSeason(selectedSeason.season, selectedSeason.year),
+    retrySeason: loadSelectedSeason,
   };
 }
