@@ -9,6 +9,7 @@ import AnimeDetailModal from '../components/modals/AnimeDetailModal';
 import SearchModal from '../components/modals/SearchModal';
 import DayPickerModal from '../components/modals/DayPickerModal';
 import BackupModal from '../components/modals/BackupModal';
+import CustomListsTab from '../components/CustomListsTab';
 import TodayPanel from '../components/TodayPanel';
 import { buildAgenda } from '../agenda';
 import { clearRelationsCache } from '../services/anilistService';
@@ -546,5 +547,32 @@ describe('BackupModal', () => {
     fireEvent.change(container.querySelector('#backup-file'), { target: { files: [file(JSON.stringify({ watchLater: [] }))] } });
     fireEvent.click(await screen.findByRole('button', { name: /descargá una copia de lo actual/ }));
     expect(onExport).toHaveBeenCalled();
+  });
+});
+
+describe('CustomListsTab: renombrar', () => {
+  it('permite escribir espacios y Enter sin plegar la lista', () => {
+    const onRenameList = vi.fn();
+    render(<CustomListsTab customLists={[{ id: 'l1', name: 'Favs', emoji: '⭐', items: [] }]}
+      onCreateList={vi.fn()} onDeleteList={vi.fn()} onRenameList={onRenameList} onRemoveFromList={vi.fn()} onDetail={vi.fn()} airingData={{}} />);
+    const header = screen.getByRole('button', { expanded: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Renombrar Favs' }));
+    const input = screen.getByDisplayValue('Favs');
+
+    const space = fireEvent.keyDown(input, { key: ' ' });
+    expect(space).toBe(true); // no se canceló: el espacio se escribe
+    fireEvent.change(input, { target: { value: 'Mis favs' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(onRenameList).toHaveBeenCalledWith('l1', 'Mis favs');
+    expect(header).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('el encabezado sigue plegándose con teclado', () => {
+    render(<CustomListsTab customLists={[{ id: 'l1', name: 'Favs', emoji: '⭐', items: [] }]}
+      onCreateList={vi.fn()} onDeleteList={vi.fn()} onRenameList={vi.fn()} onRemoveFromList={vi.fn()} onDetail={vi.fn()} airingData={{}} />);
+    const header = screen.getByRole('button', { expanded: true });
+    fireEvent.keyDown(header, { key: ' ' });
+    expect(header).toHaveAttribute('aria-expanded', 'false');
   });
 });

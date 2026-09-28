@@ -1,4 +1,5 @@
 import React from 'react';
+import { isChunkLoadError, reloadForNewDeploy } from '../chunkReload';
 
 export class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -8,6 +9,11 @@ export class ErrorBoundary extends React.Component {
 
   static getDerivedStateFromError(error) {
     return { hasError: true, error };
+  }
+
+  componentDidCatch(error) {
+    // Pestaña abierta durante un deploy: recargar trae la versión nueva.
+    if (isChunkLoadError(error)) reloadForNewDeploy();
   }
 
   render() {

@@ -9,9 +9,10 @@ export default defineConfig({
     minify: 'terser',
     terserOptions: {
       compress: {
-        drop_console: true,
+        // Se quitan solo los logs de depuración: console.error/warn quedan en
+        // producción para poder diagnosticar fallos de sync o de las APIs.
         drop_debugger: true,
-        pure_funcs: ['console.info', 'console.debug'],
+        pure_funcs: ['console.log', 'console.info', 'console.debug'],
       },
     },
     rollupOptions: {

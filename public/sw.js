@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v15';
+const CACHE_VERSION = 'v16';
 const STATIC_CACHE = `anitracker-static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `anitracker-runtime-${CACHE_VERSION}`;
 const IMAGE_CACHE = `anitracker-images-${CACHE_VERSION}`;
@@ -92,7 +92,10 @@ async function networkFirst(request, cacheName) {
   const cache = await caches.open(cacheName);
   try {
     const response = await fetch(request);
-    if (response && response.status === 200 && response.type === 'basic') {
+    // Nunca cachear HTML para algo que no es una navegación: es el fallback
+    // del SPA respondiendo por un chunk que ya no existe.
+    const isHtml = (response.headers.get('content-type') || '').includes('text/html');
+    if (response && response.status === 200 && response.type === 'basic' && (request.mode === 'navigate' || !isHtml)) {
       cache.put(request, response.clone()).catch(() => {});
     }
     return response;

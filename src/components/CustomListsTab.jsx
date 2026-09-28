@@ -74,7 +74,12 @@ const CustomListsTab = ({ customLists, onCreateList, onDeleteList, onRenameList,
                             <div
                                 className="custom-list-header"
                                 onClick={() => toggleCollapse(list.id)}
-                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleCollapse(list.id); } }}
+                                onKeyDown={(e) => {
+                                    // Solo el encabezado en sí: las teclas del input de renombrar
+                                    // (espacios, Enter) o de sus botones no pliegan la lista.
+                                    if (e.target !== e.currentTarget) return;
+                                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleCollapse(list.id); }
+                                }}
                                 role="button"
                                 tabIndex={0}
                                 aria-expanded={!collapsedLists.has(list.id)}
@@ -93,11 +98,11 @@ const CustomListsTab = ({ customLists, onCreateList, onDeleteList, onRenameList,
                                 </div>
                                 <div className="custom-list-actions" onClick={e => e.stopPropagation()}>
                                     {editingId === list.id ? (
-                                        <button className="custom-list-action-btn" onClick={() => handleRename(list.id)}>✓</button>
+                                        <button className="custom-list-action-btn" onClick={() => handleRename(list.id)} aria-label="Guardar nombre">✓</button>
                                     ) : (
-                                        <button className="custom-list-action-btn" onClick={() => { setEditingId(list.id); setEditName(list.name); }}>✏️</button>
+                                        <button className="custom-list-action-btn" onClick={() => { setEditingId(list.id); setEditName(list.name); }} aria-label={`Renombrar ${list.name}`}>✏️</button>
                                     )}
-                                    <button className="custom-list-action-btn delete" onClick={() => onDeleteList(list.id)}>🗑</button>
+                                    <button className="custom-list-action-btn delete" onClick={() => onDeleteList(list.id)} aria-label={`Eliminar ${list.name}`}>🗑</button>
                                     <span className={`custom-list-chevron ${collapsedLists.has(list.id) ? 'collapsed' : ''}`}>▼</span>
                                 </div>
                             </div>

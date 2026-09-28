@@ -1,2 +1,5 @@
 /__/auth/*    https://animetracker-47abf.firebaseapp.com/__/auth/:splat    200
+# Un chunk de un deploy anterior debe dar 404, no el index.html con 200
+# (el service worker lo cacheaba como JS y la pestaña caía en error).
+/assets/*    /404.html     404
 /*    /index.html   200

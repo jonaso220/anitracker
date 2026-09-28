@@ -218,6 +218,13 @@ describe('adapter: vikiService.toAnime', () => {
     ]);
   });
 
+  it('saca el día de emisión de la hora del próximo episodio, en hora local', () => {
+    const t = 1790703000; // martes 17:30 UTC; Viki informa day_of_week 'wed' (hora de Corea)
+    const a = vikiToAnime(hit, { ...detail, day_of_week: ['wed'], watch_next: { episode: 3, viki_air_time: t } });
+    const expected = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'][(new Date(t * 1000).getDay() + 6) % 7];
+    expect(a.airDay).toBe(expected);
+  });
+
   it('falls back to the search hit when the detail is missing', () => {
     const a = vikiToAnime(hit, null);
     expect(a).toMatchObject({ title: 'El oficinista que ganó la lotería', episodes: 6, airDay: '', status: '' });

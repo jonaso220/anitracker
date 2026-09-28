@@ -137,7 +137,12 @@ export function toAnime(hit, detail = null) {
   const image = detail?.images?.poster?.url || hit?.i || '';
   const flags = detail?.flags;
   const firstAired = (detail?.distributors || []).map((d) => d?.from).filter(Boolean).sort()[0] || '';
-  const airDay = !isFilm && flags?.on_air ? DAY_MAP[(detail?.day_of_week || [])[0]] || '' : '';
+  // `day_of_week` viene en hora de Corea: si hay próximo episodio con hora,
+  // el día sale de ahí en la hora local (un miércoles KST puede ser martes acá).
+  const nextAirTime = detail?.watch_next?.viki_air_time;
+  const airDay = isFilm || !flags?.on_air ? ''
+    : nextAirTime ? daysOfWeek[(new Date(nextAirTime * 1000).getDay() + 6) % 7]
+      : DAY_MAP[(detail?.day_of_week || [])[0]] || '';
   const aka = Object.values(detail?.titles_aka || {}).flat();
   const hasSpanishSubs = (detail?.subtitle_completions?.es || 0) >= 90;
 
