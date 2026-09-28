@@ -243,13 +243,27 @@ const RELATIONS_QUERY = `query ($id: Int, $idMal: Int) {
     }
   }`;
 
-// Referencia AniList de un anime guardado: id propio para items de AniList,
-// idMal para items de MAL (id < 100000). Otras fuentes no tienen relaciones.
-function anilistRef(anime) {
+/**
+ * Ids con los que consultar AniList por un anime guardado. Sale de `sourceKey`
+ * ('anilist:123') y no del rango del id interno: los anime de AniList sin MAL
+ * ya superan el id 100000 (id interno ≥ 400000) y quedaban afuera de la
+ * cuenta regresiva. `malId` para items de MAL (id < 100000). Otras fuentes: nada.
+ */
+export function anilistIdsOf(anime) {
+  const id = Number(anime?.id);
   const m = /^anilist:(\d+)$/.exec(anime?.sourceKey || '');
-  if (m) return { id: Number(m[1]) };
-  const malId = Number(anime?.malId) || (Number(anime?.id) > 0 && Number(anime?.id) < 100000 ? Number(anime.id) : 0);
-  return malId > 0 ? { idMal: malId } : null;
+  let anilistId = m ? Number(m[1]) : null;
+  // Items viejos guardados antes de que existiera sourceKey.
+  if (!anilistId && !anime?.sourceKey && id >= 300000 && id < 400000) anilistId = id - 300000;
+  const malId = Number(anime?.malId) > 0 ? Number(anime.malId) : (id > 0 && id < 100000 ? id : null);
+  return { anilistId, malId };
+}
+
+// Referencia AniList de un anime guardado, para relaciones.
+function anilistRef(anime) {
+  const { anilistId, malId } = anilistIdsOf(anime);
+  if (anilistId) return { id: anilistId };
+  return malId ? { idMal: malId } : null;
 }
 
 const relationsCache = new Map();
@@ -337,44 +351,43 @@ export async function fetchAnilistUserAnimeLists(username, { signal } = {}) {
   return items;
 }
 
-/**
- * Fetch airing info for a set of MAL or AniList IDs. Returns a map keyed by the
- * app-internal ID (MAL id for <100000, AniList id + 300000 otherwise).
- */
-export async function fetchAiringInfo({ malIds = [], anilistIds = [], signal } = {}) {
-  const parts = [];
-  if (malIds.length > 0) {
-    parts.push(`malQuery: Page(page: 1, perPage: 50) {
-      media(idMal_in: [${malIds.join(',')}], type: ANIME) {
-        id idMal status title { romaji english }
-        nextAiringEpisode { airingAt episode timeUntilAiring }
-        episodes
-      }
-    }`);
-  }
-  if (anilistIds.length > 0) {
-    parts.push(`alQuery: Page(page: 1, perPage: 50) {
-      media(id_in: [${anilistIds.join(',')}], type: ANIME) {
-        id idMal status title { romaji english }
-        nextAiringEpisode { airingAt episode timeUntilAiring }
-        episodes
-      }
-    }`);
-  }
-  if (parts.length === 0) return {};
+const AIRING_PAGE_SIZE = 50;
+const AIRING_FIELDS = 'id idMal status title { romaji english } nextAiringEpisode { airingAt episode timeUntilAiring } episodes';
 
-  const query = `query { ${parts.join('\n')} }`;
-  const data = await anilistFetch(query, undefined, { signal });
+/**
+ * Próximo episodio de una lista de anime, en un solo request aunque sean más
+ * de 50 (una página con alias por cada bloque de 50 ids). Devuelve
+ * { byAnilist: { [id]: info }, byMal: { [idMal]: info } }: quien llama lo
+ * asocia a sus ids internos, que no siempre coinciden con los de AniList
+ * (un anime guardado sin MAL puede tener idMal después).
+ */
+export async function fetchAiringByIds({ malIds = [], anilistIds = [], signal } = {}) {
+  const decls = [];
+  const parts = [];
+  const variables = {};
+  const addPages = (prefix, filter, ids) => {
+    const unique = [...new Set(ids.map(Number).filter((n) => n > 0))];
+    for (let i = 0; i * AIRING_PAGE_SIZE < unique.length; i++) {
+      const name = `${prefix}${i}`;
+      decls.push(`$${name}: [Int]`);
+      variables[name] = unique.slice(i * AIRING_PAGE_SIZE, (i + 1) * AIRING_PAGE_SIZE);
+      parts.push(`${name}: Page(page: 1, perPage: ${AIRING_PAGE_SIZE}) { media(${filter}: $${name}, type: ANIME) { ${AIRING_FIELDS} } }`);
+    }
+  };
+  addPages('mal', 'idMal_in', malIds);
+  addPages('al', 'id_in', anilistIds);
+  const result = { byAnilist: {}, byMal: {} };
+  if (parts.length === 0) return result;
+
+  const data = await anilistFetch(`query (${decls.join(', ')}) { ${parts.join('\n')} }`, variables, { signal });
+  if (data?.errors?.length && !data?.data) throw new Error(`AniList: ${data.errors[0]?.message || 'error'}`);
 
   const now = new Date();
-  const result = {};
-  const processMedia = (media) => {
-    if (!media) return;
-    for (const m of media) {
-      const appId = m.idMal && m.idMal < 100000 ? m.idMal : (m.id + 300000);
+  for (const page of Object.values(data?.data || {})) {
+    for (const m of page?.media || []) {
       const airing = m.nextAiringEpisode;
       if (!airing) continue;
-      result[appId] = {
+      const info = {
         ...buildAiringInfo({
           episode: airing.episode,
           airingAt: airing.airingAt,
@@ -384,10 +397,10 @@ export async function fetchAiringInfo({ malIds = [], anilistIds = [], signal } =
         // AniList ya lo calcula en el servidor; se respeta su valor.
         timeUntilAiring: airing.timeUntilAiring,
       };
+      result.byAnilist[m.id] = info;
+      if (m.idMal) result.byMal[m.idMal] = info;
     }
-  };
-  processMedia(data?.data?.malQuery?.media);
-  processMedia(data?.data?.alQuery?.media);
+  }
   return result;
 }
 

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { daysOfWeek } from '../constants';
 import { searchAnime } from '../services/searchAnime';
-import { fetchAiringInfo } from '../services/anilistService';
+import { fetchAiringByIds, anilistIdsOf } from '../services/anilistService';
 import { fetchVikiAiringInfo, vikiIdOf } from '../services/vikiService';
 
 const AIRING_CACHE_KEY = 'anitracker-airing-cache';
@@ -9,6 +9,17 @@ const AIRING_TIME_KEY = 'anitracker-airing-time';
 const AIRING_IDS_KEY = 'anitracker-airing-ids';
 const AIRING_TTL_MS = 15 * 60 * 1000;
 const SEARCH_DEBOUNCE_MS = 500;
+
+// Asocia la respuesta de AniList (por id de AniList o de MAL) a los ids
+// internos de la biblioteca.
+function airingByAppId(refs, { byAnilist, byMal }) {
+  const out = {};
+  for (const { appId, anilistId, malId } of refs) {
+    const info = (anilistId && byAnilist[anilistId]) || (malId && byMal[malId]);
+    if (info) out[appId] = info;
+  }
+  return out;
+}
 
 function readAiringCache(currentIds) {
   try {
@@ -48,13 +59,17 @@ export function useAnimeData(schedule) {
   // --- Airing info ---
   useEffect(() => {
     const allAnime = daysOfWeek.flatMap((d) => schedule[d] || []);
-    const malIds = allAnime.filter((a) => a.id && a.id < 100000).map((a) => a.id);
-    const anilistIds = allAnime.filter((a) => a.id >= 300000 && a.id < 400000).map((a) => a.id - 300000);
+    // Por fuente (sourceKey), no por rango de id: AniList sin MAL ya pasa de 400000.
+    const refs = allAnime
+      .map((a) => ({ appId: a.id, ...anilistIdsOf(a) }))
+      .filter((r) => r.anilistId || r.malId);
+    const anilistIds = [...new Set(refs.map((r) => r.anilistId).filter(Boolean))];
+    const malIds = [...new Set(refs.filter((r) => !r.anilistId).map((r) => r.malId))];
     const vikiIds = [...new Set(allAnime.filter((a) => a.type !== 'Película').map(vikiIdOf).filter(Boolean))];
 
     if (malIds.length === 0 && anilistIds.length === 0 && vikiIds.length === 0) { setAiringData({}); setAiringError(null); return; }
 
-    const currentIds = [...malIds, ...anilistIds, ...vikiIds].sort().join(',');
+    const currentIds = [...malIds.map((id) => `m${id}`), ...anilistIds.map((id) => `a${id}`), ...vikiIds].sort().join(',');
     const cached = readAiringCache(currentIds);
     if (cached && !airingForceRef.current) { setAiringData(cached); setAiringError(null); return; }
     airingForceRef.current = false;
@@ -70,7 +85,7 @@ export function useAnimeData(schedule) {
         // AniList y Viki en paralelo: si una falla se muestra lo de la otra,
         // con el aviso de reintento y sin cachear.
         const settled = await Promise.allSettled([
-          ...(malIds.length || anilistIds.length ? [fetchAiringInfo({ malIds, anilistIds, signal: controller.signal })] : []),
+          ...(refs.length ? [fetchAiringByIds({ malIds, anilistIds, signal: controller.signal }).then((res) => airingByAppId(refs, res))] : []),
           ...(vikiIds.length ? [fetchVikiAiringInfo({ vikiIds, signal: controller.signal })] : []),
         ]);
         const failed = settled.filter((s) => s.status === 'rejected');

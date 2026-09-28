@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { toAnime as jikanToAnime, searchJikan } from '../services/jikanService';
 import { toAnime as kitsuToAnime, searchKitsu, mapIncludedStreamingLinks, siteNameFromUrl } from '../services/kitsuService';
-import { toAnime as anilistToAnime, fetchAiringInfo, fetchAnilistUserAnimeLists, fetchSeason, fetchLatestAired, fetchDirectory, fetchAnilistRelations, clearRelationsCache } from '../services/anilistService';
+import { toAnime as anilistToAnime, fetchAiringByIds, anilistIdsOf, fetchAnilistUserAnimeLists, fetchSeason, fetchLatestAired, fetchDirectory, fetchAnilistRelations, clearRelationsCache } from '../services/anilistService';
 import { toAnime as tvmazeToAnime } from '../services/tvmazeService';
 import { toAnime as itunesToAnime } from '../services/itunesService';
 import { toAnime as vikiToAnime, searchViki, parseVikiId, vikiIdOf, fetchVikiAiringInfo, VIKI_ID_BASE } from '../services/vikiService';
@@ -329,9 +329,9 @@ describe('vikiService.fetchVikiAiringInfo', () => {
 describe('vikiService.vikiIdOf', () => {
   it('resuelve el id de Viki de un anime guardado', () => {
     expect(vikiIdOf({ id: VIKI_ID_BASE + 41650, sourceKey: 'viki:41650c' })).toBe('41650c');
-    expect(vikiIdOf({ id: VIKI_ID_BASE + 41650 })).toBe('41650c');
     expect(vikiIdOf({ id: 20 })).toBeNull();
-    expect(vikiIdOf({ id: 900000001 })).toBeNull();
+    // Un item de iTunes (trackId + 500000) que cae en el rango de Viki.
+    expect(vikiIdOf({ id: 700041650, source: 'iTunes', sourceKey: 'itunes:699541650' })).toBeNull();
   });
 });
 
@@ -646,28 +646,56 @@ describe('anilistService.fetchAnilistRelations', () => {
   });
 });
 
-describe('anilistService.fetchAiringInfo', () => {
+describe('anilistService.fetchAiringByIds', () => {
   beforeEach(() => { vi.spyOn(globalThis, 'fetch'); });
   afterEach(() => { vi.restoreAllMocks(); });
 
-  it('returns empty object when no ids provided', async () => {
-    const res = await fetchAiringInfo({});
-    expect(res).toEqual({});
+  const media = (id, idMal, episode = 5) => ({
+    id, idMal, episodes: 24, title: { english: `A${id}` },
+    nextAiringEpisode: { airingAt: Math.floor(Date.now() / 1000) + 3600, episode, timeUntilAiring: 3600 },
+  });
+
+  it('no hace requests sin ids', async () => {
+    expect(await fetchAiringByIds({})).toEqual({ byAnilist: {}, byMal: {} });
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
-  it('maps airing results keyed by app id', async () => {
-    const airingAt = Math.floor(Date.now() / 1000) - 60; // aired 1 minute ago
-    globalThis.fetch.mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve({
-        data: { malQuery: { media: [{ idMal: 10, id: 111, episodes: 24, title: { english: 'Test' }, nextAiringEpisode: { airingAt, episode: 5, timeUntilAiring: -60 } }] } },
-      }),
-    });
-    const res = await fetchAiringInfo({ malIds: [10] });
-    expect(res[10]).toBeDefined();
-    expect(res[10].episode).toBe(5);
-    expect(res[10].hasAired).toBe(true);
+  it('indexa por id de AniList y de MAL', async () => {
+    globalThis.fetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({
+      data: { mal0: { media: [media(111, 10)] }, al0: { media: [media(200000, null, 3)] } },
+    }) });
+    const res = await fetchAiringByIds({ malIds: [10], anilistIds: [200000] });
+    expect(res.byMal[10].episode).toBe(5);
+    expect(res.byAnilist[111].episode).toBe(5);
+    expect(res.byAnilist[200000].episode).toBe(3);
+  });
+
+  it('pide más de 50 ids en un solo request, en bloques de 50 con variables', async () => {
+    globalThis.fetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ data: {} }) });
+    const ids = Array.from({ length: 120 }, (_, i) => i + 1);
+    await fetchAiringByIds({ anilistIds: ids });
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(globalThis.fetch.mock.calls[0][1].body);
+    expect(Object.keys(body.variables)).toEqual(['al0', 'al1', 'al2']);
+    expect(body.variables.al0).toHaveLength(50);
+    expect(body.variables.al2).toHaveLength(20);
+    expect(body.query).toContain('al2: Page(page: 1, perPage: 50) { media(id_in: $al2');
+  });
+});
+
+describe('anilistService.anilistIdsOf', () => {
+  it('saca el id de AniList del sourceKey aunque el id interno pase de 400000', () => {
+    expect(anilistIdsOf({ id: 517459, source: 'AniList', sourceKey: 'anilist:217459' })).toEqual({ anilistId: 217459, malId: null });
+  });
+
+  it('AniList con MAL: consulta por AniList y conserva el MAL', () => {
+    expect(anilistIdsOf({ id: 52991, source: 'AniList', sourceKey: 'anilist:154587', malId: 52991 })).toEqual({ anilistId: 154587, malId: 52991 });
+  });
+
+  it('MAL, items viejos sin sourceKey y otras fuentes', () => {
+    expect(anilistIdsOf({ id: 20, source: 'MAL', sourceKey: 'mal:20' })).toEqual({ anilistId: null, malId: 20 });
+    expect(anilistIdsOf({ id: 321 + 300000 })).toEqual({ anilistId: 321, malId: null });
+    expect(anilistIdsOf({ id: 400001, source: 'TVMaze', sourceKey: 'tvmaze:1' })).toEqual({ anilistId: null, malId: null });
   });
 });
 

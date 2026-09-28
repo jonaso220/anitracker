@@ -72,17 +72,19 @@ export async function searchViki(query, { signal, limit = 10 } = {}) {
     .filter(Boolean);
 }
 
-/** Viki id ("41650c") de un anime guardado de Viki, o null. */
+/**
+ * Viki id ("41650c") de un anime guardado de Viki, o null. Solo por
+ * `sourceKey`: por rango de id un item de iTunes (trackId + 500000, ~1e9)
+ * podía pasar por serie de Viki.
+ */
 export function vikiIdOf(anime) {
-  const num = Number(anime?.id) - VIKI_ID_BASE;
-  if (!(num > 0 && num < 100000000)) return null;
   const m = /^viki:(\w+)$/.exec(anime?.sourceKey || '');
-  return m ? m[1] : `${num}c`;
+  return m ? m[1] : null;
 }
 
 /**
  * Próximo episodio de series de Viki en emisión, con la misma forma que
- * `fetchAiringInfo` de AniList, indexado por id interno. Usa `watch_next` de
+ * la info de AniList (ver useAnimeData), indexado por id interno. Usa `watch_next` de
  * la ficha. Una ficha que falla solo omite esa serie; si fallan todas, lanza.
  */
 export async function fetchVikiAiringInfo({ vikiIds = [], signal } = {}) {

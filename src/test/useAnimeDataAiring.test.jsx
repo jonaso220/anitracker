@@ -1,11 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useAnimeData } from '../hooks/useAnimeData';
-import { fetchAiringInfo } from '../services/anilistService';
+import { fetchAiringByIds } from '../services/anilistService';
 import { fetchVikiAiringInfo } from '../services/vikiService';
 
 vi.mock('../services/searchAnime', () => ({ searchAnime: vi.fn() }));
-vi.mock('../services/anilistService', () => ({ fetchAiringInfo: vi.fn() }));
+vi.mock('../services/anilistService', async (importOriginal) => ({
+  ...(await importOriginal()),
+  fetchAiringByIds: vi.fn(),
+}));
 vi.mock('../services/vikiService', async (importOriginal) => ({
   ...(await importOriginal()),
   fetchVikiAiringInfo: vi.fn(),
@@ -13,7 +16,7 @@ vi.mock('../services/vikiService', async (importOriginal) => ({
 
 const vikiSeries = { id: 700041650, sourceKey: 'viki:41650c', title: 'El oficinista que ganó la lotería', type: 'Serie' };
 const vikiFilm = { id: 700038609, sourceKey: 'viki:38609c', title: 'El humor del día', type: 'Película' };
-const malAnime = { id: 20, title: 'Naruto' };
+const malAnime = { id: 20, title: 'Naruto', source: 'MAL', sourceKey: 'mal:20' };
 
 async function runAiringCheck(schedule) {
   const hook = renderHook(() => useAnimeData(schedule));
@@ -25,13 +28,13 @@ describe('useAnimeData: emisión de Viki', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     localStorage.clear();
-    fetchAiringInfo.mockReset();
+    fetchAiringByIds.mockReset();
     fetchVikiAiringInfo.mockReset();
   });
   afterEach(() => { vi.useRealTimers(); });
 
   it('pide solo las series de Viki (no películas) y mezcla con AniList', async () => {
-    fetchAiringInfo.mockResolvedValue({ 20: { episode: 5 } });
+    fetchAiringByIds.mockResolvedValue({ byAnilist: {}, byMal: { 20: { episode: 5 } } });
     fetchVikiAiringInfo.mockResolvedValue({ 700041650: { episode: 7 } });
 
     const { result } = await runAiringCheck({ Lunes: [malAnime], Jueves: [vikiSeries, vikiFilm] });
@@ -44,13 +47,13 @@ describe('useAnimeData: emisión de Viki', () => {
   it('no consulta AniList cuando solo hay series de Viki', async () => {
     fetchVikiAiringInfo.mockResolvedValue({});
     await runAiringCheck({ Jueves: [vikiSeries] });
-    expect(fetchAiringInfo).not.toHaveBeenCalled();
+    expect(fetchAiringByIds).not.toHaveBeenCalled();
     expect(fetchVikiAiringInfo).toHaveBeenCalledTimes(1);
   });
 
   it('si Viki falla muestra lo de AniList, avisa y no cachea', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    fetchAiringInfo.mockResolvedValue({ 20: { episode: 5 } });
+    fetchAiringByIds.mockResolvedValue({ byAnilist: {}, byMal: { 20: { episode: 5 } } });
     fetchVikiAiringInfo.mockRejectedValue(new Error('Viki HTTP 500'));
 
     const { result } = await runAiringCheck({ Lunes: [malAnime], Jueves: [vikiSeries] });
@@ -58,5 +61,29 @@ describe('useAnimeData: emisión de Viki', () => {
     expect(result.current.airingData).toEqual({ 20: { episode: 5 } });
     expect(result.current.airingError).toEqual({ kind: 'service' });
     expect(localStorage.getItem('anitracker-airing-cache')).toBeNull();
+  });
+});
+
+describe('useAnimeData: emisión de AniList por fuente', () => {
+  beforeEach(() => { vi.useFakeTimers(); localStorage.clear(); fetchAiringByIds.mockReset(); fetchVikiAiringInfo.mockReset(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('incluye anime de AniList sin MAL (id interno ≥ 400000) y los asocia a su id interno', async () => {
+    const donghua = { id: 517459, title: 'Anemone', source: 'AniList', sourceKey: 'anilist:217459' };
+    const withMal = { id: 52991, title: 'Frieren', source: 'AniList', sourceKey: 'anilist:154587', malId: 52991 };
+    fetchAiringByIds.mockResolvedValue({ byAnilist: { 217459: { episode: 3 }, 154587: { episode: 9 } }, byMal: {} });
+
+    const { result } = await runAiringCheck({ Lunes: [donghua], Martes: [withMal] });
+
+    expect(fetchAiringByIds).toHaveBeenCalledWith(expect.objectContaining({ anilistIds: [217459, 154587], malIds: [] }));
+    expect(result.current.airingData).toEqual({ 517459: { episode: 3 }, 52991: { episode: 9 } });
+  });
+
+  it('un anime guardado sin MAL que después lo obtuvo sigue recibiendo su cuenta regresiva', async () => {
+    const saved = { id: 517459, title: 'Anemone', source: 'AniList', sourceKey: 'anilist:217459' };
+    // AniList ahora devuelve idMal: la respuesta se asocia igual por id de AniList.
+    fetchAiringByIds.mockResolvedValue({ byAnilist: { 217459: { episode: 4 } }, byMal: { 63000: { episode: 4 } } });
+    const { result } = await runAiringCheck({ Lunes: [saved] });
+    expect(result.current.airingData).toEqual({ 517459: { episode: 4 } });
   });
 });
