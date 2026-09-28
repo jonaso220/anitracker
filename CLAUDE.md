@@ -92,9 +92,11 @@ Los IDs de anime codifican la fuente: MAL `< 100000`, Kitsu `+100000`, AniList
   feature, importado desde `App.css`. **Usá los tokens existentes** — inventar
   nombres (`--gradient-primary`, `--card-bg`) falla en silencio (p. ej. texto con
   gradiente queda invisible).
-- **Modales**: overlay `.modal-overlay` + panel con `.fade-in`, cierre con
-  `.close-btn` y `Escape`, `role="dialog"` + `aria-modal`. Ver `DayPickerModal`
-  o `BackupModal` como referencia.
+- **Modales**: overlay `.modal-overlay` + panel con `.fade-in` y `.close-btn`;
+  `role="dialog"` + `aria-modal` van en el panel, que recibe el ref de
+  `useAccessibleDialog(onClose)`. El hook maneja Escape (solo el modal de
+  arriba si hay varios), foco atrapado, fondo `inert` y scroll bloqueado. Ver
+  `DayPickerModal` o `BackupModal` como referencia.
 - **Strings de UI** en español, vía `i18n/es.js`. Logs/errores de consola
   quedan inline en inglés.
 - **Undo**: las acciones destructivas toman un snapshot (vía refs) y lo pasan a

@@ -79,5 +79,9 @@ export function useServiceWorkerUpdate() {
     }
   }, []);
 
-  return { updateAvailable, applyUpdate };
+  // "Más tarde": oculta el aviso en esta sesión. Si sigue pendiente, vuelve a
+  // aparecer la próxima vez que se abra la app.
+  const dismissUpdate = useCallback(() => setUpdateAvailable(false), []);
+
+  return { updateAvailable, applyUpdate, dismissUpdate };
 }

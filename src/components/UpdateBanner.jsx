@@ -1,6 +1,6 @@
 import React from 'react';
 
-const UpdateBanner = ({ visible, onUpdate }) => {
+const UpdateBanner = ({ visible, onUpdate, onDismiss }) => {
   if (!visible) return null;
   return (
     <div className="update-banner fade-in" role="status" aria-live="polite">
@@ -17,6 +17,9 @@ const UpdateBanner = ({ visible, onUpdate }) => {
       >
         Actualizar
       </button>
+      {onDismiss && (
+        <button type="button" className="update-banner-dismiss" onClick={onDismiss} aria-label="Más tarde">×</button>
+      )}
     </div>
   );
 };

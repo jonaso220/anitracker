@@ -72,9 +72,9 @@ it('Maraton session count should include normal + and - controls',()=>{
  render(<AnimeDetailModal {...modalProps()} showAnimeDetail={{...a,_day:'Lunes',currentEp:2}}/>);
  fireEvent.click(screen.getByRole('button',{name:'🔥 Maratón'}));
  fireEvent.click(screen.getByRole('button',{name:'+1 ep',exact:true}));
- fireEvent.click(screen.getByRole('button',{name:'+',exact:true}));
+ fireEvent.click(screen.getByRole('button',{name:'Siguiente episodio',exact:true}));
  expect(screen.getByText(/esta sesión/).textContent).toContain('2 eps');
- fireEvent.click(screen.getByRole('button',{name:'−',exact:true}));
+ fireEvent.click(screen.getByRole('button',{name:'Episodio anterior',exact:true}));
  expect(screen.getByText(/esta sesión/).textContent).toContain('1 ep');
 });
 it('reject invalid manual URL instead of persisting an unusable link',()=>{
@@ -158,10 +158,10 @@ it('Maraton caps a batch, counts only applied episodes, and allows correction', 
  fireEvent.click(screen.getByRole('button',{name:'+5 eps'}));
  expect(screen.getByRole('textbox',{name:'Episodio actual',exact:true})).toHaveValue('12');
  expect(screen.getByText(/esta sesión/)).toHaveTextContent('1 ep esta sesión');
- expect(screen.getByRole('button',{name:'+',exact:true})).toBeDisabled();
+ expect(screen.getByRole('button',{name:'Siguiente episodio',exact:true})).toBeDisabled();
  expect(screen.getByRole('button',{name:'+5 eps'})).toBeDisabled();
- fireEvent.click(screen.getByRole('button',{name:'−',exact:true}));
- expect(screen.getByRole('button',{name:'+',exact:true})).toBeEnabled();
+ fireEvent.click(screen.getByRole('button',{name:'Episodio anterior',exact:true}));
+ expect(screen.getByRole('button',{name:'Siguiente episodio',exact:true})).toBeEnabled();
  expect(screen.getByText(/esta sesión/)).toHaveTextContent('0 eps esta sesión');
 });
 it('Maraton pauses its clock while disabled and resumes accumulated active time', () => {
@@ -242,7 +242,7 @@ it('direct episode input saves on Enter, rejects invalid values, and supports ze
  expect(save).toHaveBeenCalledTimes(1);
  fireEvent.change(input,{target:{value:'0'}});fireEvent.blur(input);
  expect(save).toHaveBeenLastCalledWith(a.id,0);
- expect(screen.getByRole('button',{name:'−',exact:true})).toBeDisabled();
+ expect(screen.getByRole('button',{name:'Episodio anterior',exact:true})).toBeDisabled();
 });
 it('direct episode entry also counts the actual change during Maraton', () => {
  render(<AnimeDetailModal {...modalProps()} showAnimeDetail={{...a,_day:'Lunes',currentEp:2}} setEpisodeNumber={vi.fn()}/>);

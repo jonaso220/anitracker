@@ -422,3 +422,11 @@
   opacity: 0.7;
   letter-spacing: -0.02em;
 }
+
+/* Sin hover (iPad, celulares grandes por encima de 768px): la franja de
+   próximo episodio y los géneros se ven siempre, como en celular. */
+@media (hover: none), (pointer: coarse) {
+  .anime-card-airing.airing-later { opacity: 1; transform: none; }
+  .anime-card.has-airing-later .anime-card-overlay { padding-bottom: 1.7rem; }
+  .anime-card-overlay-meta { max-height: 60px; opacity: 1; }
+}

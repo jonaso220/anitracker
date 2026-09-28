@@ -29,6 +29,7 @@ const NavTabs = ({ activeTab, counts, onChange }) => {
         <button
           key={t.id}
           role="tab"
+          aria-label={count ? `${t.labelKey} (${count})` : t.labelKey}
           aria-selected={isActive}
           tabIndex={isActive ? 0 : -1}
           ref={(node) => { refs.current[TABS.indexOf(t)] = node; }}
@@ -38,7 +39,7 @@ const NavTabs = ({ activeTab, counts, onChange }) => {
         >
           <span aria-hidden="true">{t.icon}</span>
           <span className="tab-label"> {t.labelKey}</span>
-          {count ? <span className="nav-tab-count" aria-label={`${count} elementos`}>{count}</span> : null}
+          {count ? <span className="nav-tab-count" aria-hidden="true">{count}</span> : null}
         </button>
       );
     })}

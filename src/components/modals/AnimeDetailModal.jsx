@@ -8,6 +8,7 @@ import { translateEnToEs } from '../../services/translationService';
 import { getPlatformInfo, formatAiringDate, looksSpanish, getDisplayStreamingLinks, pickAutoWatchLink } from '../../utils';
 import { fetchTmdbExtras, parseTmdbKey, TMDB_ENABLED, TMDB_REGIONS, getPreferredRegion, setPreferredRegion } from '../../services/tmdbService';
 import { fetchAnilistRelations } from '../../services/anilistService';
+import { useAccessibleDialog } from '../../hooks/useAccessibleDialog';
 
 const ProviderRow = ({ label, items, link }) => (
     <div className="provider-row">
@@ -27,6 +28,8 @@ const ProviderRow = ({ label, items, link }) => (
 );
 
 const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, updateEpisode, setEpisodeNumber, setAnimeSeason, setAnimePaused, updateUserRating, updateAnimeLink, mergeAnimeExtras, markAsFinished, dropAnime, deleteAnime, addToWatchLater, markAsWatched, setShowMoveDayPicker, setShowDayPicker, resumeAnime, customLists = [], addToCustomList, removeFromCustomList, libraryIds }) => {
+    const closeDetail = useCallback(() => setShowAnimeDetail(null), [setShowAnimeDetail]);
+    const dialogRef = useAccessibleDialog(closeDetail);
     // Compute initial synopsis synchronously (Spanish detection + cache check)
     const getInitialSynopsis = () => {
         const syn = showAnimeDetail?.synopsis;
@@ -207,17 +210,10 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
 
 
     return (
-        <div
-            className="modal-overlay"
-            onClick={() => setShowAnimeDetail(null)}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="anime-detail-title"
-            onKeyDown={(e) => { if (e.key === 'Escape') setShowAnimeDetail(null); }}
-        >
-            <div className="detail-modal tracking-detail fade-in" onClick={e => e.stopPropagation()}>
+        <div className="modal-overlay" onClick={closeDetail}>
+            <div ref={dialogRef} className="detail-modal tracking-detail fade-in" role="dialog" aria-modal="true" aria-labelledby="anime-detail-title" tabIndex={-1} onClick={e => e.stopPropagation()}>
                 <div className="bottom-sheet-handle" aria-hidden="true"></div>
-                <button className="close-btn" onClick={() => setShowAnimeDetail(null)} aria-label="Cerrar">×</button>
+                <button className="close-btn" onClick={closeDetail} aria-label="Cerrar">×</button>
                 <div className="detail-header">
                     <img src={a.image} alt={a.title} loading="lazy" decoding="async" />
                     <div className="detail-info">
@@ -239,12 +235,12 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                     <div className="detail-section">
                         <div className="detail-section-header">
                             <h4>📺 Episodio actual</h4>
-                            <button className={`binge-toggle ${bingeMode ? 'active' : ''}`} onClick={toggleBinge}>
-                                {bingeMode ? '🔥 Maratón' : '🔥 Maratón'}
+                            <button className={`binge-toggle ${bingeMode ? 'active' : ''}`} onClick={toggleBinge} aria-pressed={bingeMode}>
+                                🔥 Maratón
                             </button>
                         </div>
                         <div className="episode-controls">
-                            <button className="ep-control-btn" disabled={localEp <= 0} onClick={() => changeLocalEpisode(-1)}>−</button>
+                            <button className="ep-control-btn" disabled={localEp <= 0} onClick={() => changeLocalEpisode(-1)} aria-label="Episodio anterior">−</button>
                             <input className="ep-number ep-input" aria-label="Episodio actual" inputMode="numeric" type="text"
                                 value={episodeDraft ?? String(localEp)} aria-invalid={!!episodeError} aria-describedby="episode-entry-hint"
                                 onChange={(e) => { setEpisodeDraft(e.target.value); setEpisodeError(''); }} onBlur={commitEpisode}
@@ -252,7 +248,7 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                                     if (e.key === 'Enter') { e.preventDefault(); commitEpisode(); }
                                     if (e.key === 'Escape' && episodeDraft !== null) { e.stopPropagation(); setEpisodeDraft(null); setEpisodeError(''); }
                                 }} />
-                            <button className="ep-control-btn" disabled={episodeComplete} onClick={() => changeLocalEpisode(1)}>+</button>
+                            <button className="ep-control-btn" disabled={episodeComplete} onClick={() => changeLocalEpisode(1)} aria-label="Siguiente episodio">+</button>
                         </div>
                         <p id="episode-entry-hint" className="episode-entry-hint">Tocá el número para editar{a.episodes > 0 ? ` · ${a.episodes} episodios en total` : ''}</p>
                         {episodeError && <p className="tracking-error" role="alert">{episodeError}</p>}

@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
+import { useAccessibleDialog } from '../../hooks/useAccessibleDialog';
 import { parseAnimeSearchInput, SEARCH_SOURCE_NAMES } from '../../services/searchAnime';
 
 const Highlight = ({ text, query }) => {
@@ -76,10 +77,11 @@ const SearchModal = ({ setShowSearch, searchQuery, handleSearch, searchResults, 
         setFilterScore(0);
     };
 
-    const closeSearch = () => { setShowSearch(false); setSearchResults([]); setSearchQuery(''); };
+    const closeSearch = useCallback(() => { setShowSearch(false); setSearchResults([]); setSearchQuery(''); }, [setShowSearch, setSearchResults, setSearchQuery]);
+    const dialogRef = useAccessibleDialog(closeSearch);
     return (
-    <div className="modal-overlay" onClick={closeSearch} role="dialog" aria-modal="true" aria-labelledby="search-modal-title" onKeyDown={(e) => { if (e.key === 'Escape') closeSearch(); }}>
-      <div className="search-modal" onClick={e => e.stopPropagation()}>
+    <div className="modal-overlay" onClick={closeSearch}>
+      <div ref={dialogRef} className="search-modal" role="dialog" aria-modal="true" aria-labelledby="search-modal-title" tabIndex={-1} onClick={e => e.stopPropagation()}>
         <div className="bottom-sheet-handle" aria-hidden="true"></div>
         <h2 id="search-modal-title" className="sr-only">Buscar anime</h2>
         <div className="search-header">

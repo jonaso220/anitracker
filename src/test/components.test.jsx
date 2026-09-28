@@ -387,7 +387,7 @@ describe('AnimeDetailModal', () => {
     expect(screen.queryByRole('button', {name: '✗ Dropear'})).not.toBeInTheDocument();
     expect(screen.queryByRole('button', {name: '↔ Mover día'})).not.toBeInTheDocument();
     expect(screen.getByRole('button', {name: '📅 Añadir a semana'})).toBeInTheDocument();
-    expect(screen.getByRole('button', {name: '+'})).toBeInTheDocument();
+    expect(screen.getByRole('button', {name: 'Siguiente episodio'})).toBeInTheDocument();
     await screen.findByText('🎬 Más de este anime');
   });
 
@@ -574,5 +574,31 @@ describe('CustomListsTab: renombrar', () => {
     const header = screen.getByRole('button', { expanded: true });
     fireEvent.keyDown(header, { key: ' ' });
     expect(header).toHaveAttribute('aria-expanded', 'false');
+  });
+});
+
+describe('modales migrados a useAccessibleDialog', () => {
+  it('BackupModal y SearchModal cierran con Escape aunque el foco esté afuera', () => {
+    const onClose = vi.fn();
+    const { unmount } = render(<BackupModal onClose={onClose} onExport={vi.fn()} onRestore={vi.fn()} />);
+    document.body.focus();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
+    unmount();
+
+    const setShowSearch = vi.fn();
+    render(<SearchModal setShowSearch={setShowSearch} searchQuery="" handleSearch={vi.fn()} searchResults={[]} isSearching={false}
+      setSearchResults={vi.fn()} setSearchQuery={vi.fn()} setShowDayPicker={vi.fn()} addToWatchLater={vi.fn()} markAsWatchedFromSearch={vi.fn()} />);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(setShowSearch).toHaveBeenCalledWith(false);
+  });
+});
+
+describe('NavTabs', () => {
+  it('cada pestaña tiene nombre accesible, con el contador si hay', async () => {
+    const { default: NavTabs } = await import('../components/NavTabs');
+    render(<NavTabs activeTab="schedule" counts={{ watchLater: 3 }} onChange={vi.fn()} />);
+    expect(screen.getByRole('tab', { name: 'Semana' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Después (3)' })).toBeInTheDocument();
   });
 });

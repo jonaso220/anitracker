@@ -86,7 +86,7 @@ export default function AnimeTracker() {
   const { searchQuery, setSearchQuery, searchResults, setSearchResults, isSearching, searchPartial, airingData, airingError, retryAiring, handleSearch } = useAnimeData(schedule);
   const dragDrop = useDragDrop(schedule, setSchedule, daysOfWeek);
   const bulk = useBulkMode();
-  const { updateAvailable, applyUpdate } = useServiceWorkerUpdate();
+  const { updateAvailable, applyUpdate, dismissUpdate } = useServiceWorkerUpdate();
   const discovery = useDiscovery();
   const directory = useDirectory();
   const exitBulkMode = bulk.exitBulkMode;
@@ -328,7 +328,7 @@ export default function AnimeTracker() {
 
       <Toast toast={toast} onUndo={undoToast} onDismiss={dismissToast} />
       <StorageErrorBanner />
-      <UpdateBanner visible={updateAvailable} onUpdate={applyUpdate} />
+      <UpdateBanner visible={updateAvailable} onUpdate={applyUpdate} onDismiss={dismissUpdate} />
 
       <Suspense fallback={null}>
       {showSearch && (

@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { useAccessibleDialog } from '../../hooks/useAccessibleDialog';
 import { parseBackup } from '../../utils';
 import { daysOfWeek } from '../../constants';
 
@@ -10,6 +11,7 @@ export default function BackupModal({ onClose, onExport, onRestore, synced = fal
   const [pending, setPending] = useState(null); // parsed data awaiting confirmation
   const [error, setError] = useState('');
   const fileRef = useRef(null);
+  const dialogRef = useAccessibleDialog(onClose);
 
   const handleFile = async (e) => {
     const file = e.target.files?.[0];
@@ -34,15 +36,8 @@ export default function BackupModal({ onClose, onExport, onRestore, synced = fal
   };
 
   return (
-    <div
-      className="modal-overlay"
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="backup-modal-title"
-      onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
-    >
-      <div className="backup-modal fade-in" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay" onClick={onClose}>
+      <div ref={dialogRef} className="backup-modal fade-in" role="dialog" aria-modal="true" aria-labelledby="backup-modal-title" tabIndex={-1} onClick={(e) => e.stopPropagation()}>
         <button className="close-btn" onClick={onClose} aria-label="Cerrar">×</button>
         <h2 id="backup-modal-title" className="backup-title">Copia de seguridad</h2>
 

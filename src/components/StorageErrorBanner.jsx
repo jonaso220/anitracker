@@ -19,6 +19,7 @@ export default function StorageErrorBanner() {
       <span aria-hidden="true">⚠️</span>
       <div><strong>No se pudieron guardar tus últimos cambios</strong><small>{isQuota ? 'El almacenamiento del navegador está lleno. Exportá una copia y liberá espacio.' : 'El navegador bloqueó el almacenamiento local.'}</small></div>
       {failure.retry && <button onClick={() => failure.retry()}>Reintentar</button>}
+      <button className="storage-error-dismiss" onClick={() => setFailure(null)} aria-label="Cerrar aviso">×</button>
     </div>
   );
 }
