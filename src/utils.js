@@ -1,4 +1,5 @@
 import { daysOfWeek } from './constants';
+import { migrateLibrary } from './idMigration';
 
 /**
  * Remove internal flags from anime objects before persisting.
@@ -461,11 +462,12 @@ export const parseBackup = (jsonString) => {
     });
   });
 
-  return {
+  // Una copia vieja puede traer ids de AniList del rango que chocaba con TVMaze.
+  const { data } = migrateLibrary({
     schedule,
     watchedList: entries(container.watchedList),
     watchLater: entries(container.watchLater),
     customLists,
-    skipped,
-  };
+  });
+  return { ...data, skipped };
 };

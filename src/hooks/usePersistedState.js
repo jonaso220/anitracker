@@ -4,12 +4,16 @@ import { useEffect, useState, useRef } from 'react';
  * `useState` that mirrors its value to localStorage. Falls back to `initialValue`
  * if the key is missing or JSON parsing fails.
  */
-export function usePersistedState(key, initialValue, restoredValue) {
+export function usePersistedState(key, initialValue, restoredValue, migrate) {
   const [value, setValue] = useState(() => {
     if (restoredValue !== undefined) return restoredValue;
     try {
       const raw = localStorage.getItem(key);
-      return raw != null ? JSON.parse(raw) : (typeof initialValue === 'function' ? initialValue() : initialValue);
+      if (raw != null) {
+        const parsed = JSON.parse(raw);
+        return migrate ? migrate(parsed) : parsed;
+      }
+      return typeof initialValue === 'function' ? initialValue() : initialValue;
     } catch (error) {
       queueMicrotask(() => window.dispatchEvent(new CustomEvent('anitracker-storage-error', { detail: { key, error, retry: null } })));
       return typeof initialValue === 'function' ? initialValue() : initialValue;

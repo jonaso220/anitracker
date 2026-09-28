@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { LOCAL_REV_KEY, readActiveLibrary, persistAccountLibrary, selectLibraryAccount, readSyncBase, writeSyncBase } from '../accountStorage';
 import { hashLibrary, resolveCloudSnapshot } from '../syncMerge';
+import { migrateLibrary } from '../idMigration';
 import { encodeLibrary, isCompressedDoc, decodeLibrary, LibraryTooLargeError } from '../cloudCodec';
 import { resolveAuthDomain, shouldRedirectGoogle } from '../authFlow';
 
@@ -235,11 +236,15 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
       watchLater:  data.watchLater  != null ? parseCloudField(data.watchLater, [])  : latest.watchLater,
       customLists: data.customLists != null ? parseCloudField(data.customLists, []) : latest.customLists,
     };
+    // Lo sincronizado es lo que hay de verdad en la nube; la fusión trabaja
+    // con los ids nuevos. Si la nube tenía ids viejos (la subió un dispositivo
+    // sin actualizar), el resultado difiere de lo sincronizado y se vuelve a
+    // subir ya migrado.
     const cloudJson = serializeData(cloud);
     const { action, data: next } = resolveCloudSnapshot({
       base: syncBaseRef.current,
       local: latest,
-      cloud,
+      cloud: migrateLibrary(cloud).data,
       localRev: localRevRef.current,
       cloudRev: typeof data.updatedAtIso === 'string' ? data.updatedAtIso : '',
     });

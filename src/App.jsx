@@ -42,6 +42,7 @@ import { daysOfWeek } from './constants';
 import { totalTrackedEpisodes } from './tracking';
 import { buildBackup } from './utils';
 import { readActiveLibrary } from './accountStorage';
+import { migrateSchedule, migrateList, migrateCustomLists, migrateDiscoveryIds } from './idMigration';
 import { t } from './i18n';
 
 const EMPTY_SCHEDULE = { 'Lunes': [], 'Martes': [], 'Miércoles': [], 'Jueves': [], 'Viernes': [], 'Sábado': [], 'Domingo': [] };
@@ -71,14 +72,14 @@ export default function AnimeTracker() {
     return true;
   });
   const [accountSnapshot] = useState(readActiveLibrary);
-  const [schedule, setSchedule, scheduleRef] = usePersistedState('animeSchedule', () => ({ ...EMPTY_SCHEDULE }), accountSnapshot?.data.schedule);
-  const [watchedList, setWatchedList, watchedListRef] = usePersistedState('watchedAnimes', [], accountSnapshot?.data.watchedList);
-  const [watchLater, setWatchLater, watchLaterRef] = usePersistedState('watchLater', [], accountSnapshot?.data.watchLater);
-  const [customLists, setCustomLists, customListsRef] = usePersistedState('anitracker-custom-lists', [], accountSnapshot?.data.customLists);
+  const [schedule, setSchedule, scheduleRef] = usePersistedState('animeSchedule', () => ({ ...EMPTY_SCHEDULE }), accountSnapshot?.data.schedule, migrateSchedule);
+  const [watchedList, setWatchedList, watchedListRef] = usePersistedState('watchedAnimes', [], accountSnapshot?.data.watchedList, migrateList);
+  const [watchLater, setWatchLater, watchLaterRef] = usePersistedState('watchLater', [], accountSnapshot?.data.watchLater, migrateList);
+  const [customLists, setCustomLists, customListsRef] = usePersistedState('anitracker-custom-lists', [], accountSnapshot?.data.customLists, migrateCustomLists);
   const [discoveryPreferences, setDiscoveryPreferences] = usePersistedState('anitracker-discovery-preferences', {
     personalized: true, hideAdded: true, genre: 'all', platform: 'all',
   });
-  const [ignoredDiscovery, setIgnoredDiscovery] = usePersistedState('anitracker-discovery-ignored', []);
+  const [ignoredDiscovery, setIgnoredDiscovery] = usePersistedState('anitracker-discovery-ignored', [], undefined, migrateDiscoveryIds);
 
   // --- Hooks ---
   const { toast, showToast, dismissToast, undoToast, runToastAction } = useToast();

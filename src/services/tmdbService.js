@@ -17,7 +17,7 @@ export const TMDB_ENABLED = API_KEY !== '';
 const IS_BEARER_TOKEN = API_KEY.startsWith('eyJ');
 
 // App-internal ID ranges (must not collide with MAL <100000, Kitsu +100000,
-// AniList +300000, TVMaze +400000, iTunes +500000).
+// AniList +300000 / +800000000, TVMaze +400000, iTunes +500000).
 export const TMDB_MOVIE_ID_BASE = 600000000;
 export const TMDB_TV_ID_BASE = 900000000;
 

@@ -98,8 +98,14 @@ store global ni context; el estado vive en `App.jsx` y baja por props.
 | `anitracker-sync-base:<uid>` | huella `{ clave: hash }` de lo último sincronizado (base de la fusión) |
 
 Los IDs de anime codifican la fuente: MAL `< 100000`, Kitsu `+100000`, AniList
-`300000–400000`, TVMaze `+400000`, iTunes `+500000`, TMDB película
-`+600000000` / serie `+900000000`, Viki `+700000000` (ver `useAnimeData` y cada service).
+sin MAL `300000 + id` si el id de AniList es `< 100000` y `800000000 + id` desde
+ahí (antes caía en el rango de TVMaze), TVMaze `+400000`, iTunes `+500000`, TMDB
+película `+600000000` / serie `+900000000`, Viki `+700000000`. La identidad real
+va por `sourceKey` (`anilist:N`, `tvmaze:N`…), nunca por el rango.
+`idMigration.js` pasa al rango nuevo los AniList guardados con el id viejo al
+leer localStorage, cuentas guardadas, snapshots de la nube y copias de
+seguridad (determinista, idempotente; si queda la misma obra dos veces, gana
+la de más progreso).
 
 ## Convenciones
 

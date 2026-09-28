@@ -361,6 +361,35 @@ describe('useFirebase: fusión y protección de datos', () => {
   });
   afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
+  it('una nube con ids viejos de AniList se migra y se vuelve a subir ya migrada', async () => {
+    const { result } = await loginAndSubscribe();
+    await act(async () => {
+      h.snapshotCb(cloudSnap({
+        watchLater: [
+          { id: 450000, sourceKey: 'anilist:150000', title: 'Donghua' },
+          { id: 450000, sourceKey: 'tvmaze:50000', title: 'Serie TVMaze' },
+        ],
+      }));
+    });
+    expect(result.current.watchLater.map((a) => a.id)).toEqual([800150000, 450000]);
+    await tick(2000);
+    const payload = h.setDoc.mock.calls.at(-1)[1];
+    expect(payload.watchLater.map((a) => a.id)).toEqual([800150000, 450000]);
+  });
+
+  it('una edición hecha con el id viejo en un dispositivo sin actualizar no duplica la obra', async () => {
+    const { result } = await loginAndSubscribe();
+    const migrated = { id: 800150000, sourceKey: 'anilist:150000', title: 'Donghua', currentEp: 3 };
+    await act(async () => { h.snapshotCb(cloudSnap({ watchLater: [migrated] })); });
+    // El dispositivo viejo editó su copia (id viejo) y su fusión dejó las dos.
+    await act(async () => {
+      h.snapshotCb(cloudSnap({ watchLater: [migrated, { ...migrated, id: 450000, currentEp: 5 }] }));
+    });
+    expect(result.current.watchLater).toEqual([{ ...migrated, currentEp: 5 }]);
+    await tick(2000);
+    expect(h.setDoc.mock.calls.at(-1)[1].watchLater).toEqual([{ ...migrated, currentEp: 5 }]);
+  });
+
   it('iniciar sesión después de usar la app como invitado fusiona en vez de pisar la nube', async () => {
     const rendered = renderHook(() => useHarness());
     await waitUntil(() => typeof h.authCb === 'function');

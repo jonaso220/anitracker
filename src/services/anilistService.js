@@ -1,6 +1,7 @@
 import { normalizeAnime } from '../schemas/anime';
 import { buildAiringInfo } from '../utils';
 import { daysOfWeek } from '../constants';
+import { anilistInternalId, ANILIST_ID_BASE, ANILIST_LEGACY_BASE, ANILIST_LEGACY_LIMIT } from '../idMigration';
 
 const ANILIST_URL = 'https://graphql.anilist.co';
 
@@ -255,7 +256,8 @@ export function anilistIdsOf(anime) {
   const m = /^anilist:(\d+)$/.exec(anime?.sourceKey || '');
   let anilistId = m ? Number(m[1]) : null;
   // Items viejos guardados antes de que existiera sourceKey.
-  if (!anilistId && !anime?.sourceKey && id >= 300000 && id < 400000) anilistId = id - 300000;
+  if (!anilistId && !anime?.sourceKey && id >= ANILIST_LEGACY_BASE && id < ANILIST_LEGACY_BASE + ANILIST_LEGACY_LIMIT) anilistId = id - ANILIST_LEGACY_BASE;
+  if (!anilistId && !anime?.sourceKey && id >= ANILIST_ID_BASE && id < ANILIST_ID_BASE + 100000000) anilistId = id - ANILIST_ID_BASE;
   const malId = Number(anime?.malId) > 0 ? Number(anime.malId) : (id > 0 && id < 100000 ? id : null);
   return { anilistId, malId };
 }
@@ -443,7 +445,7 @@ export function toAnime(a, { fallbackYear } = {}) {
       : a.trailer.site === 'dailymotion' ? `https://www.dailymotion.com/video/${a.trailer.id}` : '')
     : '';
   return normalizeAnime({
-    id: a.idMal || (a.id + 300000),
+    id: anilistInternalId(a.id, a.idMal),
     source: 'AniList',
     sourceId: a.id,
     sourceKey: `anilist:${a.id}`,

@@ -93,4 +93,14 @@ describe('semana vacía', () => {
     expect(screen.queryByRole('heading', { name: 'Armá tu semana' })).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /En pausa/ })).toBeInTheDocument();
   });
+
+  it('al abrir, una biblioteca guardada con el par que chocaba queda migrada en el dispositivo', async () => {
+    localStorage.setItem('animeSchedule', JSON.stringify({ ...emptyWeek(), Lunes: [{ id: 450000, sourceKey: 'tvmaze:50000', title: 'Serie TVMaze' }] }));
+    localStorage.setItem('watchLater', JSON.stringify([{ id: 450000, sourceKey: 'anilist:150000', title: 'Donghua' }]));
+    localStorage.setItem('anitracker-discovery-ignored', JSON.stringify([450001]));
+    await renderApp();
+    expect(JSON.parse(localStorage.getItem('watchLater'))[0].id).toBe(800150000);
+    expect(JSON.parse(localStorage.getItem('animeSchedule')).Lunes[0].id).toBe(450000);
+    expect(JSON.parse(localStorage.getItem('anitracker-discovery-ignored'))).toEqual([800150001]);
+  });
 });

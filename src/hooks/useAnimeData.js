@@ -9,6 +9,8 @@ import { fetchTmdbAiringInfo, tmdbTvIdOf, TMDB_ENABLED } from '../services/tmdbS
 const AIRING_CACHE_KEY = 'anitracker-airing-cache';
 const AIRING_TIME_KEY = 'anitracker-airing-time';
 const AIRING_IDS_KEY = 'anitracker-airing-ids';
+// Sube cuando cambian los ids internos (el cache guarda la info por id interno).
+const AIRING_CACHE_FORMAT = 'v2';
 const AIRING_TTL_MS = 15 * 60 * 1000;
 const SEARCH_DEBOUNCE_MS = 500;
 
@@ -66,10 +68,11 @@ function airingRequest(schedule) {
   const tvmazeRefs = sourceRefs(tvmazeIdOf);
   const tmdbRefs = TMDB_ENABLED ? sourceRefs(tmdbTvIdOf) : [];
   const unique = (list) => [...new Set(list.map((r) => r.sourceId))];
-  const key = [
+  const ids = [
     ...malIds.map((id) => `m${id}`), ...anilistIds.map((id) => `a${id}`), ...vikiIds,
     ...unique(tvmazeRefs).map((id) => `t${id}`), ...unique(tmdbRefs).map((id) => `d${id}`),
   ].sort().join(',');
+  const key = ids ? `${AIRING_CACHE_FORMAT}:${ids}` : '';
   return { refs, malIds, anilistIds, vikiIds, tvmazeRefs, tmdbRefs, key };
 }
 

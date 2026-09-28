@@ -105,7 +105,7 @@ describe('useAnimeData: cache de emisión', () => {
   it('con cache fresca de la misma semana muestra los datos al instante y no consulta', async () => {
     localStorage.setItem('anitracker-airing-cache', JSON.stringify({ 20: { episode: 5 } }));
     localStorage.setItem('anitracker-airing-time', String(Date.now()));
-    localStorage.setItem('anitracker-airing-ids', 'm20');
+    localStorage.setItem('anitracker-airing-ids', 'v2:m20');
     const schedule = { Lunes: [malAnime] };
     const { result } = renderHook(() => useAnimeData(schedule));
     expect(result.current.airingData).toEqual({ 20: { episode: 5 } });
@@ -116,7 +116,7 @@ describe('useAnimeData: cache de emisión', () => {
   it('si la semana cambió, sigue mostrando lo anterior mientras consulta y después lo nuevo', async () => {
     localStorage.setItem('anitracker-airing-cache', JSON.stringify({ 20: { episode: 5 } }));
     localStorage.setItem('anitracker-airing-time', String(Date.now()));
-    localStorage.setItem('anitracker-airing-ids', 'm20');
+    localStorage.setItem('anitracker-airing-ids', 'v2:m20');
     fetchAiringByIds.mockResolvedValue({ byAnilist: {}, byMal: { 20: { episode: 6 }, 21: { episode: 1 } } });
     const schedule = { Lunes: [malAnime, { id: 21, title: 'Otro', sourceKey: 'mal:21' }] };
     const { result } = renderHook(() => useAnimeData(schedule));

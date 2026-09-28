@@ -1,4 +1,5 @@
 import { daysOfWeek } from './constants';
+import { migrateLibrary } from './idMigration';
 
 const ACTIVE_KEY = 'anitracker-account-state';
 const accountKey = (uid) => `anitracker-account:${uid}`;
@@ -18,7 +19,7 @@ function readState(key) {
     || !Array.isArray(value.data.watchLater) || !Array.isArray(value.data.customLists)) {
     throw new Error('La copia local de la cuenta no es válida.');
   }
-  return value;
+  return { ...value, data: migrateLibrary(value.data).data };
 }
 
 // Read one atomic snapshot on startup; legacy keys remain available for migration.

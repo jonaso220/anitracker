@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v27';
+const CACHE_VERSION = 'v28';
 const STATIC_CACHE = `anitracker-static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `anitracker-runtime-${CACHE_VERSION}`;
 // Sin versión: las portadas no cambian entre deploys, no hay por qué volver

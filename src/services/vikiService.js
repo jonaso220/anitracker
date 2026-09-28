@@ -12,7 +12,7 @@ const VIKI_APP_ID = '100000a';
 const VIKI_WEB = 'https://www.viki.com';
 
 // Rango interno de IDs (no choca con MAL <100000, Kitsu +100000, AniList
-// +300000, TVMaze +400000, iTunes +500000, TMDB +600000000 / +900000000).
+// +300000 / +800000000, TVMaze +400000, iTunes +500000, TMDB +600000000 / +900000000).
 // Series y películas comparten el espacio de ids de Viki ("41650c").
 export const VIKI_ID_BASE = 700000000;
 
