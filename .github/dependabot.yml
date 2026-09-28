@@ -1,0 +1,20 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      # Un solo PR por mes con todo lo menor/parche; los mayores llegan aparte.
+      minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      # Firestore 4.16 (firebase 12.15+) suma ~60 kB gzip al bundle para las
+      # mismas funciones. Quedarse en 12.14.x hasta que eso cambie.
+      - dependency-name: firebase
+        update-types: ["version-update:semver-minor"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

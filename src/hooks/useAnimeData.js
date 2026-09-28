@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { daysOfWeek } from '../constants';
 import { searchAnime } from '../services/searchAnime';
 import { fetchAiringByIds, anilistIdsOf } from '../services/anilistService';
@@ -21,13 +21,17 @@ function airingByAppId(refs, { byAnilist, byMal }) {
   return out;
 }
 
-function readAiringCache(currentIds) {
+// Último resultado guardado, fresco o no: `ids` dice para qué biblioteca era.
+function readAiringCache() {
   try {
     const cached = localStorage.getItem(AIRING_CACHE_KEY);
     const cachedTime = localStorage.getItem(AIRING_TIME_KEY);
-    const cachedIds = localStorage.getItem(AIRING_IDS_KEY) || '';
-    const fresh = cached && cachedTime && Date.now() - parseInt(cachedTime, 10) < AIRING_TTL_MS;
-    if (fresh && cachedIds === currentIds) return JSON.parse(cached);
+    if (!cached || !cachedTime) return null;
+    return {
+      data: JSON.parse(cached),
+      ids: localStorage.getItem(AIRING_IDS_KEY) || '',
+      fresh: Date.now() - parseInt(cachedTime, 10) < AIRING_TTL_MS,
+    };
   } catch { /* empty */ }
   return null;
 }
@@ -40,13 +44,30 @@ function writeAiringCache(data, currentIds) {
   } catch { /* empty */ }
 }
 
+// Qué hay que consultar para la semana actual. `key` identifica el conjunto de
+// ids (vacío = nada que consultar).
+function airingRequest(schedule) {
+  const allAnime = daysOfWeek.flatMap((d) => schedule[d] || []);
+  // Por fuente (sourceKey), no por rango de id: AniList sin MAL ya pasa de 400000.
+  const refs = allAnime
+    .map((a) => ({ appId: a.id, ...anilistIdsOf(a) }))
+    .filter((r) => r.anilistId || r.malId);
+  const anilistIds = [...new Set(refs.map((r) => r.anilistId).filter(Boolean))];
+  const malIds = [...new Set(refs.filter((r) => !r.anilistId).map((r) => r.malId))];
+  const vikiIds = [...new Set(allAnime.filter((a) => a.type !== 'Película').map(vikiIdOf).filter(Boolean))];
+  const key = [...malIds.map((id) => `m${id}`), ...anilistIds.map((id) => `a${id}`), ...vikiIds].sort().join(',');
+  return { refs, malIds, anilistIds, vikiIds, key };
+}
+
+const NO_AIRING = {};
+
 export function useAnimeData(schedule) {
   const [searchQuery, setQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchPartial, setSearchPartial] = useState([]);
-  const [airingData, setAiringData] = useState({});
-  const [airingError, setAiringError] = useState(null);
+  // Solo lo que devuelve la red; el resto (semana vacía, cache fresca) se deriva.
+  const [fetchedAiring, setFetchedAiring] = useState({ key: null, data: NO_AIRING, error: null });
   const [airingRetry, setAiringRetry] = useState(0);
 
   const searchDebounceRef = useRef(null);
@@ -57,21 +78,31 @@ export function useAnimeData(schedule) {
   const airingForceRef = useRef(false);
 
   // --- Airing info ---
+  const request = useMemo(() => airingRequest(schedule), [schedule]);
+  const cachedAiring = useMemo(() => (request.key ? readAiringCache() : null), [request.key]);
+
+  // Lo que se muestra: la respuesta de la red para esta semana; si no hay,
+  // la cache fresca de esta misma semana; y mientras se consulta, lo último
+  // que haya (los datos van por id, así que siguen valiendo para lo que quedó).
+  let airingData = fetchedAiring.data;
+  let airingError = fetchedAiring.error;
+  if (!request.key) {
+    airingData = NO_AIRING;
+    airingError = null;
+  } else if (fetchedAiring.key !== request.key && cachedAiring) {
+    if (cachedAiring.fresh && cachedAiring.ids === request.key) {
+      airingData = cachedAiring.data;
+      airingError = null;
+    } else if (fetchedAiring.key === null) {
+      airingData = cachedAiring.data;
+    }
+  }
+
   useEffect(() => {
-    const allAnime = daysOfWeek.flatMap((d) => schedule[d] || []);
-    // Por fuente (sourceKey), no por rango de id: AniList sin MAL ya pasa de 400000.
-    const refs = allAnime
-      .map((a) => ({ appId: a.id, ...anilistIdsOf(a) }))
-      .filter((r) => r.anilistId || r.malId);
-    const anilistIds = [...new Set(refs.map((r) => r.anilistId).filter(Boolean))];
-    const malIds = [...new Set(refs.filter((r) => !r.anilistId).map((r) => r.malId))];
-    const vikiIds = [...new Set(allAnime.filter((a) => a.type !== 'Película').map(vikiIdOf).filter(Boolean))];
-
-    if (malIds.length === 0 && anilistIds.length === 0 && vikiIds.length === 0) { setAiringData({}); setAiringError(null); return; }
-
-    const currentIds = [...malIds.map((id) => `m${id}`), ...anilistIds.map((id) => `a${id}`), ...vikiIds].sort().join(',');
-    const cached = readAiringCache(currentIds);
-    if (cached && !airingForceRef.current) { setAiringData(cached); setAiringError(null); return; }
+    const { refs, malIds, anilistIds, vikiIds, key } = request;
+    if (!key) return;
+    const cached = readAiringCache();
+    if (cached?.fresh && cached.ids === key && !airingForceRef.current) return;
     airingForceRef.current = false;
 
     if (airingDebounceRef.current) clearTimeout(airingDebounceRef.current);
@@ -92,19 +123,19 @@ export function useAnimeData(schedule) {
         if (failed.length === settled.length) throw failed[0].reason;
         if (!controller.signal.aborted) {
           const data = Object.assign({}, ...settled.map((s) => (s.status === 'fulfilled' ? s.value : {})));
-          setAiringData(data);
           if (failed.length === 0) {
-            setAiringError(null);
-            writeAiringCache(data, currentIds);
+            setFetchedAiring({ key, data, error: null });
+            writeAiringCache(data, key);
           } else {
             console.error('[AniTracker] Partial airing check failed:', failed[0].reason);
-            setAiringError(toError(failed[0].reason));
+            setFetchedAiring({ key, data, error: toError(failed[0].reason) });
           }
         }
       } catch (err) {
         if (err.name !== 'AbortError') {
           console.error('[AniTracker] Airing check failed:', err);
-          setAiringError(toError(err));
+          // Se conserva lo que ya se mostraba, con el aviso de reintento.
+          setFetchedAiring((prev) => ({ key, data: prev.key === null ? (cached?.data || NO_AIRING) : prev.data, error: toError(err) }));
         }
       }
     }, 1000);
@@ -113,7 +144,7 @@ export function useAnimeData(schedule) {
       if (airingDebounceRef.current) clearTimeout(airingDebounceRef.current);
       controller.abort();
     };
-  }, [schedule, airingRetry]);
+  }, [request, airingRetry]);
 
   // --- Search ---
   const setSearchQuery = useCallback((query) => {

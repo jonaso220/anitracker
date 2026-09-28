@@ -189,6 +189,8 @@ export default function AnimeTracker() {
   // Apply dark/light class to the body for CSS custom properties
   useEffect(() => {
     document.documentElement.dataset.theme = darkMode ? 'dark' : 'light';
+    // Barra de estado del celular / PWA del mismo color que el fondo.
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', darkMode ? '#0f0f1a' : '#e8e0ff');
   }, [darkMode]);
 
   // Precalienta Temporada y Directorio en segundo plano después del primer

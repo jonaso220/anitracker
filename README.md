@@ -42,7 +42,7 @@ opcional en la nube.
 | Capa | Tecnología |
 |------|-----------|
 | UI | React 19 |
-| Build / dev | Vite 7 |
+| Build / dev | Vite 8 |
 | Tests | Vitest + Testing Library (jsdom) |
 | Lint | ESLint 9 |
 | Backend opcional | Firebase (Auth + Firestore) |
@@ -51,7 +51,7 @@ opcional en la nube.
 
 ## Cómo empezar
 
-Requisitos: Node.js 18+ y npm.
+Requisitos: Node.js 22.12+ y npm (la versión de CI y Netlify está en `.nvmrc`).
 
 ```bash
 npm install      # instalar dependencias

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { clean, filterByLocalSearch, getFilteredWatched, parseEpisodes, hashString, buildBackup, parseBackup, getPlatformInfo, pickAutoWatchLink, sortStreamingLinks, isDeadPlatformUrl, buildFanStreamingLinks, getDisplayStreamingLinks, formatAiringWhen, formatAiringDate, buildAiringInfo, formatTimeAgo, formatTimeUntil, getAiringDayIndex, groupSeasonByDay, looksSpanish } from '../utils';
+import { clean, filterByLocalSearch, getFilteredWatched, hashString, buildBackup, parseBackup, getPlatformInfo, pickAutoWatchLink, sortStreamingLinks, isDeadPlatformUrl, buildFanStreamingLinks, getDisplayStreamingLinks, formatAiringWhen, formatAiringDate, buildAiringInfo, formatTimeAgo, formatTimeUntil, getAiringDayIndex, groupSeasonByDay, looksSpanish } from '../utils';
 
 describe('clean', () => {
   it('removes internal flags from anime object', () => {
@@ -349,27 +349,6 @@ describe('sortStreamingLinks / isDeadPlatformUrl', () => {
     expect(isDeadPlatformUrl('https://www.HIDIVE.com/stream/x')).toBe(true);
     expect(isDeadPlatformUrl('https://www.crunchyroll.com/x')).toBe(false);
     expect(isDeadPlatformUrl('')).toBe(false);
-  });
-});
-
-describe('parseEpisodes', () => {
-  it('returns null for null/undefined/empty', () => {
-    expect(parseEpisodes(null)).toBeNull();
-    expect(parseEpisodes(undefined)).toBeNull();
-    expect(parseEpisodes('')).toBeNull();
-    expect(parseEpisodes('?')).toBeNull();
-  });
-
-  it('parses valid numbers', () => {
-    expect(parseEpisodes(12)).toBe(12);
-    expect(parseEpisodes('24')).toBe(24);
-    expect(parseEpisodes('1')).toBe(1);
-  });
-
-  it('returns null for invalid/zero/negative', () => {
-    expect(parseEpisodes(0)).toBeNull();
-    expect(parseEpisodes(-5)).toBeNull();
-    expect(parseEpisodes('abc')).toBeNull();
   });
 });
 

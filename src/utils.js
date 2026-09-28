@@ -370,15 +370,6 @@ export const getFilteredWatched = (watchedList, watchedFilter, watchedSort, loca
 };
 
 /**
- * Parse episode count from various input types.
- */
-export const parseEpisodes = (val) => {
-  if (val === null || val === undefined || val === '?' || val === '') return null;
-  const n = parseInt(val);
-  return isNaN(n) || n <= 0 ? null : n;
-};
-
-/**
  * Simple string hash (for generating stable IDs from strings).
  */
 export const hashString = (str) => {

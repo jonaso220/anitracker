@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeAnime, isValidAnime } from '../schemas/anime';
+import { normalizeAnime } from '../schemas/anime';
 
 describe('normalizeAnime', () => {
   it('returns null for invalid input', () => {
@@ -50,15 +50,5 @@ describe('normalizeAnime', () => {
     const a = normalizeAnime({ id: 1, title: 'x', finished: true, finishedDate: '2024-01-01' });
     expect(a.finished).toBe(true);
     expect(a.finishedDate).toBe('2024-01-01');
-  });
-});
-
-describe('isValidAnime', () => {
-  it('requires id and title', () => {
-    expect(isValidAnime({ id: 1, title: 'ok' })).toBe(true);
-    expect(isValidAnime({ id: 0, title: 'no' })).toBe(false);
-    expect(isValidAnime({ id: 1, title: '' })).toBe(false);
-    expect(isValidAnime(null)).toBe(false);
-    expect(isValidAnime(undefined)).toBe(false);
   });
 });

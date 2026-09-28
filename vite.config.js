@@ -15,11 +15,15 @@ export default defineConfig({
         pure_funcs: ['console.log', 'console.info', 'console.debug'],
       },
     },
-    rollupOptions: {
+    rolldownOptions: {
       output: {
-        manualChunks: {
-          vendor: ['react', 'react-dom'],
-          firebase: ['firebase/app', 'firebase/auth', 'firebase/firestore'],
+        // React y Firebase en chunks propios: cambian poco entre deploys, así
+        // el navegador los reusa de cache. Firebase sigue cargándose lazy.
+        codeSplitting: {
+          groups: [
+            { name: 'vendor', test: /[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/ },
+            { name: 'firebase', test: /[\\/]node_modules[\\/](firebase|@firebase|idb)[\\/]/ },
+          ],
         },
       },
     },

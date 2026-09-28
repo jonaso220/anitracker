@@ -18,8 +18,6 @@ const parseEpisodesNullable = (v) => {
   return Number.isNaN(n) || n <= 0 ? null : n;
 };
 
-export const ANIME_SOURCES = ['MAL', 'Kitsu', 'AniList', 'TVMaze', 'iTunes', 'TMDB', 'Viki'];
-
 /**
  * Normalize a raw anime-like object to the canonical shape used in the app.
  * Guarantees types on every field so downstream code can trust them.
@@ -66,19 +64,4 @@ export function normalizeAnime(raw) {
     finishedDate: raw.finishedDate || undefined,
     droppedDate: raw.droppedDate || undefined,
   };
-}
-
-/**
- * Strict validation — returns true if the object has the minimum fields to be
- * considered a valid anime card (id, title, image). Used at persistence boundaries.
- */
-export function isValidAnime(a) {
-  return !!(
-    a &&
-    typeof a === 'object' &&
-    Number.isFinite(a.id) &&
-    a.id > 0 &&
-    typeof a.title === 'string' &&
-    a.title.length > 0
-  );
 }

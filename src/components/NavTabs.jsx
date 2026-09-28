@@ -13,7 +13,7 @@ const TABS = [
 const NavTabs = ({ activeTab, counts, onChange }) => {
   const refs = useRef([]);
   const onKeyDown = (event, index) => {
-    let next = index;
+    let next;
     if (event.key === 'ArrowRight') next = (index + 1) % TABS.length;
     else if (event.key === 'ArrowLeft') next = (index - 1 + TABS.length) % TABS.length;
     else if (event.key === 'Home') next = 0;

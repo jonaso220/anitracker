@@ -5,7 +5,7 @@ ver [README.md](README.md).
 
 ## Qué es
 
-PWA de seguimiento de anime. React 19 + Vite 7, JavaScript (sin TypeScript),
+PWA de seguimiento de anime. React 19 + Vite 8, JavaScript (sin TypeScript),
 CSS modular. Firebase (Auth + Firestore) opcional para sync. Sin router: la
 navegación es por pestañas mediante estado en `App.jsx`.
 
@@ -15,6 +15,10 @@ navegación es por pestañas mediante estado en `App.jsx`.
 - `npm run build` — build a `dist/`
 - `npm run test` — Vitest (jsdom). Un solo archivo: `npx vitest run src/test/utils.test.js`
 - `npm run lint` — ESLint (debe quedar limpio antes de cerrar un cambio)
+
+CI (`.github/workflows/ci.yml`) corre lint, tests y build en cada push a
+`main` y en cada PR, con el Node de `.nvmrc`. Dependabot abre un PR mensual
+agrupado con las actualizaciones menores.
 
 ## Arquitectura
 
@@ -132,3 +136,9 @@ Vitest + Testing Library (jsdom), setup en `src/test/setup.js`. Al tocar
   `.env.example`) con *fallback* al proyecto público compartido.
 - TMDB es opcional: sin `VITE_TMDB_API_KEY` la fuente no aparece en la
   búsqueda ni se consultan providers.
+- **Firebase fijado en `~12.14`**: desde 12.15 (Firestore 4.16) el chunk de
+  Firebase suma ~60 kB gzip para las mismas funciones. Antes de subirlo,
+  compará el tamaño de `firebase-*.js` en el build (Dependabot lo ignora).
+- **Chunks**: Vite 8 usa Rolldown; `vendor` (React) y `firebase` se definen
+  en `build.rolldownOptions.output.codeSplitting.groups` (ya no existe
+  `manualChunks` como objeto).
