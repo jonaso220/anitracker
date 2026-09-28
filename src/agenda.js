@@ -1,4 +1,4 @@
-import { trackingAiring } from './tracking';
+import { trackingAiring, airingMatchesProgress } from './tracking';
 import { daysOfWeek } from './constants';
 
 const getTodayIndex = (now) => (now.getDay() + 6) % 7;
@@ -7,7 +7,9 @@ const getWatchableEpisode = (anime) => {
   const currentEp = anime.currentEp || 0;
   const airing = anime.airing;
 
-  if (airing?.episode) {
+  // Una emisión de otra temporada (T38 cuando se sigue la 1) no dice nada de
+  // cuántos episodios hay pendientes.
+  if (airing?.episode && airingMatchesProgress(anime, airing)) {
     // AniList gives us the next broadcast. Episodes before it are already
     // watchable; an episode scheduled for today also belongs in today's plan.
     const releasedThrough = airing.isToday || airing.hasAired

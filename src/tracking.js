@@ -32,5 +32,14 @@ export function totalTrackedEpisodes(anime) {
     sum + (Number(season) === seasonNumber(anime) ? 0 : (data.currentEp || 0)), anime.currentEp || 0);
 }
 
-// A manually selected later season has no matching broadcast metadata yet.
-export const trackingAiring = (anime, airing) => anime.paused || seasonNumber(anime) > 1 ? undefined : airing;
+// AniList tiene una entrada por temporada: si el usuario eligió una temporada
+// posterior, la emisión que conocemos no es la suya. TVMaze/TMDB dicen de qué
+// temporada es el episodio: vale si es la elegida (o si no eligió ninguna).
+export const trackingAiring = (anime, airing) => {
+  if (anime.paused || !airing) return undefined;
+  if (airing.season) return !anime.currentSeason || anime.currentSeason === airing.season ? airing : undefined;
+  return seasonNumber(anime) > 1 ? undefined : airing;
+};
+
+// Si los números de episodio de la emisión se pueden comparar con currentEp.
+export const airingMatchesProgress = (anime, airing) => !airing?.season || airing.season === seasonNumber(anime);

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { trackingAiring } from '../tracking';
 import StarRating from './StarRating';
 import { sanitizeUrl } from '../constants';
-import { getPlatformInfo, pickAutoWatchLink, formatAiringWhen } from '../utils';
+import { getPlatformInfo, pickAutoWatchLink, formatAiringWhen, airingEpisodeLabel } from '../utils';
 
 // Derive a status used for the colored left border.
 const getCardStatus = ({ anime, isWatched, airing, ep, total }) => {
@@ -43,16 +43,17 @@ const AnimeCard = ({
     airing.isTomorrow ? 'airing-tomorrow' : null
   ) : null;
 
+  const epLabel = airing ? airingEpisodeLabel(airing) : '';
   const airingText = airing ? (
-    airing.hasAired ? `🆕 Ep. ${airing.episode}` :
-    airing.isToday ? `🔴 Ep. ${airing.episode} hoy` :
-    airing.isTomorrow ? `📢 Ep. ${airing.episode} mañana` : null
+    airing.hasAired ? `🆕 ${epLabel}` :
+    airing.isToday ? `🔴 ${epLabel} hoy` :
+    airing.isTomorrow ? `📢 ${epLabel} mañana` : null
   ) : null;
 
   // Episodes further out than tomorrow get a hover-only strip with the airing
   // day (the urgent cases above already have their always-visible badge).
   const airingHoverText = airing && !airingBadge
-    ? `📡 Ep. ${airing.episode} · ${formatAiringWhen(airing)}`
+    ? `📡 ${epLabel} · ${formatAiringWhen(airing)}`
     : null;
 
   const handleImgError = (e) => {

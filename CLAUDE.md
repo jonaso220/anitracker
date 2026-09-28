@@ -35,7 +35,12 @@ store global ni context; el estado vive en `App.jsx` y baja por props.
   - `useAnimeActions` — TODAS las mutaciones (agregar/mover/marcar/borrar,
     listas personalizadas, import). Recibe setters y refs por parámetro.
   - `useAnimeData` — búsqueda (debounce + `AbortController`) e info de emisión
-    (cache en localStorage con TTL).
+    (cache en localStorage con TTL). La emisión sale de AniList/MAL, Viki,
+    TVMaze (fecha y hora exactas, de a tandas de 18 por su límite) y TMDB
+    (solo fecha: `dateOnly`), cada una por su id de fuente vía `sourceKey`.
+    TVMaze y TMDB numeran por temporada (`season` en la info): la tarjeta
+    muestra "T38 · Ep. 2" y la agenda solo cuenta pendientes si coincide con
+    la temporada que se sigue (`airingMatchesProgress` en `tracking.js`).
   - `useFirebase` — auth con Google + auto-sync a Firestore con cuidado de
     races (flags de carga, versionado de loads). Cada snapshot se resuelve con
     `syncMerge.js`: fusión a tres vías por anime contra la *base* (huella de lo

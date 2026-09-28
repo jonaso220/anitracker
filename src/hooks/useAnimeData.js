@@ -3,12 +3,17 @@ import { daysOfWeek } from '../constants';
 import { searchAnime } from '../services/searchAnime';
 import { fetchAiringByIds, anilistIdsOf } from '../services/anilistService';
 import { fetchVikiAiringInfo, vikiIdOf } from '../services/vikiService';
+import { fetchTvmazeAiringInfo, tvmazeIdOf } from '../services/tvmazeService';
+import { fetchTmdbAiringInfo, tmdbTvIdOf, TMDB_ENABLED } from '../services/tmdbService';
 
 const AIRING_CACHE_KEY = 'anitracker-airing-cache';
 const AIRING_TIME_KEY = 'anitracker-airing-time';
 const AIRING_IDS_KEY = 'anitracker-airing-ids';
 const AIRING_TTL_MS = 15 * 60 * 1000;
 const SEARCH_DEBOUNCE_MS = 500;
+
+// { [idDeFuente]: info } → { [idInterno]: info }.
+const bySourceId = (refs, data) => Object.fromEntries(refs.filter((r) => data[r.sourceId]).map((r) => [r.appId, data[r.sourceId]]));
 
 // Asocia la respuesta de AniList (por id de AniList o de MAL) a los ids
 // internos de la biblioteca.
@@ -54,9 +59,18 @@ function airingRequest(schedule) {
     .filter((r) => r.anilistId || r.malId);
   const anilistIds = [...new Set(refs.map((r) => r.anilistId).filter(Boolean))];
   const malIds = [...new Set(refs.filter((r) => !r.anilistId).map((r) => r.malId))];
-  const vikiIds = [...new Set(allAnime.filter((a) => a.type !== 'Película').map(vikiIdOf).filter(Boolean))];
-  const key = [...malIds.map((id) => `m${id}`), ...anilistIds.map((id) => `a${id}`), ...vikiIds].sort().join(',');
-  return { refs, malIds, anilistIds, vikiIds, key };
+  const series = allAnime.filter((a) => a.type !== 'Película');
+  const vikiIds = [...new Set(series.map(vikiIdOf).filter(Boolean))];
+  // TVMaze y TMDB responden por su propio id: se guarda a qué id interno va.
+  const sourceRefs = (idOf) => series.map((a) => ({ appId: a.id, sourceId: idOf(a) })).filter((r) => r.sourceId);
+  const tvmazeRefs = sourceRefs(tvmazeIdOf);
+  const tmdbRefs = TMDB_ENABLED ? sourceRefs(tmdbTvIdOf) : [];
+  const unique = (list) => [...new Set(list.map((r) => r.sourceId))];
+  const key = [
+    ...malIds.map((id) => `m${id}`), ...anilistIds.map((id) => `a${id}`), ...vikiIds,
+    ...unique(tvmazeRefs).map((id) => `t${id}`), ...unique(tmdbRefs).map((id) => `d${id}`),
+  ].sort().join(',');
+  return { refs, malIds, anilistIds, vikiIds, tvmazeRefs, tmdbRefs, key };
 }
 
 const NO_AIRING = {};
@@ -99,7 +113,7 @@ export function useAnimeData(schedule) {
   }
 
   useEffect(() => {
-    const { refs, malIds, anilistIds, vikiIds, key } = request;
+    const { refs, malIds, anilistIds, vikiIds, tvmazeRefs, tmdbRefs, key } = request;
     if (!key) return;
     const cached = readAiringCache();
     if (cached?.fresh && cached.ids === key && !airingForceRef.current) return;
@@ -113,11 +127,16 @@ export function useAnimeData(schedule) {
     airingDebounceRef.current = setTimeout(async () => {
       const toError = (err) => ({ kind: !navigator.onLine ? 'offline' : String(err?.message).includes('429') ? 'rate-limit' : 'service' });
       try {
-        // AniList y Viki en paralelo: si una falla se muestra lo de la otra,
-        // con el aviso de reintento y sin cachear.
+        // Todas las fuentes en paralelo: si una falla se muestra lo de las
+        // otras, con el aviso de reintento y sin cachear.
+        const signal = controller.signal;
+        const tvmazeIds = [...new Set(tvmazeRefs.map((r) => r.sourceId))];
+        const tmdbIds = [...new Set(tmdbRefs.map((r) => r.sourceId))];
         const settled = await Promise.allSettled([
-          ...(refs.length ? [fetchAiringByIds({ malIds, anilistIds, signal: controller.signal }).then((res) => airingByAppId(refs, res))] : []),
-          ...(vikiIds.length ? [fetchVikiAiringInfo({ vikiIds, signal: controller.signal })] : []),
+          ...(refs.length ? [fetchAiringByIds({ malIds, anilistIds, signal }).then((res) => airingByAppId(refs, res))] : []),
+          ...(vikiIds.length ? [fetchVikiAiringInfo({ vikiIds, signal })] : []),
+          ...(tvmazeIds.length ? [fetchTvmazeAiringInfo({ tvmazeIds, signal }).then((res) => bySourceId(tvmazeRefs, res))] : []),
+          ...(tmdbIds.length ? [fetchTmdbAiringInfo({ tmdbIds, signal }).then((res) => bySourceId(tmdbRefs, res))] : []),
         ]);
         const failed = settled.filter((s) => s.status === 'rejected');
         if (failed.length === settled.length) throw failed[0].reason;

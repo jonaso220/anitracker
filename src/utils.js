@@ -149,22 +149,32 @@ export const pickAutoWatchLink = (anime) => {
  * Info de "próximo episodio" con la forma que consumen las tarjetas y la
  * agenda. `airingAt` en segundos unix. Compartido por AniList y Viki.
  */
-export const buildAiringInfo = ({ episode, airingAt, totalEpisodes = null, title = '' }, now = new Date()) => {
+export const buildAiringInfo = ({ episode, airingAt, totalEpisodes = null, title = '', season = null, dateOnly = false }, now = new Date()) => {
   const airingDate = new Date(airingAt * 1000);
   const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate() + 1);
+  const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1);
   const diffHours = (airingDate - now) / (1000 * 60 * 60);
+  const isToday = airingDate.toDateString() === now.toDateString();
   return {
     episode,
     airingAt,
     timeUntilAiring: Math.round(airingAt - now.getTime() / 1000),
-    isToday: airingDate.toDateString() === now.toDateString(),
+    isToday,
     isTomorrow: airingDate.toDateString() === tomorrow.toDateString(),
     isThisWeek: diffHours > 0 && diffHours <= 7 * 24,
-    hasAired: diffHours <= 0 && diffHours > -24,
+    // Con solo fecha (TMDB) no se sabe la hora: el día de estreno es "hoy" y
+    // recién al día siguiente cuenta como disponible.
+    hasAired: dateOnly ? airingDate.toDateString() === yesterday.toDateString() : diffHours <= 0 && diffHours > -24,
     totalEpisodes,
     title,
+    // Fuentes de series (TVMaze, TMDB) numeran por temporada.
+    ...(season ? { season } : {}),
+    ...(dateOnly ? { dateOnly: true } : {}),
   };
 };
+
+/** 'Ep. 5' o, con temporada, 'T38 · Ep. 2'. */
+export const airingEpisodeLabel = (airing) => `${airing.season ? `T${airing.season} · ` : ''}Ep. ${airing.episode}`;
 
 /**
  * Human-friendly "when does the next episode air" label, in Spanish:
@@ -174,6 +184,7 @@ export const formatAiringWhen = (airing) => {
   if (!airing) return '';
   if (airing.hasAired) return '¡Ya disponible!';
   if (airing.isToday) {
+    if (airing.dateOnly) return 'Hoy';
     const hours = Math.floor(airing.timeUntilAiring / 3600);
     const mins = Math.floor((airing.timeUntilAiring % 3600) / 60);
     return hours > 0 ? `En ${hours}h ${mins}m` : `En ${mins}m`;
@@ -187,11 +198,13 @@ export const formatAiringWhen = (airing) => {
  * Full air date of the next episode ('Sábado, 12 de julio, 14:30').
  * `airingAt` is a unix timestamp in seconds (AniList format).
  */
-export const formatAiringDate = (airingAt) => {
+export const formatAiringDate = (airingAt, { dateOnly = false } = {}) => {
   const d = new Date(airingAt * 1000);
   const date = d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+  const capitalized = `${date.charAt(0).toUpperCase()}${date.slice(1)}`;
+  if (dateOnly) return capitalized;
   const time = d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-  return `${date.charAt(0).toUpperCase()}${date.slice(1)}, ${time}`;
+  return `${capitalized}, ${time}`;
 };
 
 /**

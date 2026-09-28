@@ -3,6 +3,7 @@ import { renderHook, act } from '@testing-library/react';
 import { useAnimeData } from '../hooks/useAnimeData';
 import { fetchAiringByIds } from '../services/anilistService';
 import { fetchVikiAiringInfo } from '../services/vikiService';
+import { fetchTvmazeAiringInfo } from '../services/tvmazeService';
 
 vi.mock('../services/searchAnime', () => ({ searchAnime: vi.fn() }));
 vi.mock('../services/anilistService', async (importOriginal) => ({
@@ -12,6 +13,10 @@ vi.mock('../services/anilistService', async (importOriginal) => ({
 vi.mock('../services/vikiService', async (importOriginal) => ({
   ...(await importOriginal()),
   fetchVikiAiringInfo: vi.fn(),
+}));
+vi.mock('../services/tvmazeService', async (importOriginal) => ({
+  ...(await importOriginal()),
+  fetchTvmazeAiringInfo: vi.fn(),
 }));
 
 const vikiSeries = { id: 700041650, sourceKey: 'viki:41650c', title: 'El oficinista que ganó la lotería', type: 'Serie' };
@@ -124,5 +129,25 @@ describe('useAnimeData: cache de emisión', () => {
     const { result } = renderHook(() => useAnimeData({ Lunes: [] }));
     expect(result.current.airingData).toEqual({});
     expect(result.current.airingError).toBeNull();
+  });
+});
+
+describe('useAnimeData: emisión de TVMaze', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    localStorage.clear();
+    fetchAiringByIds.mockReset();
+    fetchVikiAiringInfo.mockReset();
+    fetchTvmazeAiringInfo.mockReset();
+  });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('pide las series de TVMaze por su id y asocia la respuesta al id interno', async () => {
+    fetchTvmazeAiringInfo.mockResolvedValue({ 83: { episode: 2, season: 38 } });
+    const simpsons = { id: 400083, sourceKey: 'tvmaze:83', title: 'The Simpsons', type: 'Serie' };
+    const { result } = await runAiringCheck({ Domingo: [simpsons] });
+    expect(fetchTvmazeAiringInfo).toHaveBeenCalledWith(expect.objectContaining({ tvmazeIds: [83] }));
+    expect(fetchAiringByIds).not.toHaveBeenCalled();
+    expect(result.current.airingData).toEqual({ 400083: { episode: 2, season: 38 } });
   });
 });

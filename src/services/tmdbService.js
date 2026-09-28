@@ -1,4 +1,5 @@
 import { normalizeAnime } from '../schemas/anime';
+import { buildAiringInfo } from '../utils';
 
 // TMDB (The Movie Database) — free API for movies & TV series with Spanish
 // metadata and per-country streaming availability (data provided by JustWatch,
@@ -200,4 +201,57 @@ export async function fetchTmdbExtras(sourceKey, { region = getPreferredRegion()
     pruneExtrasCache();
   } catch { /* empty */ }
   return data;
+}
+
+/** Id de TMDB de una serie guardada (las películas no tienen episodios), o null. */
+export function tmdbTvIdOf(anime) {
+  const parsed = parseTmdbKey(anime?.sourceKey);
+  return parsed?.type === 'tv' ? parsed.id : null;
+}
+
+// 'YYYY-MM-DD' → mediodía local de ese día (TMDB no da la hora).
+function dayAt(airDate) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(airDate || '');
+  return m ? Math.round(new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12).getTime() / 1000) : null;
+}
+
+/**
+ * Episodio a mostrar de una serie de TMDB (detalle de /tv/{id}): el último si
+ * salió hoy o ayer, si no el próximo. Pura y exportada para tests.
+ */
+export function tmdbAiringFrom(detail, now = new Date()) {
+  const today = new Date(now); today.setHours(0, 0, 0, 0);
+  const yesterday = today.getTime() / 1000 - 24 * 3600;
+  const last = detail?.last_episode_to_air;
+  const next = detail?.next_episode_to_air;
+  const lastAt = dayAt(last?.air_date);
+  const ep = lastAt && lastAt >= yesterday && last.episode_number ? last
+    : next?.episode_number && dayAt(next.air_date) ? next : null;
+  if (!ep) return null;
+  const season = (detail.seasons || []).find((s) => s.season_number === ep.season_number);
+  return buildAiringInfo({
+    episode: ep.episode_number,
+    season: ep.season_number || null,
+    airingAt: dayAt(ep.air_date),
+    totalEpisodes: season?.episode_count || null,
+    title: detail.name || '',
+    dateOnly: true,
+  }, now);
+}
+
+/** { [tmdbTvId]: airingInfo } para series de TMDB (sin key: vacío). */
+export async function fetchTmdbAiringInfo({ tmdbIds = [], signal, now = new Date() } = {}) {
+  if (!TMDB_ENABLED || tmdbIds.length === 0) return {};
+  const settled = await Promise.allSettled(tmdbIds.map((id) => tmdbFetch(`/tv/${id}`, { language: 'es-ES' }, { signal }).then((d) => [id, d])));
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+  const failed = settled.filter((r) => r.status === 'rejected');
+  if (failed.length === settled.length) throw failed[0].reason;
+  const result = {};
+  for (const r of settled) {
+    if (r.status !== 'fulfilled') continue;
+    const [id, detail] = r.value;
+    const info = tmdbAiringFrom(detail, now);
+    if (info) result[id] = info;
+  }
+  return result;
 }
