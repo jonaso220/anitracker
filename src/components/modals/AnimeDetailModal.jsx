@@ -215,7 +215,7 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                 <div className="bottom-sheet-handle" aria-hidden="true"></div>
                 <button className="close-btn" onClick={closeDetail} aria-label="Cerrar">×</button>
                 <div className="detail-header">
-                    <img src={a.image} alt={a.title} loading="lazy" decoding="async" />
+                    <img src={a.image || a.imageSm || undefined} alt={a.title} loading="lazy" decoding="async" />
                     <div className="detail-info">
                         <h2 id="anime-detail-title">{a.title}</h2>
                         {a.titleJp && <p className="title-jp">{a.titleJp}</p>}
@@ -453,7 +453,7 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                                 >
                                     <div className="related-cover">
                                         {(rel.imageSm || rel.image)
-                                            ? <img src={rel.imageSm || rel.image} alt="" loading="lazy" decoding="async" />
+                                            ? <img src={rel.imageSm || rel.image || undefined} alt="" loading="lazy" decoding="async" />
                                             : <span className="related-cover-fallback" aria-hidden="true">🎬</span>}
                                         <span className="related-relation">{rel._relation}</span>
                                         {libraryIds?.has(rel.id) && (

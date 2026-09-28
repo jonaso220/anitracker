@@ -6,7 +6,7 @@ function TodayItem({ anime, onDetail, onIncrementEpisode, showDay = false }) {
   return (
     <div className="today-item">
       <button className="today-item-main" onClick={() => onDetail(anime)} aria-label={`Abrir ${anime.title}`}>
-        <img src={anime.imageSm || anime.image} alt="" loading="lazy" decoding="async" />
+        <img src={anime.imageSm || anime.image || undefined} alt="" loading="lazy" decoding="async" />
         <span className="today-item-copy">
           <strong>{anime.title}</strong>
           <small>{dayLabel}{anime.currentSeason ? `T${anime.currentSeason} · ` : ''}Ver episodio {anime._nextToWatch}{pendingLabel}</small>

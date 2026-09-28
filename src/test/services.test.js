@@ -67,6 +67,25 @@ describe('anilistService.fetchAnilistUserAnimeLists', () => {
   beforeEach(() => { vi.spyOn(globalThis, 'fetch'); });
   afterEach(() => { vi.restoreAllMocks(); });
 
+  it('toma una sola vez lo que está también en una lista personalizada, con su día y fecha de completado', async () => {
+    const media = (id, extra = {}) => ({ id, idMal: null, title: { romaji: `M${id}` }, coverImage: {}, synonyms: [], ...extra });
+    // Lunes 6 de enero de 2025, 12:00 hora local.
+    const airingAt = Math.floor(new Date(2025, 0, 6, 12).getTime() / 1000);
+    globalThis.fetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ data: { MediaListCollection: { lists: [
+        { name: 'Favoritos', isCustomList: true, entries: [{ status: 'PLANNING', media: media(1) }] },
+        { name: 'Watching', isCustomList: false, entries: [{ status: 'CURRENT', progress: 3, media: media(1, { nextAiringEpisode: { airingAt } }) }] },
+        { name: 'Completed', isCustomList: false, entries: [{ status: 'COMPLETED', completedAt: { year: 2023, month: 5, day: 2 }, media: media(2) }] },
+      ] } } }),
+    });
+    const res = await fetchAnilistUserAnimeLists('user');
+    expect(res.schedule).toHaveLength(1);
+    expect(res.watchLater).toHaveLength(0);
+    expect(res.schedule[0].airDay).toBe('Lunes');
+    expect(new Date(res.watched[0]._doneAt).getFullYear()).toBe(2023);
+  });
+
   it('imports AniList entries into app destinations', async () => {
     globalThis.fetch.mockResolvedValueOnce({
       ok: true,

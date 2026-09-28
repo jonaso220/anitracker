@@ -1,14 +1,24 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { fetchAnilistUserAnimeLists } from '../../services/anilistService';
 import { useAccessibleDialog } from '../../hooks/useAccessibleDialog';
 
-const ImportModal = ({ onClose, onImport }) => {
+const CATEGORIES = [
+  { key: 'schedule', label: '📅 Viendo' },
+  { key: 'watchLater', label: '🕐 Planeados' },
+  { key: 'watched', label: '✓ Completados/Drop' },
+];
+
+const ImportModal = ({ onClose, onImport, onPreview }) => {
   const [username, setUsername] = useState('');
   const [loading, setLoading] = useState(false);
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState('');
   const [selected, setSelected] = useState({ schedule: true, watchLater: true, watched: true });
   const dialogRef = useAccessibleDialog(onClose);
+  // Lo que ya está en la biblioteca no se vuelve a importar: se cuenta aparte.
+  const plan = useMemo(() => (preview && onPreview ? onPreview(preview) : null), [preview, onPreview]);
+  const newCount = (key) => (plan ? plan[key].length : preview?.[key].length || 0);
+  const selectedTotal = CATEGORIES.reduce((sum, c) => sum + (selected[c.key] ? newCount(c.key) : 0), 0);
 
   const fetchList = async () => {
     if (!username.trim()) return;
@@ -60,25 +70,26 @@ const ImportModal = ({ onClose, onImport }) => {
           <div className="import-preview">
             <h3>Animes encontrados</h3>
             <div className="import-categories">
-              <label className={`import-cat ${selected.schedule ? 'active' : ''}`}>
-                <input type="checkbox" checked={selected.schedule} onChange={e => setSelected(p => ({ ...p, schedule: e.target.checked }))} />
-                <span>📅 Viendo ({preview.schedule.length})</span>
-              </label>
-              <label className={`import-cat ${selected.watchLater ? 'active' : ''}`}>
-                <input type="checkbox" checked={selected.watchLater} onChange={e => setSelected(p => ({ ...p, watchLater: e.target.checked }))} />
-                <span>🕐 Planeados ({preview.watchLater.length})</span>
-              </label>
-              <label className={`import-cat ${selected.watched ? 'active' : ''}`}>
-                <input type="checkbox" checked={selected.watched} onChange={e => setSelected(p => ({ ...p, watched: e.target.checked }))} />
-                <span>✓ Completados/Drop ({preview.watched.length})</span>
-              </label>
+              {CATEGORIES.map(({ key, label }) => {
+                const known = plan?.known[key] || 0;
+                return (
+                  <label key={key} className={`import-cat ${selected[key] ? 'active' : ''}`}>
+                    <input type="checkbox" checked={selected[key]} onChange={e => setSelected(p => ({ ...p, [key]: e.target.checked }))} />
+                    <span>{label} ({newCount(key)})</span>
+                    {known > 0 && <small className="import-known">{known} ya {known === 1 ? 'lo tenés' : 'los tenés'}</small>}
+                  </label>
+                );
+              })}
             </div>
 
             <div className="import-summary">
-              Total: {(selected.schedule ? preview.schedule.length : 0) + (selected.watchLater ? preview.watchLater.length : 0) + (selected.watched ? preview.watched.length : 0)} animes
+              {selectedTotal > 0
+                ? `Se ${selectedTotal === 1 ? 'agrega 1 anime' : `agregan ${selectedTotal} animes`}`
+                : 'No hay nada nuevo para importar'}
+              {plan?.skipped > 0 && <span className="import-summary-note">Lo que ya está en tu semana, Después o Vistas no se duplica.</span>}
             </div>
 
-            <button className="import-confirm-btn" onClick={doImport}>
+            <button className="import-confirm-btn" onClick={doImport} disabled={selectedTotal === 0}>
               Importar seleccionados
             </button>
           </div>

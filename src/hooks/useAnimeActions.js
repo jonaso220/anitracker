@@ -3,6 +3,7 @@ import { episodePatch, seasonPatch } from '../tracking';
 import { captureEntry, restoreEntry, changeEpisode } from '../libraryEdits';
 import { daysOfWeek, sanitizeUrl } from '../constants';
 import { clean, pickAutoWatchLink } from '../utils';
+import { planImport } from '../libraryImport';
 
 const updateInList = (list, animeId, updater) =>
   list.map((a) => (a.id === animeId ? { ...a, ...updater(a) } : a));
@@ -262,56 +263,69 @@ export function useAnimeActions({
 
   // --- Import ---
 
-  const handleImport = useCallback((data) => {
-    let count = 0;
-    // Read fresh from refs to avoid races when the user imports while
-    // schedule/watchLater/watchedList are mid-update.
-    const currentSchedule = scheduleRef.current || {};
-    const currentWatchLater = watchLaterRef.current || [];
-    const currentWatched = watchedListRef.current || [];
-    const allScheduleIds = new Set(daysOfWeek.flatMap((d) => (currentSchedule[d] || []).map((a) => a.id)));
-    const watchLaterIds = new Set(currentWatchLater.map((a) => a.id));
-    const watchedIds = new Set(currentWatched.map((a) => a.id));
+  const currentLibrary = useCallback(() => ({
+    schedule: scheduleRef.current || {},
+    watchLater: watchLaterRef.current || [],
+    watchedList: watchedListRef.current || [],
+  }), [scheduleRef, watchLaterRef, watchedListRef]);
 
-    if (data.schedule?.length) {
-      data.schedule.forEach((a) => { if (!allScheduleIds.has(a.id)) count++; });
+  // Vista previa para el modal: cuántos son nuevos y cuántos ya están.
+  const previewImport = useCallback((data) => planImport(data, currentLibrary()), [currentLibrary]);
+
+  const handleImport = useCallback((data) => {
+    // El plan se calcula con lo último (refs), no con lo que vio la vista previa.
+    const plan = planImport(data, currentLibrary());
+    const now = new Date().toISOString();
+    const stripImport = (anime) => {
+      const rest = { ...anime };
+      delete rest._importStatus; delete rest._finished; delete rest._dropped; delete rest._doneAt;
+      return rest;
+    };
+
+    if (plan.schedule.length) {
       setSchedule((prev) => {
         const next = { ...prev };
-        data.schedule.forEach((a, i) => {
-          const day = daysOfWeek[i % 7];
-          if (!next[day].some((x) => x.id === a.id)) {
-            next[day] = [...next[day], { ...a, _importStatus: undefined, _finished: undefined, _dropped: undefined }];
-          }
+        plan.schedule.forEach(({ anime, day }) => {
+          next[day] = [...(next[day] || []).filter((x) => x.id !== anime.id), prepare(stripImport(anime))];
         });
         return next;
       });
     }
-    if (data.watchLater?.length) {
-      count += data.watchLater.filter((a) => !watchLaterIds.has(a.id)).length;
-      setWatchLater((prev) => {
-        const existing = new Set(prev.map((a) => a.id));
-        return [...prev, ...data.watchLater
-          .filter((a) => !existing.has(a.id))
-          .map((a) => ({ ...a, _importStatus: undefined, _finished: undefined, _dropped: undefined }))];
-      });
+    if (plan.watchLater.length) {
+      setWatchLater((prev) => [...prev, ...plan.watchLater.map((a) => prepare(stripImport(a)))]);
     }
-    if (data.watched?.length) {
-      count += data.watched.filter((a) => !watchedIds.has(a.id)).length;
-      setWatchedList((prev) => {
-        const existing = new Set(prev.map((a) => a.id));
-        return [...prev, ...data.watched
-          .filter((a) => !existing.has(a.id))
-          .map((a) => ({
-            ...a,
-            finished: a._finished ?? true,
-            finishedDate: new Date().toISOString(),
-            droppedDate: a._dropped ? new Date().toISOString() : undefined,
-            _importStatus: undefined, _finished: undefined, _dropped: undefined,
-          }))];
-      });
+    if (plan.watched.length) {
+      setWatchedList((prev) => [...prev, ...plan.watched.map((a) => {
+        const doneAt = a._doneAt || now;
+        return {
+          ...prepare(stripImport(a)),
+          finished: !a._dropped,
+          ...(a._dropped ? { droppedDate: doneAt } : { finishedDate: doneAt }),
+        };
+      })]);
     }
-    showToast(`Importados ${count} animes desde AniList`);
-  }, [scheduleRef, watchLaterRef, watchedListRef, setSchedule, setWatchLater, setWatchedList, showToast]);
+
+    const already = plan.skipped ? ` · ${plan.skipped} ya ${plan.skipped === 1 ? 'estaba' : 'estaban'} en tu biblioteca` : '';
+    if (!plan.added) {
+      showToast(`No había nada nuevo para importar${already}`);
+      return plan;
+    }
+    // Deshacer saca solo lo que agregó esta importación.
+    const addedIds = new Set([...plan.schedule.map(({ anime }) => anime.id), ...plan.watchLater.map((a) => a.id), ...plan.watched.map((a) => a.id)]);
+    const scheduleDays = new Set(plan.schedule.map(({ day }) => day));
+    showToast(`${plan.added === 1 ? 'Importado 1 anime' : `Importados ${plan.added} animes`} desde AniList${already}`, () => {
+      if (scheduleDays.size) {
+        setSchedule((prev) => {
+          const next = { ...prev };
+          daysOfWeek.forEach((d) => { next[d] = (next[d] || []).filter((x) => !addedIds.has(x.id)); });
+          return next;
+        });
+      }
+      if (plan.watchLater.length) setWatchLater((prev) => prev.filter((x) => !addedIds.has(x.id)));
+      if (plan.watched.length) setWatchedList((prev) => prev.filter((x) => !addedIds.has(x.id)));
+    });
+    return plan;
+  }, [currentLibrary, setSchedule, setWatchLater, setWatchedList, showToast]);
 
   return {
     addToSchedule,
@@ -338,5 +352,6 @@ export function useAnimeActions({
     addToCustomList,
     removeFromCustomList,
     handleImport,
+    previewImport,
   };
 }

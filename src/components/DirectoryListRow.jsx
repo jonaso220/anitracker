@@ -23,7 +23,7 @@ const DirectoryListRow = ({
   return (
     <div className="directory-row fade-in" onClick={() => onDetail(anime)}>
       <div className="directory-row-thumb">
-        <img src={anime.imageSm || anime.image} alt={anime.title} loading="lazy" decoding="async" onError={handleImgError} />
+        <img src={anime.imageSm || anime.image || undefined} alt={anime.title} loading="lazy" decoding="async" onError={handleImgError} />
         <div className="img-fallback" style={{ display: 'none' }}>{anime.title?.charAt(0) || '?'}</div>
       </div>
       <div className="directory-row-info">

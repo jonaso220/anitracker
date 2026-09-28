@@ -422,7 +422,7 @@ export default function AnimeTracker() {
       )}
 
       {showImport && (
-        <ImportModal onClose={() => setShowImport(false)} onImport={actions.handleImport} />
+        <ImportModal onClose={() => setShowImport(false)} onImport={actions.handleImport} onPreview={actions.previewImport} />
       )}
 
       {showBackup && (

@@ -159,7 +159,7 @@ const SearchModal = ({ setShowSearch, searchQuery, handleSearch, searchResults, 
             )}
             {filteredResults.map(anime => (
             <div key={anime.id} className="search-result-item fade-in">
-              <img src={anime.imageSm || anime.image} alt={anime.title} loading="lazy" decoding="async" />
+              <img src={anime.imageSm || anime.image || undefined} alt={anime.title} loading="lazy" decoding="async" />
               <div className="search-result-info">
                 <div className="search-result-title-row"><h4><Highlight text={anime.title} query={parsedSearch.searchTerm} /></h4><span className="source-badge">{anime.source}</span></div>
                 {anime.altTitles?.length > 0 && <p className="alt-titles">También: {anime.altTitles.slice(0, 3).map((t, i) => <React.Fragment key={i}>{i > 0 && ' · '}<Highlight text={t} query={parsedSearch.searchTerm} /></React.Fragment>)}</p>}

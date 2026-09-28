@@ -602,3 +602,12 @@ describe('NavTabs', () => {
     expect(screen.getByRole('tab', { name: 'Después (3)' })).toBeInTheDocument();
   });
 });
+
+describe('AnimeCard sin portada', () => {
+  it('muestra la inicial y no renderiza un <img src=""> (el navegador volvería a pedir la página)', () => {
+    const { container } = render(<AnimeCard anime={{ id: 1, title: 'Sin imagen', image: '', imageSm: '' }} />);
+    expect(container.querySelector('img')).toBeNull();
+    expect(container.querySelector('.img-fallback')).toHaveStyle({ display: 'flex' });
+    expect(container.querySelector('.img-fallback')).toHaveTextContent('S');
+  });
+});

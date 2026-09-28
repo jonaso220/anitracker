@@ -35,6 +35,7 @@ const AnimeCard = ({
 }) => {
   const [imgLoaded, setImgLoaded] = useState(false);
   const [episodeFeedback, setEpisodeFeedback] = useState(0);
+  const coverSrc = anime.image || anime.imageSm;
   const airing = trackingAiring(anime, airingData[anime.id]);
   const airingBadge = airing ? (
     airing.hasAired ? 'airing-new' :
@@ -145,8 +146,9 @@ const AnimeCard = ({
     >
       <div className="anime-card-image">
         <div className="anime-card-blur" style={{ backgroundImage: anime.imageSm ? `url(${anime.imageSm})` : 'none' }} aria-hidden="true" />
-        <img
-          src={anime.image || anime.imageSm}
+        {/* Sin portada: directo la inicial (un src vacío pediría la página de nuevo). */}
+        {coverSrc && <img
+          src={coverSrc}
           alt={anime.title}
           loading="lazy"
           decoding="async"
@@ -154,8 +156,8 @@ const AnimeCard = ({
           onError={handleImgError}
           onLoad={() => setImgLoaded(true)}
           className={imgLoaded ? 'loaded' : 'loading'}
-        />
-        <div className="img-fallback" style={{ display: 'none' }}>{anime.title?.charAt(0) || '?'}</div>
+        />}
+        <div className="img-fallback" style={{ display: coverSrc ? 'none' : 'flex' }}>{anime.title?.charAt(0) || '?'}</div>
 
         {/* Top-left affordances */}
         {anime.paused && !isWatched && <span className="card-paused-badge">En pausa</span>}

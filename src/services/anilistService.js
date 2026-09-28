@@ -1,5 +1,6 @@
 import { normalizeAnime } from '../schemas/anime';
 import { buildAiringInfo } from '../utils';
+import { daysOfWeek } from '../constants';
 
 const ANILIST_URL = 'https://graphql.anilist.co';
 
@@ -300,6 +301,19 @@ export async function fetchAnilistRelations(anime, { signal } = {}) {
   return results;
 }
 
+// Día de la semana (hora local) en que sale el próximo episodio.
+function airDayOf(airingAt) {
+  if (!airingAt) return '';
+  const jsDay = new Date(airingAt * 1000).getDay();
+  return daysOfWeek[(jsDay + 6) % 7];
+}
+
+// FuzzyDate de AniList ({ year, month, day }, cualquiera puede faltar).
+function fuzzyDateIso(date) {
+  if (!date?.year) return '';
+  return new Date(date.year, (date.month || 1) - 1, date.day || 1, 12).toISOString();
+}
+
 export async function fetchAnilistUserAnimeLists(username, { signal } = {}) {
   const trimmed = username?.trim();
   if (!trimmed) return { schedule: [], watchLater: [], watched: [] };
@@ -307,9 +321,10 @@ export async function fetchAnilistUserAnimeLists(username, { signal } = {}) {
   const gql = `query ($username: String) {
     MediaListCollection(userName: $username, type: ANIME) {
       lists {
-        name status
+        name status isCustomList
         entries {
-          status progress score(format: POINT_10)
+          status progress score(format: POINT_10) updatedAt
+          completedAt { year month day }
           media {
             id idMal
             title { romaji english native userPreferred }
@@ -318,6 +333,7 @@ export async function fetchAnilistUserAnimeLists(username, { signal } = {}) {
             description(asHtml: false) siteUrl synonyms
             externalLinks { url site type language }
             trailer { id site }
+            nextAiringEpisode { airingAt }
           }
         }
       }
@@ -333,18 +349,26 @@ export async function fetchAnilistUserAnimeLists(username, { signal } = {}) {
 
   const items = { schedule: [], watchLater: [], watched: [] };
   const lists = data?.data?.MediaListCollection?.lists || [];
-  lists.forEach((list) => {
+  // Una entrada de una lista personalizada de AniList también está en su
+  // lista de estado: se toma una sola vez, primero las de estado.
+  const ordered = [...lists].sort((a, b) => Number(!!a.isCustomList) - Number(!!b.isCustomList));
+  const seen = new Set();
+  ordered.forEach((list) => {
     (list.entries || []).forEach((entry) => {
+      if (!entry?.media?.id || seen.has(entry.media.id)) return;
+      seen.add(entry.media.id);
       const anime = toAnime(entry.media);
       if (!anime) return;
       const dest = LIST_STATUS_DESTINATION[entry.status] || 'watchLater';
       items[dest].push({
         ...anime,
+        airDay: airDayOf(entry.media.nextAiringEpisode?.airingAt),
         currentEp: Number(entry.progress) || 0,
         userRating: Number(entry.score) || 0,
         _importStatus: entry.status,
         _finished: entry.status === 'COMPLETED',
         _dropped: entry.status === 'DROPPED',
+        _doneAt: fuzzyDateIso(entry.completedAt) || (entry.updatedAt ? new Date(entry.updatedAt * 1000).toISOString() : ''),
       });
     });
   });
