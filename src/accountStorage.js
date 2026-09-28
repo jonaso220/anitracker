@@ -2,6 +2,7 @@ import { daysOfWeek } from './constants';
 
 const ACTIVE_KEY = 'anitracker-account-state';
 const accountKey = (uid) => `anitracker-account:${uid}`;
+const syncBaseKey = (uid) => `anitracker-sync-base:${uid}`;
 export const LOCAL_REV_KEY = 'anitracker-local-rev';
 
 export const emptyLibrary = () => ({
@@ -39,4 +40,23 @@ export function selectLibraryAccount(uid, owner, data, rev) {
   }
   persistAccountLibrary(uid, next.data, next.rev);
   return next;
+}
+
+// Huella de lo último que este dispositivo supo que había en la nube para una
+// cuenta (ver syncMerge.js). Sin base, la cuenta nunca sincronizó acá.
+export function readSyncBase(uid) {
+  try {
+    const raw = localStorage.getItem(syncBaseKey(uid));
+    const value = raw ? JSON.parse(raw) : null;
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+  } catch { return null; }
+}
+
+export function writeSyncBase(uid, hashes) {
+  try {
+    localStorage.setItem(syncBaseKey(uid), JSON.stringify(hashes));
+  } catch {
+    // Una base vieja haría pasar cambios de la nube por locales: mejor ninguna.
+    try { localStorage.removeItem(syncBaseKey(uid)); } catch { /* best-effort */ }
+  }
 }

@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useState } from 'react';
-import { useFirebase, serializeData, shouldKeepLocal } from '../hooks/useFirebase';
+import { useFirebase, serializeData } from '../hooks/useFirebase';
 import { signInWithPopup, signInWithRedirect } from 'firebase/auth';
 import { shouldRedirectGoogle } from '../authFlow';
 import { normalizeAnime } from '../schemas/anime';
@@ -42,7 +42,16 @@ vi.mock('firebase/firestore', () => ({
   setDoc: (...args) => h.setDoc(...args),
   onSnapshot: vi.fn((ref, next, error) => { h.snapshotError = error; h.snapshotCb = next; return h.onSnapshotUnsub; }),
   serverTimestamp: vi.fn(() => 'ts'),
+  deleteField: vi.fn(() => '__delete__'),
+  Bytes: { fromUint8Array: (bytes) => ({ toUint8Array: () => bytes }) },
 }));
+
+// useFirebase caches the SDK modules at module level, so only the first test
+// pays for resolving these dynamic imports. Under a loaded CPU that took longer
+// than waitUntil's tick budget and the first test flaked: warm them up once.
+beforeAll(async () => {
+  await Promise.all([import('firebase/app'), import('firebase/auth'), import('firebase/firestore')]);
+});
 
 // Mirror App.jsx: it owns the state and hands it (plus setters) to useFirebase.
 function useHarness() {
@@ -201,34 +210,6 @@ describe('useFirebase realtime sync', () => {
   });
 });
 
-describe('shouldKeepLocal (guardia contra snapshots viejos)', () => {
-  const local = '{"a":1}';
-  const cloud = '{"a":2}';
-
-  it('aplica la nube cuando los datos son iguales', () => {
-    expect(shouldKeepLocal({ cloudJson: local, localJson: local, cloudRev: '2026-07-01', localRev: '2026-07-08' })).toBe(false);
-  });
-
-  it('conserva lo local cuando la última edición local es posterior al doc de la nube', () => {
-    expect(shouldKeepLocal({
-      cloudJson: cloud, localJson: local,
-      cloudRev: '2026-06-20T10:00:00.000Z', localRev: '2026-07-07T22:00:00.000Z',
-    })).toBe(true);
-  });
-
-  it('aplica la nube cuando el doc es más nuevo que la última edición local', () => {
-    expect(shouldKeepLocal({
-      cloudJson: cloud, localJson: local,
-      cloudRev: '2026-07-08T10:00:00.000Z', localRev: '2026-07-07T22:00:00.000Z',
-    })).toBe(false);
-  });
-
-  it('aplica la nube si falta cualquiera de los timestamps (comportamiento legado)', () => {
-    expect(shouldKeepLocal({ cloudJson: cloud, localJson: local, cloudRev: '', localRev: '2026-07-08' })).toBe(false);
-    expect(shouldKeepLocal({ cloudJson: cloud, localJson: local, cloudRev: '2026-07-08', localRev: null })).toBe(false);
-  });
-});
-
 describe('serializeData (payload canónico)', () => {
   it('mantiene finishedDate cuando tiene valor real', () => {
     const done = normalizeAnime({ id: 2, title: 'Ping Pong', finished: true, finishedDate: '2026-07-01' });
@@ -267,6 +248,11 @@ describe('account isolation, auth and read recovery', () => {
    await act(async () => h.snapshotCb(cloudSnap({watchedList:[{id:77}]})));
    await act(async () => result.current.setWatchedList([{id:77},{id:78}]));
    await act(async () => result.current.logout());
+   // Logging out flushes A's pending edit to A's own doc first.
+   expect(h.setDoc).toHaveBeenCalledTimes(1);
+   expect(h.setDoc.mock.calls[0][0].uid).toBe('u1');
+   expect(h.setDoc.mock.calls[0][1].watchedList).toEqual([{id:77},{id:78}]);
+   h.setDoc.mockClear();
    const oldNext=h.snapshotCb;
    await act(async () => h.authCb({uid:'u2'}));
    expect(result.current.watchedList).toEqual([]);
@@ -346,4 +332,103 @@ describe('account isolation, auth and read recovery', () => {
    expect(h.setDoc).toHaveBeenCalledTimes(1);
    expect(h.setDoc.mock.calls[0][0].uid).toBe('u1');
  });
+});
+
+describe('useFirebase: fusión y protección de datos', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    h.authCb = null;
+    h.snapshotCb = null;
+    h.redirectResult = { user: null };
+    h.setDoc.mockClear();
+    h.setDoc.mockImplementation(() => Promise.resolve());
+    localStorage.clear();
+  });
+  afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+
+  it('iniciar sesión después de usar la app como invitado fusiona en vez de pisar la nube', async () => {
+    const rendered = renderHook(() => useHarness());
+    await waitUntil(() => typeof h.authCb === 'function');
+    // Uso como invitado: un anime agregado antes de iniciar sesión.
+    await act(async () => { rendered.result.current.setWatchedList([{ id: 1 }]); });
+
+    await act(async () => { h.authCb({ uid: 'u1' }); });
+    await waitUntil(() => typeof h.snapshotCb === 'function');
+    await act(async () => {
+      h.snapshotCb(cloudSnap({ watchedList: [{ id: 2 }, { id: 3 }], updatedAtIso: '2020-01-01T00:00:00.000Z' }));
+    });
+
+    expect(rendered.result.current.watchedList.map((a) => a.id).sort()).toEqual([1, 2, 3]);
+    await tick(2000);
+    const payload = h.setDoc.mock.calls.at(-1)[1];
+    expect(payload.watchedList.map((a) => a.id).sort()).toEqual([1, 2, 3]);
+  });
+
+  it('un cambio remoto que llega durante el debounce no pisa la edición local (ni al revés)', async () => {
+    const { result } = await loginAndSubscribe();
+    await act(async () => { h.snapshotCb(cloudSnap({ watchedList: [{ id: 1 }] })); });
+
+    await act(async () => { result.current.setWatchedList([{ id: 1 }, { id: 2 }]); });
+    // Otro dispositivo agregó el 3 antes de que venza el debounce de 2 s.
+    await act(async () => { h.snapshotCb(cloudSnap({ watchedList: [{ id: 1 }, { id: 3 }] })); });
+
+    expect(result.current.watchedList.map((a) => a.id)).toEqual([1, 2, 3]);
+    await tick(2000);
+    expect(h.setDoc.mock.calls.at(-1)[1].watchedList.map((a) => a.id)).toEqual([1, 2, 3]);
+  });
+
+  it('guarda la base de sincronización por cuenta', async () => {
+    await loginAndSubscribe();
+    await act(async () => { h.snapshotCb(cloudSnap({ watchedList: [{ id: 1 }] })); });
+    const base = JSON.parse(localStorage.getItem('anitracker-sync-base:u1'));
+    expect(base).toHaveProperty('w|1');
+  });
+
+  it('cerrar sesión sube primero lo pendiente del debounce', async () => {
+    const { result } = await loginAndSubscribe();
+    await act(async () => { h.snapshotCb(cloudSnap({ watchedList: [] })); });
+    await act(async () => { result.current.setWatchedList([{ id: 5 }]); });
+    await act(async () => result.current.logout());
+    expect(h.setDoc).toHaveBeenCalledTimes(1);
+    expect(h.setDoc.mock.calls[0][1].watchedList).toEqual([{ id: 5 }]);
+    expect(result.current.authError).toBe('');
+  });
+
+  it('si no puede subir al cerrar sesión, avisa que los cambios quedaron en el dispositivo', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { result } = await loginAndSubscribe();
+    await act(async () => { h.snapshotCb(cloudSnap({ watchedList: [] })); });
+    h.setDoc.mockImplementation(() => Promise.reject(new Error('unavailable')));
+    await act(async () => { result.current.setWatchedList([{ id: 5 }]); });
+    await act(async () => result.current.logout());
+    expect(result.current.user).toBeNull();
+    expect(result.current.authError).toMatch(/cambios sin subir/);
+    expect(JSON.parse(localStorage.getItem('anitracker-account-state')).data.watchedList).toEqual([{ id: 5 }]);
+  });
+
+  it('una biblioteca que no entra ni comprimida avisa y no reintenta en loop', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { result } = await loginAndSubscribe();
+    await act(async () => { h.snapshotCb(cloudSnap({ watchedList: [] })); });
+    const noise = Array.from({ length: 1_300_000 }, () => String.fromCharCode(33 + Math.floor(Math.random() * 90))).join('');
+    await act(async () => { result.current.setWatchedList([{ id: 1, title: noise }]); });
+    await tick(2000);
+    // Comprimir 1,3 MB es trabajo real de zlib: esperar con timers reales.
+    vi.useRealTimers();
+    await vi.waitFor(() => expect(result.current.syncTooLarge).toBe(true), { timeout: 10000 });
+    expect(result.current.syncError).toBe(true);
+    await new Promise((r) => { setTimeout(r, 300); });
+    expect(h.setDoc).not.toHaveBeenCalled();
+  });
+
+  it('lee un doc comprimido', async () => {
+    const { gzipString } = await import('../cloudCodec');
+    const { result } = await loginAndSubscribe();
+    const gz = await gzipString(JSON.stringify({ schedule: {}, watchedList: [{ id: 42 }], watchLater: [], customLists: [] }));
+    await act(async () => {
+      h.snapshotCb(cloudSnap({ libraryGz: { toUint8Array: () => gz }, libraryGzRev: 'r1', updatedAtIso: 'r1' }));
+    });
+    await waitUntil(() => result.current.watchedList.length === 1);
+    expect(result.current.watchedList).toEqual([{ id: 42 }]);
+  });
 });

@@ -8,6 +8,7 @@ import DirectorySection from '../components/DirectorySection';
 import AnimeDetailModal from '../components/modals/AnimeDetailModal';
 import SearchModal from '../components/modals/SearchModal';
 import DayPickerModal from '../components/modals/DayPickerModal';
+import BackupModal from '../components/modals/BackupModal';
 import TodayPanel from '../components/TodayPanel';
 import { buildAgenda } from '../agenda';
 import { clearRelationsCache } from '../services/anilistService';
@@ -514,5 +515,36 @@ describe('DayPickerModal', () => {
     renderPicker({ id: 1, title: 'Naruto' });
     expect(screen.queryByText(/Nuevos episodios/)).toBeNull();
     expect(document.querySelector('.day-btn.suggested')).toBeNull();
+  });
+});
+
+describe('BackupModal', () => {
+  // jsdom's File has no .text(); the modal only needs that.
+  const file = (content) => ({ name: 'backup.json', text: () => Promise.resolve(content) });
+  const renderModal = (props = {}) => render(
+    <BackupModal onClose={vi.fn()} onExport={vi.fn()} onRestore={vi.fn()} {...props} />,
+  );
+
+  it('avisa que reemplaza en todos los dispositivos cuando hay sesión', () => {
+    renderModal({ synced: true });
+    expect(screen.getByText(/en todos tus dispositivos sincronizados/)).toBeInTheDocument();
+  });
+
+  it('muestra cuántas entradas inválidas se omiten y restaura solo las válidas', async () => {
+    const onRestore = vi.fn();
+    const { container } = renderModal({ onRestore });
+    const input = container.querySelector('#backup-file');
+    fireEvent.change(input, { target: { files: [file(JSON.stringify({ watchedList: [{ id: 1, title: 'A' }, 'basura'] }))] } });
+    expect(await screen.findByText(/Se omitirá 1 entrada inválida/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Restaurar datos' }));
+    expect(onRestore).toHaveBeenCalledWith(expect.objectContaining({ watchedList: [{ id: 1, title: 'A' }], skipped: 1 }));
+  });
+
+  it('ofrece descargar la copia actual antes de restaurar', async () => {
+    const onExport = vi.fn();
+    const { container } = renderModal({ onExport });
+    fireEvent.change(container.querySelector('#backup-file'), { target: { files: [file(JSON.stringify({ watchLater: [] }))] } });
+    fireEvent.click(await screen.findByRole('button', { name: /descargá una copia de lo actual/ }));
+    expect(onExport).toHaveBeenCalled();
   });
 });

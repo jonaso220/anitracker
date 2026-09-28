@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { LOCAL_REV_KEY, readActiveLibrary, persistAccountLibrary, selectLibraryAccount } from '../accountStorage';
+import { LOCAL_REV_KEY, readActiveLibrary, persistAccountLibrary, selectLibraryAccount, readSyncBase, writeSyncBase } from '../accountStorage';
+import { hashLibrary, resolveCloudSnapshot } from '../syncMerge';
+import { encodeLibrary, isCompressedDoc, decodeLibrary, LibraryTooLargeError } from '../cloudCodec';
 import { resolveAuthDomain, shouldRedirectGoogle } from '../authFlow';
 
 // Firebase config — these are public Firebase Web SDK keys (safe to commit).
@@ -34,7 +36,7 @@ const initFirebase = () => {
   initPromise = (async () => {
     const { initializeApp } = await import('firebase/app');
     const { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signOut, onAuthStateChanged, browserLocalPersistence, setPersistence } = await import('firebase/auth');
-    const { getFirestore, doc, setDoc, onSnapshot, serverTimestamp } = await import('firebase/firestore');
+    const { getFirestore, doc, setDoc, onSnapshot, serverTimestamp, deleteField, Bytes } = await import('firebase/firestore');
 
     firebaseApp ||= initializeApp(FIREBASE_CONFIG);
     auth = getAuth(firebaseApp);
@@ -42,7 +44,7 @@ const initFirebase = () => {
     db = getFirestore(firebaseApp);
 
     firebaseAuth = { signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signOut, onAuthStateChanged };
-    firebaseDb = { doc, setDoc, onSnapshot, serverTimestamp };
+    firebaseDb = { doc, setDoc, onSnapshot, serverTimestamp, deleteField, Bytes };
   })().catch((error) => { initPromise = null; throw error; });
   return initPromise;
 };
@@ -85,26 +87,14 @@ export const serializeData = (d) => JSON.stringify({
 });
 const EMPTY_SYNC_JSON = serializeData({ schedule: {}, watchedList: [], watchLater: [], customLists: [] });
 
-// Timestamp (ISO) of the last local user edit. Lets a load tell a *stale*
-// cloud doc (older than our own edits, e.g. because previous saves failed)
-// apart from *newer* edits made on another device. Without it, the cloud
-// snapshot always wins on app open and a stale doc silently wipes local data.
+// Timestamp (ISO) of the last local user edit. Only used as a legacy fallback
+// when this device has no sync base for the account yet (see syncMerge.js).
 
 const SAVE_DEBOUNCE_MS = 2000;
 const RETRY_BASE_MS = 5000;
 const RETRY_MAX_MS = 60000;
-
-/**
- * Decide whether an incoming cloud snapshot should be ignored in favor of the
- * local data (and the local data pushed up instead). Pure — exported for tests.
- * ISO timestamps compare correctly as strings. Missing timestamps (legacy docs
- * or first run after this feature shipped) fall back to "cloud wins".
- */
-export function shouldKeepLocal({ cloudJson, localJson, cloudRev, localRev }) {
-  if (cloudJson === localJson) return false;
-  if (!cloudRev || !localRev) return false;
-  return localRev > cloudRev;
-}
+// Al cerrar sesión se espera como mucho esto a que suban los cambios pendientes.
+const LOGOUT_FLUSH_TIMEOUT_MS = 8000;
 
 export function useFirebase(schedule, watchedList, watchLater, customLists, setSchedule, setWatchedList, setWatchLater, setCustomLists) {
   const [user, setUser] = useState(null);
@@ -112,6 +102,9 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
   // True while saves are failing (rules, red, datos inválidos). Surfaced in the
   // header so a broken sync is visible instead of dying in la consola.
   const [syncError, setSyncError] = useState(false);
+  // La biblioteca no entra en el documento de Firestore ni comprimida: no se
+  // reintenta en loop, se avisa.
+  const [syncTooLarge, setSyncTooLarge] = useState(false);
   const [authError, setAuthError] = useState('');
   const [authReady, setAuthReady] = useState(false);
   const [authBusy, setAuthBusy] = useState(false);
@@ -133,6 +126,10 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
   // completed save). `null` means we haven't seen the cloud state yet, so we
   // must not push local data up (it could clobber newer cloud data).
   const lastSyncedRef = useRef(null);
+  // Huella de ese mismo estado (base de la fusión a tres vías), persistida por
+  // cuenta para sobrevivir recargas. `null` = esta cuenta nunca sincronizó acá.
+  const syncBaseRef = useRef(null);
+  const snapshotSeq = useRef(0);
   // Serialization of the previous render's data, to detect genuine local edits
   // (vs. mount / login-state changes / cloud-apply echoes) for LOCAL_REV_KEY.
   const prevJsonRef = useRef(null);
@@ -145,33 +142,39 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
     dataRef.current = { schedule, watchedList, watchLater, customLists };
   }, [schedule, watchedList, watchLater, customLists]);
 
+  // Record that the cloud holds exactly `json` for `uid`.
+  const markSynced = useCallback((uid, json) => {
+    lastSyncedRef.current = json;
+    syncBaseRef.current = hashLibrary(JSON.parse(json));
+    writeSyncBase(uid, syncBaseRef.current);
+  }, []);
+
+  // Returns 'ok', 'error' or 'too-large'.
   const saveToCloud = useCallback(async (uid, json) => {
-    if (!firebaseDb || !db || !uid) return false;
+    if (!firebaseDb || !db || !uid) return 'error';
     const session = sessionRef.current;
     setSyncing(true);
     try {
-      // Parse the canonical JSON instead of sending the state objects: the
-      // round-trip strips `undefined` values that Firestore rejects outright.
-      const fields = JSON.parse(json);
+      // The payload comes from the canonical JSON instead of the state objects:
+      // the round-trip strips `undefined` values that Firestore rejects outright.
+      const updatedAtIso = new Date().toISOString();
+      const library = await encodeLibrary(json, updatedAtIso, firebaseDb);
       await firebaseDb.setDoc(firebaseDb.doc(db, 'users', uid), {
         schemaVersion: 2,
-        schedule: fields.schedule,
-        watchedList: fields.watchedList,
-        watchLater: fields.watchLater,
-        customLists: fields.customLists,
+        ...library,
         updatedAt: firebaseDb.serverTimestamp(),
-        updatedAtIso: new Date().toISOString(),
+        updatedAtIso,
       }, { merge: true });
-      if (session !== sessionRef.current) return false;
-      lastSyncedRef.current = json;
+      if (session !== sessionRef.current) return 'error';
+      markSynced(uid, json);
       setSyncing(false);
-      return true;
+      return 'ok';
     } catch (e) {
       console.error('Save error:', e);
       if (session === sessionRef.current) setSyncing(false);
-      return false;
+      return e instanceof LibraryTooLargeError ? 'too-large' : 'error';
     }
-  }, []);
+  }, [markSynced]);
 
   const scheduleSave = useCallback((delay) => {
     if (syncTimer.current) clearTimeout(syncTimer.current);
@@ -188,21 +191,28 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
   // doc went stale and clobbered local data on the next app open.
   const flushSave = useCallback(async () => {
     const uid = hasLoadedUser.current;
-    if (!uid || lastSyncedRef.current === null) return;
+    if (!uid || lastSyncedRef.current === null) return false;
     const json = serializeData(dataRef.current);
-    if (json === lastSyncedRef.current) { setSyncing(false); return; }
+    if (json === lastSyncedRef.current) { setSyncing(false); return true; }
     const session = sessionRef.current;
-    const ok = await saveToCloud(uid, json);
-    if (session !== sessionRef.current) return;
-    if (ok) {
+    const result = await saveToCloud(uid, json);
+    if (session !== sessionRef.current) return false;
+    if (result === 'ok') {
       saveAttempts.current = 0;
       setSyncError(false);
-    } else {
-      saveAttempts.current += 1;
-      setSyncError(true);
-      const delay = Math.min(RETRY_MAX_MS, RETRY_BASE_MS * 2 ** Math.min(saveAttempts.current - 1, 4));
-      scheduleSave(delay);
+      setSyncTooLarge(false);
+      return true;
     }
+    setSyncError(true);
+    if (result === 'too-large') {
+      // Reintentar no cambia nada: el próximo intento llega con la próxima edición.
+      setSyncTooLarge(true);
+      return false;
+    }
+    saveAttempts.current += 1;
+    const delay = Math.min(RETRY_MAX_MS, RETRY_BASE_MS * 2 ** Math.min(saveAttempts.current - 1, 4));
+    scheduleSave(delay);
+    return false;
   }, [saveToCloud, scheduleSave]);
   useEffect(() => { flushSaveRef.current = flushSave; }, [flushSave]);
 
@@ -211,31 +221,39 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
   // re-render this triggers is recognized by the auto-sync effect as an echo of
   // the load (equal serialization) and is never saved back — no loop, and no
   // dependence on React's batching/microtask timing.
-  const applyCloudData = useCallback((data) => {
+  //
+  // When both sides changed since the last sync, the libraries are merged
+  // anime by anime (syncMerge.js) and the result is pushed back up.
+  const applyCloudData = useCallback((uid, data) => {
     const latest = dataRef.current;
-    const next = {
+    const cloud = {
       schedule:    data.schedule    != null ? parseCloudField(data.schedule, {})    : latest.schedule,
       watchedList: data.watchedList != null ? parseCloudField(data.watchedList, []) : latest.watchedList,
       watchLater:  data.watchLater  != null ? parseCloudField(data.watchLater, [])  : latest.watchLater,
       customLists: data.customLists != null ? parseCloudField(data.customLists, []) : latest.customLists,
     };
-    const nextJson = serializeData(next);
-    const localRev = localRevRef.current;
-    const cloudRev = typeof data.updatedAtIso === 'string' ? data.updatedAtIso : '';
-    if (shouldKeepLocal({ cloudJson: nextJson, localJson: serializeData(latest), cloudRev, localRev })) {
-      // The cloud doc is OLDER than our last local edit (typically because
-      // earlier saves failed): applying it would wipe those edits. Keep the
-      // local data and push it up instead.
-      lastSyncedRef.current = nextJson;
+    const cloudJson = serializeData(cloud);
+    const { action, data: next } = resolveCloudSnapshot({
+      base: syncBaseRef.current,
+      local: latest,
+      cloud,
+      localRev: localRevRef.current,
+      cloudRev: typeof data.updatedAtIso === 'string' ? data.updatedAtIso : '',
+    });
+    markSynced(uid, cloudJson);
+    if (action === 'keep') {
+      // Only this device changed since the last sync: push it up.
       scheduleSave(0);
       return;
     }
-    lastSyncedRef.current = nextJson;
+    // 'apply' puts the cloud data in state (an echo, never saved back);
+    // 'merge' puts the fusion, which differs from the cloud and gets saved.
+    if (action === 'merge') dataRef.current = next;
     setSchedule(next.schedule);
     setWatchedList(next.watchedList);
     setWatchLater(next.watchLater);
     setCustomLists(next.customLists);
-  }, [setSchedule, setWatchedList, setWatchLater, setCustomLists, scheduleSave]);
+  }, [setSchedule, setWatchedList, setWatchLater, setCustomLists, scheduleSave, markSynced]);
 
   // Subscribe to the user's cloud doc in real time. The first snapshot acts as
   // the initial load; every later snapshot keeps this device in sync with
@@ -249,6 +267,7 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
     if (syncTimer.current) { clearTimeout(syncTimer.current); syncTimer.current = null; }
     const session = ++sessionRef.current;
     lastSyncedRef.current = null;
+    syncBaseRef.current = readSyncBase(uid);
     try {
       const next = selectLibraryAccount(uid, ownerRef.current, dataRef.current, localRevRef.current);
       const switching = ownerRef.current && ownerRef.current !== uid;
@@ -284,13 +303,30 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
         // version (hasPendingWrites === false), which is harmless for our own
         // writes and is exactly what we want for remote changes.
         if (snap.metadata.hasPendingWrites) return;
+        const seq = ++snapshotSeq.current;
         setSyncError(false);
         if (snap.exists()) {
-          applyCloudData(snap.data());
+          const data = snap.data();
+          if (isCompressedDoc(data)) {
+            // Large libraries travel gzipped (cloudCodec.js). Decoding is async:
+            // drop the result if a newer snapshot or another session got in.
+            decodeLibrary(data).then((fields) => {
+              if (session !== sessionRef.current || seq !== snapshotSeq.current) return;
+              applyCloudData(uid, { ...fields, updatedAtIso: data.updatedAtIso });
+              setSyncing(false);
+            }).catch((e) => {
+              if (session !== sessionRef.current) return;
+              console.error('Cloud decode error:', e);
+              setSyncing(false);
+              setSyncError(true);
+            });
+            return;
+          }
+          applyCloudData(uid, data);
         } else if (lastSyncedRef.current === null) {
           // No cloud doc yet (new account): unlock saving and push any
           // existing local data up right away (no-op if local is empty).
-          lastSyncedRef.current = EMPTY_SYNC_JSON;
+          markSynced(uid, EMPTY_SYNC_JSON);
           scheduleSave(0);
         }
         setSyncing(false);
@@ -304,7 +340,7 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
         readRetryTimer.current = setTimeout(() => retrySyncRef.current?.(), RETRY_MAX_MS);
       }
     );
-  }, [applyCloudData, scheduleSave, setSchedule, setWatchedList, setWatchLater, setCustomLists]);
+  }, [applyCloudData, scheduleSave, markSynced, setSchedule, setWatchedList, setWatchLater, setCustomLists]);
 
   const retrySync = useCallback(() => {
     if (hasLoadedUser.current) subscribeToCloud(hasLoadedUser.current);
@@ -318,8 +354,10 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
     if (cloudUnsub.current) { cloudUnsub.current(); cloudUnsub.current = null; }
     hasLoadedUser.current = null;
     lastSyncedRef.current = null;
+    syncBaseRef.current = null;
     saveAttempts.current = 0;
     setSyncError(false);
+    setSyncTooLarge(false);
     setSyncing(false);
   }, []);
 
@@ -460,16 +498,29 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
 
   const logout = async () => {
     if (!firebaseAuth || !auth) return;
+    // Subir lo pendiente antes de cortar la sesión (el debounce de 2 s o un
+    // error de red lo dejarían sin subir). Si no llega a tiempo no se pierde:
+    // queda en este dispositivo y se fusiona al volver a entrar.
+    let unsynced = false;
+    if (hasLoadedUser.current && lastSyncedRef.current !== null
+      && serializeData(dataRef.current) !== lastSyncedRef.current) {
+      if (syncTimer.current) { clearTimeout(syncTimer.current); syncTimer.current = null; }
+      const timeout = new Promise((resolve) => { setTimeout(() => resolve(false), LOGOUT_FLUSH_TIMEOUT_MS); });
+      unsynced = !(await Promise.race([flushSave(), timeout]));
+    }
     try {
       persistAccountLibrary(ownerRef.current, dataRef.current, localRevRef.current);
       await firebaseAuth.signOut(auth);
       unsubscribeFromCloud();
       window.dispatchEvent(new Event('anitracker-account-changed'));
       setUser(null);
+      if (unsynced) {
+        setAuthError('Cerraste sesión con cambios sin subir. Quedaron guardados en este dispositivo y se van a sincronizar la próxima vez que entres con esta cuenta.');
+      }
     } catch {
       setAuthError('No se pudo cerrar la sesión. Tus datos siguen en esta cuenta. Volvé a intentarlo.');
     }
   };
 
-  return { user, syncing, syncError, retrySync, authError, authReady, authBusy, loginWithGoogle, logout, FIREBASE_ENABLED };
+  return { user, syncing, syncError, syncTooLarge, retrySync, authError, authReady, authBusy, loginWithGoogle, logout, FIREBASE_ENABLED };
 }

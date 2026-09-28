@@ -413,17 +413,34 @@ describe('parseBackup', () => {
   it('round-trips a backup produced by buildBackup', () => {
     const data = { schedule: { Lunes: [{ id: 1 }] }, watchedList: [{ id: 2 }], watchLater: [{ id: 3 }], customLists: [{ id: 4, name: 'Fav', items: [] }] };
     const json = JSON.stringify(buildBackup(data, '2026-01-01T00:00:00.000Z'));
-    expect(parseBackup(json)).toEqual(data);
+    expect(parseBackup(json)).toEqual({ ...data, skipped: 0 });
   });
 
   it('accepts a raw data object (no wrapper)', () => {
     const json = JSON.stringify({ watchLater: [{ id: 9 }] });
-    expect(parseBackup(json)).toEqual({ schedule: {}, watchedList: [], watchLater: [{ id: 9 }], customLists: [] });
+    expect(parseBackup(json)).toEqual({ schedule: {}, watchedList: [], watchLater: [{ id: 9 }], customLists: [], skipped: 0 });
   });
 
   it('coerces invalid slice types to safe defaults', () => {
     const json = JSON.stringify({ schedule: ['nope'], watchedList: 'nope', watchLater: null });
-    expect(parseBackup(json)).toEqual({ schedule: {}, watchedList: [], watchLater: [], customLists: [] });
+    expect(parseBackup(json)).toEqual({ schedule: {}, watchedList: [], watchLater: [], customLists: [], skipped: 0 });
+  });
+
+  it('descarta entradas inválidas y días desconocidos, y los cuenta', () => {
+    const json = JSON.stringify({
+      schedule: { Lunes: [{ id: 1 }, 'x', { title: 'sin id' }], Funday: [{ id: 2 }], Martes: 'nope' },
+      watchedList: [{ id: 3 }, null, { id: -1 }],
+      customLists: [{ name: 'Sin items' }, 'basura', { id: 'l1', name: '', items: [{ id: 4 }, { id: '5' }] }],
+    });
+    const parsed = parseBackup(json);
+    expect(parsed.schedule).toEqual({ Lunes: [{ id: 1 }], Martes: [] });
+    expect(parsed.watchedList).toEqual([{ id: 3 }]);
+    expect(parsed.customLists).toEqual([
+      { name: 'Sin items', id: 'list-restored-0', items: [] },
+      { id: 'l1', name: 'Lista', items: [{ id: 4 }] },
+    ]);
+    // 2 de Lunes + 1 de Funday + 2 de vistos + 1 lista basura + 1 item de l1
+    expect(parsed.skipped).toBe(7);
   });
 
   it('throws on malformed JSON', () => {

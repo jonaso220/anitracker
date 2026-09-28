@@ -33,7 +33,13 @@ store global ni context; el estado vive en `App.jsx` y baja por props.
   - `useAnimeData` — búsqueda (debounce + `AbortController`) e info de emisión
     (cache en localStorage con TTL).
   - `useFirebase` — auth con Google + auto-sync a Firestore con cuidado de
-    races (flags de carga, versionado de loads).
+    races (flags de carga, versionado de loads). Cada snapshot se resuelve con
+    `syncMerge.js`: fusión a tres vías por anime contra la *base* (huella de lo
+    último sincronizado en este dispositivo), así un cambio hecho en un solo
+    lado nunca se pierde y el reloj del dispositivo no decide. Sin base (cuenta
+    que nunca sincronizó acá, p. ej. datos de invitado) se fusiona todo.
+    `cloudCodec.js` comprime la biblioteca con gzip si supera ~900 KB (límite
+    de 1 MiB por documento); al cerrar sesión se sube lo pendiente primero.
   - `useDirectory` — catálogo navegable ("Directorio") con filtros de AniList
     (género, demografía, formato, estado, año, temporada, orden) y paginado
     acumulativo con "cargar más".
@@ -70,7 +76,10 @@ store global ni context; el estado vive en `App.jsx` y baja por props.
 | `anitracker-directory-view` | modo de vista de Directorio (`'grid'` / `'list'`) |
 | `anitracker-season-cache` | copia de la temporada vigente (TTL 15 min, para abrir al instante) |
 | `anitracker-directory-cache` | primera página del Directorio por filtros (TTL 30 min) |
-| `anitracker-local-rev` | ISO de la última edición local (guardia anti-pisado en `useFirebase`) |
+| `anitracker-local-rev` | ISO de la última edición local (solo como *fallback* sin base de sync) |
+| `anitracker-account-state` | biblioteca de la cuenta activa (dueño + datos + rev), leída al arrancar |
+| `anitracker-account:<uid>` | biblioteca guardada de otra cuenta usada en este dispositivo |
+| `anitracker-sync-base:<uid>` | huella `{ clave: hash }` de lo último sincronizado (base de la fusión) |
 
 Los IDs de anime codifican la fuente: MAL `< 100000`, Kitsu `+100000`, AniList
 `300000–400000`, TVMaze `+400000`, iTunes `+500000`, TMDB película
@@ -89,7 +98,10 @@ Los IDs de anime codifican la fuente: MAL `< 100000`, Kitsu `+100000`, AniList
 - **Strings de UI** en español, vía `i18n/es.js`. Logs/errores de consola
   quedan inline en inglés.
 - **Undo**: las acciones destructivas toman un snapshot (vía refs) y lo pasan a
-  `showToast(msg, undoFn)`.
+  `showToast(msg, undoFn)`. El snapshot cubre solo lo afectado
+  (`captureEntry`/`restoreEntry` de `libraryEdits.js`), nunca la biblioteca
+  entera: así el deshacer no pisa ediciones ni cambios sincronizados mientras
+  el toast está visible.
 - **Async cancelable**: búsquedas y fetches usan `AbortController`; respetá el
   patrón al agregar llamadas de red.
 

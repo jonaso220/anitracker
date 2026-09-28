@@ -22,7 +22,7 @@ describe('season tracking compatibility', () => {
   it('preserves season and pause fields in exported and restored backups', () => {
     const anime = { ...legacy, ...seasonPatch(legacy, 2), paused: true };
     const data = { schedule: { Lunes: [anime] }, watchedList: [], watchLater: [], customLists: [] };
-    expect(parseBackup(JSON.stringify(buildBackup(data)))).toEqual(data);
+    expect(parseBackup(JSON.stringify(buildBackup(data)))).toEqual({ ...data, skipped: 0 });
   });
   it('does not use earlier season broadcast info for a later season', () => {
     expect(trackingAiring({currentSeason:2},{episode:12})).toBeUndefined();

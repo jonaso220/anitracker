@@ -6,7 +6,7 @@ function countSchedule(schedule) {
   return daysOfWeek.reduce((sum, d) => sum + (Array.isArray(schedule?.[d]) ? schedule[d].length : 0), 0);
 }
 
-export default function BackupModal({ onClose, onExport, onRestore }) {
+export default function BackupModal({ onClose, onExport, onRestore, synced = false }) {
   const [pending, setPending] = useState(null); // parsed data awaiting confirmation
   const [error, setError] = useState('');
   const fileRef = useRef(null);
@@ -56,7 +56,7 @@ export default function BackupModal({ onClose, onExport, onRestore }) {
 
             <section className="backup-section">
               <h3>📥 Restaurar</h3>
-              <p>Carga un archivo de copia para recuperar tus datos. <strong>Reemplazará</strong> los datos actuales de este dispositivo.</p>
+              <p>Carga un archivo de copia para recuperar tus datos. <strong>Reemplazará</strong> tu biblioteca actual{synced ? ' en todos tus dispositivos sincronizados' : ''}.</p>
               <input
                 ref={fileRef}
                 type="file"
@@ -78,7 +78,13 @@ export default function BackupModal({ onClose, onExport, onRestore }) {
               <li><strong>{pending.watchLater.length}</strong> en ver después</li>
               <li><strong>{pending.customLists.length}</strong> listas personalizadas</li>
             </ul>
-            <p className="backup-warning">⚠ Esto reemplazará los datos actuales de este dispositivo.</p>
+            {pending.skipped > 0 && (
+              <p className="backup-note">{pending.skipped === 1 ? 'Se omitirá 1 entrada inválida' : `Se omitirán ${pending.skipped} entradas inválidas`} del archivo.</p>
+            )}
+            <p className="backup-warning">
+              ⚠ Esto reemplazará tu biblioteca actual{synced ? ' en todos tus dispositivos sincronizados' : ''}.
+              Vas a poder deshacerlo durante unos segundos; si querés, antes <button type="button" className="backup-inline-link" onClick={onExport}>descargá una copia de lo actual</button>.
+            </p>
             <div className="backup-footer">
               <button className="backup-btn backup-btn-secondary" onClick={() => setPending(null)}>Volver</button>
               <button className="backup-btn backup-btn-primary" onClick={confirmRestore}>Restaurar datos</button>

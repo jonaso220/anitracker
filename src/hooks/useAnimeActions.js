@@ -4,8 +4,6 @@ import { captureEntry, restoreEntry } from '../libraryEdits';
 import { daysOfWeek, sanitizeUrl } from '../constants';
 import { clean, pickAutoWatchLink } from '../utils';
 
-const clone = (v) => JSON.parse(JSON.stringify(v));
-
 const updateInList = (list, animeId, updater) =>
   list.map((a) => (a.id === animeId ? { ...a, ...updater(a) } : a));
 
@@ -214,9 +212,9 @@ export function useAnimeActions({
   }, [setCustomLists]);
 
   const deleteCustomList = useCallback((listId) => {
-    const prev = clone(customListsRef.current);
+    const removed = captureEntry(customListsRef.current, listId);
     setCustomLists((lists) => lists.filter((l) => l.id !== listId));
-    showToast('Lista eliminada', () => setCustomLists(prev));
+    showToast('Lista eliminada', () => setCustomLists((lists) => restoreEntry(lists, removed)));
   }, [setCustomLists, customListsRef, showToast]);
 
   const renameCustomList = useCallback((listId, newName) => {

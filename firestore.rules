@@ -8,7 +8,8 @@ rules_version = '2';
 //
 // El cliente escribe UN documento por usuario en `users/{uid}` con todo el
 // estado (schedule, watchedList, watchLater, customLists, schemaVersion,
-// updatedAt, updatedAtIso). A propósito NO se valida la forma interna del
+// updatedAt, updatedAtIso; si la biblioteca supera ~900 KB viaja comprimida en
+// libraryGz/libraryGzRev, ver src/cloudCodec.js). A propósito NO se valida la forma interna del
 // documento: reglas que enumeran claves o tipos rompen el sync en silencio
 // cuando el esquema del cliente evoluciona (los animes ganan campos nuevos,
 // p. ej. trailerUrl/streamingLinks), y el documento solo lo lee y escribe su

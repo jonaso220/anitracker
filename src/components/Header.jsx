@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 
 const Header = ({
   darkMode, setDarkMode,
-  user, syncing, syncError, loginWithGoogle, logout, firebaseEnabled,
+  user, syncing, syncError, syncTooLarge = false, loginWithGoogle, logout, firebaseEnabled,
   authError, authReady = true, authBusy = false, onRetrySync,
   onOpenSearch, onOpenImport, onOpenBackup,
 }) => {
@@ -156,7 +156,11 @@ const Header = ({
                     <div className="user-menu-name">
                       <strong>{user.displayName || 'Usuario'}</strong>
                       {syncError ? (
-                        <span className="user-menu-syncing user-menu-sync-error">⚠️ No se pudo sincronizar. Tus cambios siguen guardados en este dispositivo.</span>
+                        <span className="user-menu-syncing user-menu-sync-error">
+                          {syncTooLarge
+                            ? '⚠️ Tu biblioteca superó el límite de la nube (1 MB comprimida). Tus cambios siguen guardados en este dispositivo; exportá una copia de seguridad.'
+                            : '⚠️ No se pudo sincronizar. Tus cambios siguen guardados en este dispositivo.'}
+                        </span>
                       ) : (
                         <span className="user-menu-syncing">{syncing ? '☁️ Sincronizando…' : '☁️ Sincronizado'}</span>
                       )}

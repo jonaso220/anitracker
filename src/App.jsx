@@ -80,7 +80,7 @@ export default function AnimeTracker() {
 
   // --- Hooks ---
   const { toast, showToast, dismissToast, undoToast } = useToast();
-  const { user, syncing, syncError, retrySync, authError, authReady, authBusy, loginWithGoogle, logout, FIREBASE_ENABLED } = useFirebase(
+  const { user, syncing, syncError, syncTooLarge, retrySync, authError, authReady, authBusy, loginWithGoogle, logout, FIREBASE_ENABLED } = useFirebase(
     schedule, watchedList, watchLater, customLists, setSchedule, setWatchedList, setWatchLater, setCustomLists
   );
   const { searchQuery, setSearchQuery, searchResults, setSearchResults, isSearching, searchPartial, airingData, airingError, retryAiring, handleSearch } = useAnimeData(schedule);
@@ -119,9 +119,9 @@ export default function AnimeTracker() {
 
   const bulkActions = useBulkActions({
     activeTab,
-    schedule, setSchedule,
-    watchedList, setWatchedList,
-    watchLater, setWatchLater,
+    setSchedule, scheduleRef,
+    setWatchedList, watchedListRef,
+    setWatchLater, watchLaterRef,
     bulkSelected: bulk.bulkSelected,
     exitBulkMode: bulk.exitBulkMode,
     showToast,
@@ -152,11 +152,21 @@ export default function AnimeTracker() {
   };
 
   const restoreBackup = (data) => {
+    // Reemplaza toda la biblioteca: el deshacer vuelve a la anterior completa.
+    const previous = {
+      schedule: scheduleRef.current, watchedList: watchedListRef.current,
+      watchLater: watchLaterRef.current, customLists: customListsRef.current,
+    };
     setSchedule({ ...EMPTY_SCHEDULE, ...data.schedule });
     setWatchedList(data.watchedList);
     setWatchLater(data.watchLater);
     setCustomLists(data.customLists);
-    showToast('Datos restaurados');
+    showToast('Datos restaurados', () => {
+      setSchedule(previous.schedule);
+      setWatchedList(previous.watchedList);
+      setWatchLater(previous.watchLater);
+      setCustomLists(previous.customLists);
+    });
   };
 
   // Apply dark/light class to the body for CSS custom properties
@@ -219,7 +229,7 @@ export default function AnimeTracker() {
     <div className={`anime-tracker ${darkMode ? 'dark' : 'light'}`}>
       <Header
         darkMode={darkMode} setDarkMode={setDarkMode}
-        user={user} syncing={syncing} syncError={syncError} loginWithGoogle={loginWithGoogle} logout={logout} firebaseEnabled={FIREBASE_ENABLED}
+        user={user} syncing={syncing} syncError={syncError} syncTooLarge={syncTooLarge} loginWithGoogle={loginWithGoogle} logout={logout} firebaseEnabled={FIREBASE_ENABLED}
         authError={authError} authReady={authReady} authBusy={authBusy} onRetrySync={retrySync}
         onOpenSearch={() => setShowSearch(true)} onOpenImport={() => setShowImport(true)}
         onOpenBackup={() => setShowBackup(true)}
@@ -381,6 +391,7 @@ export default function AnimeTracker() {
           onClose={() => setShowBackup(false)}
           onExport={exportData}
           onRestore={restoreBackup}
+          synced={!!user}
         />
       )}
 

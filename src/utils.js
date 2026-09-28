@@ -1,3 +1,5 @@
+import { daysOfWeek } from './constants';
+
 /**
  * Remove internal flags from anime objects before persisting.
  */
@@ -405,7 +407,10 @@ export const buildBackup = (
 /**
  * Parse and validate a backup JSON string. Accepts both the wrapped shape
  * ({ app, data: {...} }) and a raw data object ({ schedule, ... }).
- * Returns normalized { schedule, watchedList, watchLater, customLists }.
+ * Returns { schedule, watchedList, watchLater, customLists, skipped }: every
+ * entry is checked (an anime needs a positive numeric id, a list an items
+ * array), unknown days are dropped and `skipped` counts what was discarded, so
+ * a broken file can't reach the state (and from there, every synced device).
  * Throws an Error with a user-facing (Spanish) message on invalid input.
  */
 export const parseBackup = (jsonString) => {
@@ -423,12 +428,40 @@ export const parseBackup = (jsonString) => {
   if (!keys.some((k) => k in container)) {
     throw new Error('El archivo no contiene datos de AniTracker.');
   }
-  const isPlainObject = (v) => v && typeof v === 'object' && !Array.isArray(v);
-  const asArray = (v) => (Array.isArray(v) ? v : []);
+  const isPlainObject = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+  const isEntry = (a) => isPlainObject(a) && typeof a.id === 'number' && Number.isFinite(a.id) && a.id > 0;
+  let skipped = 0;
+  const entries = (v) => {
+    if (!Array.isArray(v)) return [];
+    const valid = v.filter(isEntry);
+    skipped += v.length - valid.length;
+    return valid;
+  };
+
+  const schedule = {};
+  if (isPlainObject(container.schedule)) {
+    for (const [day, items] of Object.entries(container.schedule)) {
+      if (daysOfWeek.includes(day)) schedule[day] = entries(items);
+      else if (Array.isArray(items)) skipped += items.length;
+    }
+  }
+
+  const customLists = [];
+  (Array.isArray(container.customLists) ? container.customLists : []).forEach((list, i) => {
+    if (!isPlainObject(list)) { skipped += 1; return; }
+    customLists.push({
+      ...list,
+      id: typeof list.id === 'string' || typeof list.id === 'number' ? list.id : `list-restored-${i}`,
+      name: typeof list.name === 'string' && list.name.trim() ? list.name : 'Lista',
+      items: entries(list.items),
+    });
+  });
+
   return {
-    schedule: isPlainObject(container.schedule) ? container.schedule : {},
-    watchedList: asArray(container.watchedList),
-    watchLater: asArray(container.watchLater),
-    customLists: asArray(container.customLists),
+    schedule,
+    watchedList: entries(container.watchedList),
+    watchLater: entries(container.watchLater),
+    customLists,
+    skipped,
   };
 };
