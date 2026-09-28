@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { episodePatch, seasonPatch } from '../tracking';
-import { captureEntry, restoreEntry } from '../libraryEdits';
+import { captureEntry, restoreEntry, changeEpisode } from '../libraryEdits';
 import { daysOfWeek, sanitizeUrl } from '../constants';
 import { clean, pickAutoWatchLink } from '../utils';
 
@@ -166,6 +166,32 @@ export function useAnimeActions({
     updateAnimeField(animeId, (a) => episodePatch(a, (a.currentEp || 0) + delta));
   }, [updateAnimeField]);
 
+  // +1 rápido desde la tarjeta o "Para hoy": se puede deshacer (un toque al
+  // hacer scroll sumaba un episodio sin aviso) y, si era el último, ofrece
+  // pasar el anime a Vistas en vez de dejarlo "Al día" en la semana.
+  const quickEpisode = useCallback((animeId) => {
+    const day = daysOfWeek.find((d) => (scheduleRef.current[d] || []).some((a) => a.id === animeId));
+    const current = day
+      ? scheduleRef.current[day].find((a) => a.id === animeId)
+      : latestAnime({ id: animeId });
+    if (!current) return;
+    const before = current.currentEp || 0;
+    const after = changeEpisode(before, 1, current.episodes);
+    if (after === before) return;
+    // Solo si nadie lo cambió en el medio (otro toque, sync de otro dispositivo).
+    const stepTo = (from, to) => updateAnimeField(animeId, (a) => ((a.currentEp || 0) === from ? episodePatch(a, to) : {}));
+    stepTo(before, after);
+    const undo = () => stepTo(after, before);
+    if (day && current.episodes > 0 && after >= current.episodes) {
+      showToast(`¡Terminaste "${current.title}"!`, undo, {
+        label: 'Pasar a Vistas',
+        fn: () => markAsFinished({ ...current, _day: day }, day),
+      });
+    } else {
+      showToast(`Ep. ${after} de "${current.title}" visto`, undo);
+    }
+  }, [scheduleRef, latestAnime, updateAnimeField, showToast, markAsFinished]);
+
   const setEpisodeNumber = useCallback((animeId, value) => {
     if (!Number.isSafeInteger(value) || value < 0) return;
     updateAnimeField(animeId, (a) => episodePatch(a, value));
@@ -299,6 +325,7 @@ export function useAnimeActions({
     deleteAnime,
     moveAnimeToDay,
     updateEpisode,
+    quickEpisode,
     setEpisodeNumber,
     setAnimeSeason,
     setAnimePaused,

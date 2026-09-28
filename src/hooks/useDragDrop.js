@@ -13,10 +13,17 @@ export function useDragDrop(schedule, setSchedule, daysOfWeek) {
 
   const resetTimerRef = useRef(null);
   const mouseTimerRef = useRef(null);
+  const lastTouchRef = useRef(null);
+  const autoScrollRef = useRef(null);
+  const releaseTouchRef = useRef(null);
+  const scheduleRef = useRef(schedule);
+  useEffect(() => { scheduleRef.current = schedule; }, [schedule]);
   useEffect(() => () => {
     clearTimeout(touchRef.current.timer);
     clearTimeout(resetTimerRef.current);
     clearTimeout(mouseTimerRef.current);
+    cancelAnimationFrame(autoScrollRef.current);
+    releaseTouchRef.current?.();
     touchRef.current.ghost?.remove();
   }, []);
 
@@ -141,6 +148,8 @@ export function useDragDrop(schedule, setSchedule, daysOfWeek) {
       if (navigator.vibrate) navigator.vibrate(30);
       
       dragRef.current = { anime, fromDay: day };
+      lastTouchRef.current = { x: touch.clientX, y: touch.clientY };
+      holdTouch();
       setDragState({ anime, fromDay: day });
       setIsDragging(true);
     }, 400);
@@ -159,19 +168,24 @@ export function useDragDrop(schedule, setSchedule, daysOfWeek) {
       }
       return;
     }
-    e.preventDefault(); // Prevenir scroll
-    
     if (touchRef.current.ghost) {
       touchRef.current.ghost.style.top = (touch.clientY - 20) + 'px';
       touchRef.current.ghost.style.left = (touch.clientX - 60) + 'px';
     }
 
-    // Detección manual de elementos bajo el dedo
+    lastTouchRef.current = { x: touch.clientX, y: touch.clientY };
+    updateTouchTarget(touch.clientX, touch.clientY);
+  };
+
+  // Día e índice bajo el dedo. Se recalcula también durante el auto-scroll:
+  // las filas se mueven debajo de un dedo quieto.
+  const updateTouchTarget = (x, y) => {
     const ghostEl = touchRef.current.ghost;
     if (ghostEl) ghostEl.style.pointerEvents = 'none';
-    const element = document.elementFromPoint(touch.clientX, touch.clientY);
+    const element = document.elementFromPoint(x, y);
     if (ghostEl) ghostEl.style.pointerEvents = '';
     const dayRow = element?.closest('.day-row');
+    const current = scheduleRef.current;
 
     if (dayRow) {
         const dayLabel = dayRow.querySelector('.day-name');
@@ -182,11 +196,11 @@ export function useDragDrop(schedule, setSchedule, daysOfWeek) {
 
           // Calcular índice de inserción basado en las tarjetas de la fila
           const cards = dayRow.querySelectorAll('.anime-card');
-          let idx = (schedule[detectedDay] || []).length;
+          let idx = (current[detectedDay] || []).length;
           for (let i = 0; i < cards.length; i++) {
             const rect = cards[i].getBoundingClientRect();
-            if (touch.clientY < rect.bottom && touch.clientX < rect.left + rect.width / 2) {
-              const originalIndex = (schedule[detectedDay] || []).findIndex((item) => String(item.id) === cards[i].dataset.animeId);
+            if (y < rect.bottom && x < rect.left + rect.width / 2) {
+              const originalIndex = (current[detectedDay] || []).findIndex((item) => String(item.id) === cards[i].dataset.animeId);
               idx = originalIndex >= 0 ? originalIndex : i; break;
             }
           }
@@ -199,9 +213,51 @@ export function useDragDrop(schedule, setSchedule, daysOfWeek) {
     }
   };
 
+  // Auto-scroll cerca de los bordes para llegar a días fuera de pantalla (en
+  // celular los 7 días van uno debajo del otro). Más rápido cuanto más cerca.
+  const EDGE_PX = 90;
+  const MAX_SPEED = 18;
+  const autoScrollStep = () => {
+    autoScrollRef.current = null;
+    const last = lastTouchRef.current;
+    if (!touchRef.current.active || !last) return;
+    const nav = document.querySelector('.nav-tabs');
+    const navRect = nav?.getBoundingClientRect();
+    // En celular la barra de pestañas está fija abajo: el borde útil es su tope.
+    const bottomEdge = navRect && navRect.top > window.innerHeight / 2 ? navRect.top : window.innerHeight;
+    let speed = 0;
+    if (last.y < EDGE_PX) speed = -MAX_SPEED * (1 - last.y / EDGE_PX);
+    else if (last.y > bottomEdge - EDGE_PX) speed = MAX_SPEED * Math.min(1, (last.y - (bottomEdge - EDGE_PX)) / EDGE_PX);
+    if (speed) {
+      window.scrollBy(0, speed);
+      updateTouchTarget(last.x, last.y);
+    }
+    autoScrollRef.current = requestAnimationFrame(autoScrollStep);
+  };
+
+  // Mientras se arrastra, la página no debe desplazarse con el dedo. React
+  // registra touchmove como pasivo (su preventDefault no hace nada), así que
+  // se agrega uno nativo no pasivo solo durante el arrastre. También se evita
+  // el menú contextual que Android abre con la pulsación larga.
+  const holdTouch = () => {
+    const block = (event) => { if (event.cancelable) event.preventDefault(); };
+    document.addEventListener('touchmove', block, { passive: false });
+    document.addEventListener('contextmenu', block);
+    releaseTouchRef.current = () => {
+      document.removeEventListener('touchmove', block);
+      document.removeEventListener('contextmenu', block);
+      releaseTouchRef.current = null;
+    };
+    autoScrollRef.current = requestAnimationFrame(autoScrollStep);
+  };
+
   const finishTouch = (cancelled = false) => {
     if (touchRef.current.timer) clearTimeout(touchRef.current.timer);
     if (touchRef.current.ghost) touchRef.current.ghost.remove();
+    cancelAnimationFrame(autoScrollRef.current);
+    autoScrollRef.current = null;
+    lastTouchRef.current = null;
+    releaseTouchRef.current?.();
 
     const target = dropTargetRef.current;
     const idx = dropIndexRef.current;

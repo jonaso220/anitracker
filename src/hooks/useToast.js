@@ -14,9 +14,11 @@ export function useToast({ ttl = DEFAULT_TTL_MS } = {}) {
     if (timerRef.current) clearTimeout(timerRef.current);
   }, []);
 
-  const showToast = useCallback((message, undoFn) => {
+  // `action` ({ label, fn }) es un botón extra además de Deshacer, p. ej.
+  // "Pasar a Vistas" al marcar el último episodio.
+  const showToast = useCallback((message, undoFn, action = null) => {
     if (timerRef.current) clearTimeout(timerRef.current);
-    setToast({ message, undoFn });
+    setToast({ message, undoFn, action });
     timerRef.current = setTimeout(() => setToast(null), ttl);
   }, [ttl]);
 
@@ -33,5 +35,11 @@ export function useToast({ ttl = DEFAULT_TTL_MS } = {}) {
     dismissToast();
   }, [dismissToast]);
 
-  return { toast, showToast, dismissToast, undoToast };
+  const runToastAction = useCallback(() => {
+    const current = toastRef.current;
+    dismissToast();
+    current?.action?.fn();
+  }, [dismissToast]);
+
+  return { toast, showToast, dismissToast, undoToast, runToastAction };
 }

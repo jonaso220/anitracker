@@ -430,3 +430,12 @@
   .anime-card.has-airing-later .anime-card-overlay { padding-bottom: 1.7rem; }
   .anime-card-overlay-meta { max-height: 60px; opacity: 1; }
 }
+
+/* Pulsación larga para arrastrar (celular/iPad): sin el menú de imagen de
+   iOS ni selección de texto, que cortaban el gesto. */
+.anime-card.draggable {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.anime-card.draggable img { -webkit-user-drag: none; }

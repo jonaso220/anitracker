@@ -286,3 +286,15 @@ describe('usePersistedState', () => {
     expect(result.current[0]).toBe('fallback');
   });
 });
+
+describe('useToast: acción extra', () => {
+  it('ejecuta la acción y cierra el toast', () => {
+    const fn = vi.fn();
+    const { result } = renderHook(() => useToast({ ttl: 1000 }));
+    act(() => { result.current.showToast('¡Terminaste!', vi.fn(), { label: 'Pasar a Vistas', fn }); });
+    expect(result.current.toast.action.label).toBe('Pasar a Vistas');
+    act(() => { result.current.runToastAction(); });
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(result.current.toast).toBeNull();
+  });
+});

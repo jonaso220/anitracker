@@ -79,7 +79,7 @@ export default function AnimeTracker() {
   const [ignoredDiscovery, setIgnoredDiscovery] = usePersistedState('anitracker-discovery-ignored', []);
 
   // --- Hooks ---
-  const { toast, showToast, dismissToast, undoToast } = useToast();
+  const { toast, showToast, dismissToast, undoToast, runToastAction } = useToast();
   const { user, syncing, syncError, syncTooLarge, retrySync, authError, authReady, authBusy, loginWithGoogle, logout, FIREBASE_ENABLED } = useFirebase(
     schedule, watchedList, watchLater, customLists, setSchedule, setWatchedList, setWatchLater, setCustomLists
   );
@@ -247,7 +247,7 @@ export default function AnimeTracker() {
           <ScheduleView
             schedule={schedule} airingData={airingData} setShowAnimeDetail={setShowAnimeDetail}
             airingError={airingError} retryAiring={retryAiring}
-            updateEpisode={actions.updateEpisode}
+            onQuickEpisode={actions.quickEpisode}
             {...dragDrop}
           />
         )}
@@ -326,7 +326,7 @@ export default function AnimeTracker() {
         </Suspense>
       </main>
 
-      <Toast toast={toast} onUndo={undoToast} onDismiss={dismissToast} />
+      <Toast toast={toast} onUndo={undoToast} onAction={runToastAction} onDismiss={dismissToast} />
       <StorageErrorBanner />
       <UpdateBanner visible={updateAvailable} onUpdate={applyUpdate} onDismiss={dismissUpdate} />
 

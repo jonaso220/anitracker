@@ -28,10 +28,14 @@
 
 .toast-message {
   flex: 1;
-  white-space: nowrap;
+  min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
   font-weight: 500;
+  /* Hasta dos líneas: en celular los títulos largos se cortaban en una. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 .toast-actions {
@@ -72,3 +76,11 @@
   transition: all var(--transition-fast);
 }
 .toast-close:hover { opacity: 1; background: rgba(239, 68, 68, 0.15); color: #f87171; }
+
+/* Con una acción principal ("Pasar a Vistas"), Deshacer queda secundario. */
+.toast-action + .toast-undo {
+  background: transparent;
+  border: 1px solid var(--border-brand);
+  box-shadow: none;
+  color: var(--text-primary);
+}

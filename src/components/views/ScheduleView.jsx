@@ -11,7 +11,7 @@ const todayDayName = () => {
 };
 
 const ScheduleView = ({
-  schedule, airingData, airingError, retryAiring, setShowAnimeDetail, updateEpisode,
+  schedule, airingData, airingError, retryAiring, setShowAnimeDetail, onQuickEpisode,
   dragState, isDragging, dropTarget, dropIndex,
   handleDragStart, handleDragEnd, handleDragOverRow, handleDragOverCard,
   handleDrop, handleTouchStart, handleTouchMove, handleTouchEnd, handleTouchCancel, touchRef,
@@ -25,7 +25,7 @@ const ScheduleView = ({
         schedule={schedule}
         airingData={airingData}
         onDetail={(anime) => setShowAnimeDetail({ ...anime, _isWatchLater: false, _isWatched: false, _isSeason: false })}
-        onIncrementEpisode={updateEpisode}
+        onIncrementEpisode={onQuickEpisode}
       />
       {airingError && <ApiErrorState error={airingError} onRetry={retryAiring} />}
       {daysOfWeek.map((day, i) => {
@@ -60,7 +60,7 @@ const ScheduleView = ({
                       onTouchMove={handleTouchMove}
                       onTouchEnd={handleTouchEnd}
                       onTouchCancel={handleTouchCancel}
-                      onIncrementEpisode={updateEpisode}
+                      onIncrementEpisode={onQuickEpisode}
                       onClick={() => {
                         if (touchRef.current.moved || touchRef.current.active) return;
                         setShowAnimeDetail({ ...a, _day: day, _isWatchLater: false, _isWatched: false, _isSeason: false });
