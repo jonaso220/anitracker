@@ -8,9 +8,14 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 //      controlling the page → we set updateAvailable = true.
 //   2. User clicks the banner → applyUpdate() posts SKIP_WAITING.
 //   3. New SW activates and claims clients → controllerchange fires → reload.
-export function useServiceWorkerUpdate() {
+//
+// En la primera visita no hay SW controlando: el recién instalado toma el
+// control (clients.claim) y también dispara controllerchange. Eso no es una
+// actualización, así que no se recarga.
+export function useServiceWorkerUpdate({ reload = () => window.location.reload() } = {}) {
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const waitingWorkerRef = useRef(null);
+  const reloadRef = useRef(reload);
 
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return;
@@ -18,6 +23,7 @@ export function useServiceWorkerUpdate() {
     let registration = null;
     let intervalId = null;
     let refreshing = false;
+    let controlled = !!navigator.serviceWorker.controller;
 
     const promote = (worker) => {
       waitingWorkerRef.current = worker;
@@ -25,9 +31,10 @@ export function useServiceWorkerUpdate() {
     };
 
     const onControllerChange = () => {
+      if (!controlled) { controlled = true; return; }
       if (refreshing) return;
       refreshing = true;
-      window.location.reload();
+      reloadRef.current();
     };
 
     const onVisibility = () => {
@@ -75,7 +82,7 @@ export function useServiceWorkerUpdate() {
     if (worker) {
       worker.postMessage({ type: 'SKIP_WAITING' });
     } else {
-      window.location.reload();
+      reloadRef.current();
     }
   }, []);
 

@@ -139,7 +139,11 @@ Vitest + Testing Library (jsdom), setup en `src/test/setup.js`. Al tocar
 
 - Sin router: pestaña activa = estado `activeTab` en `App.jsx`.
 - Service worker hecho a mano en `public/sw.js`; la versión de cache se sube a
-  mano (`CACHE_VERSION`).
+  mano (`CACHE_VERSION`). Las portadas van a `anitracker-images` (sin versión,
+  sobrevive a los deploys, máx. 500): primero cache, pedidas con CORS para
+  poder guardarlas. Nunca guardar respuestas opacas (~7 MB de cuota cada una
+  en Chrome: el navegador podría borrar todos los datos del sitio). Tests en
+  `src/test/serviceWorker.test.js` (ejecutan el archivo real con fakes).
 - Firebase config admite override por env (`VITE_FIREBASE_*`, ver
   `.env.example`) con *fallback* al proyecto público compartido.
 - TMDB es opcional: sin `VITE_TMDB_API_KEY` la fuente no aparece en la

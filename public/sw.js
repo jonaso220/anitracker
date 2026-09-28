@@ -1,7 +1,10 @@
-const CACHE_VERSION = 'v26';
+const CACHE_VERSION = 'v27';
 const STATIC_CACHE = `anitracker-static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `anitracker-runtime-${CACHE_VERSION}`;
-const IMAGE_CACHE = `anitracker-images-${CACHE_VERSION}`;
+// Sin versión: las portadas no cambian entre deploys, no hay por qué volver
+// a bajarlas cada vez que se publica la app.
+const IMAGE_CACHE = 'anitracker-images';
+const MAX_IMAGES = 500;
 
 const PRECACHE_URLS = [
   '/',
@@ -72,19 +75,55 @@ function isNoCache(url) {
 }
 
 function isImage(request, url) {
+  // Las propias (íconos) van con el resto de la app: pueden cambiar.
+  if (url.origin === self.location.origin) return false;
   if (request.destination === 'image') return true;
   return IMAGE_HOSTS.some((h) => url.hostname.endsWith(h));
 }
 
-// Cache-first with background revalidate (for images)
-async function staleWhileRevalidate(request, cacheName) {
-  const cache = await caches.open(cacheName);
-  const cached = await cache.match(request);
-  const fetchPromise = fetch(request).then((response) => {
-    if (response && response.status === 200) cache.put(request, response.clone()).catch(() => {});
-    return response;
-  }).catch(() => cached);
-  return cached || fetchPromise;
+// Hosts de imágenes que no aceptan CORS (p. ej. Kitsu): se piden como el
+// <img> (respuesta opaca) y no se guardan. Una respuesta opaca ocupa ~7 MB de
+// cuota en Chrome; con cientos de portadas el navegador podría borrar todos
+// los datos del sitio, biblioteca incluida.
+const noCorsHosts = new Set();
+
+let trimming = false;
+async function trimImages(cache) {
+  if (trimming) return;
+  trimming = true;
+  try {
+    const keys = await cache.keys();
+    // keys() viene en orden de inserción: se van las más viejas.
+    await Promise.all(keys.slice(0, Math.max(0, keys.length - MAX_IMAGES)).map((k) => cache.delete(k)));
+  } finally {
+    trimming = false;
+  }
+}
+
+// Portadas: primero la cache (no cambian); si no está, se pide con CORS para
+// poder guardarla y verla sin conexión.
+async function cacheFirstImage(event) {
+  const { request } = event;
+  const url = new URL(request.url);
+  const cache = await caches.open(IMAGE_CACHE);
+  const cached = await cache.match(request.url);
+  if (cached) return cached;
+  if (!noCorsHosts.has(url.host)) {
+    try {
+      const response = await fetch(request.url, { mode: 'cors', credentials: 'omit' });
+      if (response.ok) {
+        event.waitUntil(cache.put(request.url, response.clone()).then(() => trimImages(cache)).catch(() => {}));
+      }
+      return response;
+    } catch {
+      // Falló con CORS: si como <img> anda, el host no acepta CORS; si
+      // tampoco anda, es que no hay conexión (y no hay nada que recordar).
+      const plain = await fetch(request);
+      noCorsHosts.add(url.host);
+      return plain;
+    }
+  }
+  return fetch(request);
 }
 
 // Network-first with cache fallback (for app shell)
@@ -124,7 +163,7 @@ self.addEventListener('fetch', (event) => {
   if (isNoCache(url)) return; // Let it hit network directly
 
   if (isImage(request, url)) {
-    event.respondWith(staleWhileRevalidate(request, IMAGE_CACHE));
+    event.respondWith(cacheFirstImage(event));
     return;
   }
 
