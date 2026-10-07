@@ -1,0 +1,12 @@
+.sync-status { padding: .6rem 1rem; border-top: 1px solid var(--border-subtle); font-size: .85rem; }
+.sync-status-line, .sync-conflict-actions { display: flex; align-items: center; flex-wrap: wrap; gap: .65rem; }
+.sync-status-line [role="status"] { font-weight: 600; }
+.sync-status button { font: inherit; color: inherit; background: var(--bg-surface); border: 1px solid var(--border-strong); border-radius: .5rem; padding: .45rem .7rem; cursor: pointer; }
+.sync-status button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.sync-conflicts { max-width: 65rem; }
+.sync-conflicts p { margin: .7rem 0; }
+.sync-conflicts ul { padding-left: 1.2rem; max-height: 40vh; overflow-y: auto; }
+.sync-conflicts li { padding: .5rem 0; overflow-wrap: anywhere; }
+.sync-conflicts dl { display: grid; grid-template-columns: minmax(7rem, 1fr) minmax(0, 3fr); gap: .25rem .5rem; margin: .4rem 0; }
+.sync-conflicts dd { margin: 0; }
+@media (max-width: 480px) { .sync-status { padding: .6rem; } .sync-conflict-actions { align-items: stretch; flex-direction: column; } }

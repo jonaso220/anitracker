@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
+import SyncStatus from './SyncStatus';
 
 const Header = ({
   darkMode, setDarkMode,
   user, syncing, syncError, syncTooLarge = false, loginWithGoogle, logout, firebaseEnabled,
   authError, authReady = true, authBusy = false, onRetrySync,
   onOpenSearch, onOpenImport, onOpenBackup,
+  syncStatus, syncConflict, onResolveConflict, onDownloadRecovery,
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
@@ -168,6 +170,7 @@ const Header = ({
                   </div>
                 )}
                 {user && syncError && <button className="user-menu-item" role="menuitem" onClick={onRetrySync}>Reintentar sincronización</button>}
+                {user && onDownloadRecovery && <button className="user-menu-item" role="menuitem" onClick={onDownloadRecovery}>Descargar recuperación de sincronización</button>}
                 <button
                   className="user-menu-item"
                   role="menuitem"
@@ -208,6 +211,7 @@ const Header = ({
         </div>
       </div>
       {authError && <div className="auth-error" role="alert">{authError}</div>}
+      {user && <SyncStatus status={syncStatus || (syncError || syncing ? 'pending' : 'synced')} conflict={syncConflict} onResolve={onResolveConflict} onDownload={onDownloadRecovery} onRetry={onRetrySync} />}
     </header>
   );
 };

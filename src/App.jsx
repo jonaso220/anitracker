@@ -81,7 +81,7 @@ export default function AnimeTracker() {
 
   // --- Hooks ---
   const { toast, showToast, dismissToast, undoToast, runToastAction } = useToast();
-  const { user, cloudLoaded, syncing, syncError, syncTooLarge, retrySync, authError, authReady, authBusy, loginWithGoogle, logout, FIREBASE_ENABLED } = useFirebase(
+  const { user, cloudLoaded, syncing, syncError, syncTooLarge, syncStatus, syncConflict, resolveConflict, downloadRecovery, retrySync, authError, authReady, authBusy, loginWithGoogle, logout, FIREBASE_ENABLED } = useFirebase(
     schedule, watchedList, watchLater, customLists, setSchedule, setWatchedList, setWatchLater, setCustomLists
   );
   const { searchQuery, setSearchQuery, searchResults, setSearchResults, isSearching, searchPartial, airingData, airingError, retryAiring, handleSearch } = useAnimeData(schedule);
@@ -228,6 +228,7 @@ export default function AnimeTracker() {
         darkMode={darkMode} setDarkMode={setDarkMode}
         user={user} syncing={syncing} syncError={syncError} syncTooLarge={syncTooLarge} loginWithGoogle={loginWithGoogle} logout={logout} firebaseEnabled={FIREBASE_ENABLED}
         authError={authError} authReady={authReady} authBusy={authBusy} onRetrySync={retrySync}
+        syncStatus={syncStatus} syncConflict={syncConflict} onResolveConflict={resolveConflict} onDownloadRecovery={downloadRecovery}
         onOpenSearch={openSearch} onOpenImport={openImport}
         onOpenBackup={openBackup}
       />

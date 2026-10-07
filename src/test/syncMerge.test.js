@@ -95,12 +95,12 @@ describe('mergeLibraries', () => {
     expect(m.watchedList.map((x) => x.id)).toEqual([10, 11]);
   });
 
-  it('una edición gana a un borrado del otro lado', () => {
+  it('un borrado gana a una edición offline del otro lado', () => {
     const local = clone(synced); local.schedule.Lunes = [local.schedule.Lunes[1]];
     const cloud = clone(synced); cloud.schedule.Lunes[0].currentEp = 3;
     const m = mergeLibraries({ base, local, cloud });
-    expect(m.schedule.Lunes.map((x) => x.id)).toEqual([1, 2]);
-    expect(m.schedule.Lunes[0].currentEp).toBe(3);
+    expect(m.schedule.Lunes.map((x) => x.id)).toEqual([2]);
+    expect(mergeLibraries({ base, local: cloud, cloud: local }).schedule.Lunes.map((x) => x.id)).toEqual([2]);
   });
 
   it('un movimiento (Lunes → Vistos) no deja el anime duplicado aunque el otro lado lo edite', () => {
@@ -143,4 +143,25 @@ describe('mergeLibraries', () => {
     const m = mergeLibraries({ base: {}, local: { watchedList: [a(1)] }, cloud: { watchLater: [a(2)] } });
     expect(Object.keys(m.schedule)).toEqual(daysOfWeek);
   });
+});
+
+describe('field-level concurrent edits', () => {
+  it('keeps an episode change and a rating change on the same anime', () => {
+    const original = lib({ watchedList: [a(1, { userRating: 2 })] });
+    const local = lib({ watchedList: [a(1, { currentEp: 3, userRating: 2 })] });
+    const cloud = lib({ watchedList: [a(1, { userRating: 5 })] });
+    expect(mergeLibraries({ base: hashLibrary(original), local, cloud }).watchedList[0]).toMatchObject({ currentEp: 3, userRating: 5 });
+  });
+  it('keeps compatibility with legacy hash bases without field hashes', () => {
+    const original = lib({ watchedList: [a(1)] });
+    const base = Object.fromEntries(Object.entries(hashLibrary(original)).filter(([key]) => !key.startsWith('f|')));
+    expect(mergeLibraries({ base, local: original, cloud: lib() }).watchedList).toEqual([]);
+  });
+});
+
+it('preserves newly added remote fields while another field changes locally', () => {
+  const original = lib({ watchedList: [a(1)] });
+  const local = lib({ watchedList: [a(1, { currentEp: 4 })] });
+  const cloud = lib({ watchedList: [a(1, { watchLink: 'https://example.test/watch' })] });
+  expect(mergeLibraries({ base: hashLibrary(original), local, cloud }).watchedList[0]).toMatchObject({ currentEp: 4, watchLink: 'https://example.test/watch' });
 });

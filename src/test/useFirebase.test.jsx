@@ -9,6 +9,7 @@ import { normalizeAnime } from '../schemas/anime';
 // Shared, resettable handles into the Firebase mocks. `vi.hoisted` lets the
 // mock factories (which are hoisted above imports) share these references.
 const h = vi.hoisted(() => ({
+  docs: new Map(),
   authCb: null,        // onAuthStateChanged callback
   snapshotCb: null,    // onSnapshot "next" callback — lets us drive cloud docs
   setDoc: vi.fn(() => Promise.resolve()),
@@ -39,8 +40,23 @@ vi.mock('firebase/auth', () => ({
 vi.mock('firebase/firestore', () => ({
   getFirestore: vi.fn(() => ({})),
   doc: vi.fn((db, collection, uid) => ({uid})),
-  setDoc: (...args) => h.setDoc(...args),
-  onSnapshot: vi.fn((ref, next, error) => { h.snapshotError = error; h.snapshotCb = next; return h.onSnapshotUnsub; }),
+  runTransaction: vi.fn(async (_db, update) => {
+    let write;
+    const result = await update({
+      get: async (ref) => h.docs.get(ref.uid) || { exists: () => false },
+      set: (...args) => { write = args; },
+    });
+    if (write) {
+      await h.setDoc(...write);
+      h.docs.set(write[0].uid, { exists: () => true, data: () => write[1] });
+    }
+    return result;
+  }),
+  onSnapshot: vi.fn((ref, _options, next, error) => {
+    h.snapshotError = error;
+    h.snapshotCb = (snap) => { if (!snap.metadata.hasPendingWrites && !snap.metadata.fromCache) h.docs.set(ref.uid, snap); next(snap); };
+    return h.onSnapshotUnsub;
+  }),
   serverTimestamp: vi.fn(() => 'ts'),
   deleteField: vi.fn(() => '__delete__'),
   Bytes: { fromUint8Array: (bytes) => ({ toUint8Array: () => bytes }) },
@@ -105,7 +121,7 @@ describe('useFirebase realtime sync', () => {
     h.redirectResult = { user: null };
     h.setDoc.mockClear();
     h.setDoc.mockImplementation(() => Promise.resolve());
-    localStorage.clear();
+    localStorage.clear(); h.docs.clear();
   });
   afterEach(() => { vi.useRealTimers(); });
 
@@ -236,7 +252,7 @@ describe('serializeData (payload canónico)', () => {
 describe('account isolation, auth and read recovery', () => {
  beforeEach(() => {
    vi.useFakeTimers(); h.authCb=null; h.snapshotCb=null; h.redirectResult={user:null};
-   h.setDoc.mockClear(); h.setDoc.mockImplementation(()=>Promise.resolve()); localStorage.clear();
+   h.setDoc.mockClear(); h.setDoc.mockImplementation(()=>Promise.resolve()); localStorage.clear(); h.docs.clear();
    signInWithPopup.mockReset(); signInWithPopup.mockResolvedValue({}); signInWithRedirect.mockClear();
  });
  afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
@@ -357,7 +373,7 @@ describe('useFirebase: fusión y protección de datos', () => {
     h.redirectResult = { user: null };
     h.setDoc.mockClear();
     h.setDoc.mockImplementation(() => Promise.resolve());
-    localStorage.clear();
+    localStorage.clear(); h.docs.clear();
   });
   afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
@@ -390,7 +406,7 @@ describe('useFirebase: fusión y protección de datos', () => {
     expect(h.setDoc.mock.calls.at(-1)[1].watchLater).toEqual([{ ...migrated, currentEp: 5 }]);
   });
 
-  it('iniciar sesión después de usar la app como invitado fusiona en vez de pisar la nube', async () => {
+  it('iniciar sesión con biblioteca sin base pide elegir y guarda ambas copias', async () => {
     const rendered = renderHook(() => useHarness());
     await waitUntil(() => typeof h.authCb === 'function');
     // Uso como invitado: un anime agregado antes de iniciar sesión.
@@ -402,10 +418,16 @@ describe('useFirebase: fusión y protección de datos', () => {
       h.snapshotCb(cloudSnap({ watchedList: [{ id: 2 }, { id: 3 }], updatedAtIso: '2020-01-01T00:00:00.000Z' }));
     });
 
-    expect(rendered.result.current.watchedList.map((a) => a.id).sort()).toEqual([1, 2, 3]);
+    expect(rendered.result.current.syncConflict.conflicts[0].kind).toBe('missing-base');
+    expect(rendered.result.current.watchedList.map((a) => a.id)).toEqual([1]);
+    await tick(2000);
+    expect(h.setDoc).not.toHaveBeenCalled();
+    await act(async () => rendered.result.current.resolveConflict('local'));
     await tick(2000);
     const payload = h.setDoc.mock.calls.at(-1)[1];
-    expect(payload.watchedList.map((a) => a.id).sort()).toEqual([1, 2, 3]);
+    expect(payload.watchedList.map((a) => a.id)).toEqual([1]);
+    const recovery = JSON.parse(JSON.parse(localStorage.getItem('anitracker-sync-recovery:u1'))[0].payload);
+    expect(recovery.cloud.watchedList.map(a => a.id)).toEqual([2, 3]);
   });
 
   it('un cambio remoto que llega durante el debounce no pisa la edición local (ni al revés)', async () => {
@@ -475,4 +497,253 @@ describe('useFirebase: fusión y protección de datos', () => {
     await waitUntil(() => result.current.watchedList.length === 1);
     expect(result.current.watchedList).toEqual([{ id: 42 }]);
   });
+});
+
+describe('protected sync choices and visible status', () => {
+  beforeEach(() => {
+    vi.useFakeTimers(); h.authCb = null; h.snapshotCb = null; h.docs.clear();
+    h.redirectResult = { user: null }; h.setDoc.mockReset(); h.setDoc.mockResolvedValue(); localStorage.clear();
+  });
+  afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+  it('stops same-field conflict, survives reload, resolves it and preserves unrelated remote changes', async () => {
+    let hook = await loginAndSubscribe();
+    await act(async () => h.snapshotCb(cloudSnap({ watchedList: [{ id: 1, currentEp: 1, userRating: 1 }] })));
+    await act(async () => hook.result.current.setWatchedList([{ id: 1, currentEp: 2, userRating: 1 }]));
+    const remote = { watchedList: [{ id: 1, currentEp: 3, userRating: 5 }], syncRevision: 3 };
+    await act(async () => h.snapshotCb(cloudSnap(remote)));
+    expect(hook.result.current.syncStatus).toBe('conflict');
+    await tick(2100); expect(h.setDoc).not.toHaveBeenCalled();
+    const local = hook.result.current.watchedList;
+    hook.unmount(); h.authCb = null; h.snapshotCb = null; hook = await loginAndSubscribe();
+    // Harness does not hydrate account data like App; restore its persisted local snapshot.
+    await act(async () => hook.result.current.setWatchedList(local));
+    await act(async () => h.snapshotCb(cloudSnap(remote)));
+    expect(hook.result.current.syncStatus).toBe('conflict');
+    await act(async () => hook.result.current.resolveConflict('local'));
+    await tick(2100);
+    expect(hook.result.current.watchedList).toEqual([{ id: 1, currentEp: 2, userRating: 5 }]);
+    expect(hook.result.current.syncStatus).toBe('synced');
+    expect(JSON.parse(localStorage.getItem('anitracker-sync-recovery:u1'))).toHaveLength(1);
+  });
+  it('quota failure blocks a choice and preserves local, cloud and base', async () => {
+    const { result } = await loginAndSubscribe();
+    await act(async () => h.snapshotCb(cloudSnap({ watchedList: [{ id: 1, currentEp: 1 }] })));
+    await act(async () => result.current.setWatchedList([{ id: 1, currentEp: 2 }]));
+    await act(async () => h.snapshotCb(cloudSnap({ watchedList: [{ id: 1, currentEp: 3 }] })));
+    const prior = localStorage.getItem('anitracker-sync-base:u1');
+    const set = Storage.prototype.setItem;
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (key, value) {
+      if (key.startsWith('anitracker-sync-recovery:')) throw new Error('Quota');
+      return set.call(this, key, value);
+    });
+    await act(async () => result.current.resolveConflict('cloud'));
+    await tick(2100);
+    expect(result.current.syncConflict.storageError).toBe(true);
+    expect(result.current.watchedList[0].currentEp).toBe(2);
+    expect(localStorage.getItem('anitracker-sync-base:u1')).toBe(prior);
+    expect(h.setDoc).not.toHaveBeenCalled();
+  });
+  it('detects a conflict introduced while commit acknowledgment is pending', async () => {
+    const { result } = await loginAndSubscribe();
+    await act(async () => h.snapshotCb(cloudSnap({ watchedList: [{ id: 1, currentEp: 1, userRating: 1 }] })));
+    h.docs.set('u1', cloudSnap({ watchedList: [{ id: 1, currentEp: 1, userRating: 2 }], syncRevision: 2 }));
+    let release; h.setDoc.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    await act(async () => result.current.setWatchedList([{ id: 1, currentEp: 2, userRating: 1 }]));
+    await tick(2000);
+    // A pre-commit event queued during the write must not replace the cloud
+    // used for the later post-commit conflict choice.
+    await act(async () => h.snapshotCb(cloudSnap({ watchedList: [{ id: 1, currentEp: 1, userRating: 2 }], syncRevision: 2 })));
+    await act(async () => result.current.setWatchedList([{ id: 1, currentEp: 2, userRating: 3 }]));
+    await act(async () => release());
+    await tick(2100);
+    expect(h.setDoc).toHaveBeenCalledTimes(1);
+    expect(result.current.syncConflict.conflicts).toMatchObject([{ field: 'userRating', local: 3, cloud: 2 }]);
+    expect(result.current.watchedList[0].userRating).toBe(3);
+    await act(async () => result.current.resolveConflict('local'));
+    await tick(2100);
+    expect(result.current.watchedList).toEqual([{ id: 1, currentEp: 2, userRating: 3 }]);
+    expect(h.setDoc.mock.calls.at(-1)[1].watchedList[0].currentEp).toBe(2);
+  });
+  it('rechecks the server after a choice; a new conflict does not overwrite another device', async () => {
+    const { result } = await loginAndSubscribe();
+    await act(async () => h.snapshotCb(cloudSnap({ watchedList: [{ id: 1, currentEp: 1 }] })));
+    await act(async () => result.current.setWatchedList([{ id: 1, currentEp: 2 }]));
+    await act(async () => h.snapshotCb(cloudSnap({ watchedList: [{ id: 1, currentEp: 3 }] })));
+    await act(async () => result.current.resolveConflict('local'));
+    h.docs.set('u1', cloudSnap({ watchedList: [{ id: 1, currentEp: 4 }], syncRevision: 4 }));
+    await tick(2100);
+    expect(result.current.syncConflict.conflicts[0].cloud).toBe(4);
+    expect(h.setDoc).not.toHaveBeenCalled();
+  });
+  it('shows pending until acknowledged and offline even with no outstanding edits', async () => {
+    const { result } = await loginAndSubscribe();
+    expect(result.current.syncStatus).toBe('pending');
+    await act(async () => h.snapshotCb(cloudSnap({ watchedList: [] })));
+    expect(result.current.syncStatus).toBe('synced');
+    await act(async () => result.current.setWatchedList([{ id: 1 }]));
+    expect(result.current.syncStatus).toBe('pending');
+    await tick(2100); expect(result.current.syncStatus).toBe('synced');
+    await act(async () => window.dispatchEvent(new Event('offline')));
+    expect(result.current.syncStatus).toBe('offline');
+    await act(async () => window.dispatchEvent(new Event('online')));
+    expect(result.current.syncStatus).toBe('pending');
+  });
+  it('does not claim synchronized when a save is still in flight after undo', async () => {
+    const { result } = await loginAndSubscribe();
+    await act(async () => h.snapshotCb(cloudSnap({ watchedList: [{ id: 1, currentEp: 1 }] })));
+    let release; h.setDoc.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    await act(async () => result.current.setWatchedList([{ id: 1, currentEp: 2 }]));
+    await tick(2000);
+    await act(async () => result.current.setWatchedList([{ id: 1, currentEp: 1 }]));
+    expect(result.current.syncStatus).toBe('pending');
+    await act(async () => release());
+    await tick(2100);
+    expect(result.current.watchedList[0].currentEp).toBe(1);
+    expect(result.current.syncStatus).toBe('synced');
+  });
+});
+
+describe('transactional sync regressions', () => {
+  beforeEach(() => {
+    vi.useFakeTimers(); h.authCb = null; h.snapshotCb = null; h.docs.clear();
+    h.redirectResult = { user: null }; h.setDoc.mockReset(); h.setDoc.mockResolvedValue(); localStorage.clear();
+  });
+  afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+
+  it('reads the latest server state inside the write even if the listener has not delivered it', async () => {
+    const { result } = await loginAndSubscribe();
+    await act(async () => h.snapshotCb(cloudSnap({ watchedList: [{ id: 1, currentEp: 0 }] })));
+    await act(async () => result.current.setWatchedList([{ id: 1, currentEp: 4 }]));
+    h.docs.set('u1', cloudSnap({ watchedList: [{ id: 1, currentEp: 0 }, { id: 2 }], syncRevision: 2 }));
+    await tick(2000);
+    expect(h.setDoc.mock.calls[0][1].watchedList).toEqual([{ id: 1, currentEp: 4 }, { id: 2 }]);
+    expect(result.current.watchedList).toEqual([{ id: 1, currentEp: 4 }, { id: 2 }]);
+    expect(h.setDoc.mock.calls[0][1].syncRevision).toBe(3);
+  });
+
+  it('does not resurrect an anime deleted remotely while this device edited it offline', async () => {
+    const { result } = await loginAndSubscribe();
+    await act(async () => h.snapshotCb(cloudSnap({ watchedList: [{ id: 1, currentEp: 0 }] })));
+    await act(async () => result.current.setWatchedList([{ id: 1, currentEp: 4 }]));
+    h.docs.set('u1', cloudSnap({ watchedList: [], syncRevision: 2 }));
+    await tick(2000);
+    expect(h.setDoc).not.toHaveBeenCalled();
+    expect(result.current.syncConflict.conflicts[0].kind).toBe('deletion');
+    expect(result.current.watchedList[0].currentEp).toBe(4);
+    await act(async () => result.current.resolveConflict('cloud'));
+    expect(result.current.watchedList).toEqual([]);
+  });
+
+  it('serializes writes and preserves edits made during a slow commit', async () => {
+    const { result } = await loginAndSubscribe();
+    await act(async () => h.snapshotCb(cloudSnap({ watchedList: [{ id: 1, currentEp: 0 }] })));
+    let release;
+    h.setDoc.mockImplementationOnce(() => new Promise((resolve) => { release = resolve; }));
+    await act(async () => result.current.setWatchedList([{ id: 1, currentEp: 1 }]));
+    await tick(2000);
+    await act(async () => result.current.setWatchedList([{ id: 1, currentEp: 2 }]));
+    await act(async () => window.dispatchEvent(new Event('pagehide')));
+    await tick(2000);
+    expect(h.setDoc).toHaveBeenCalledTimes(1);
+    await act(async () => release());
+    await tick(2000);
+    expect(result.current.watchedList[0].currentEp).toBe(2);
+    expect(h.setDoc.mock.calls.at(-1)[1].watchedList[0].currentEp).toBe(2);
+  });
+
+  it('does not let an older queued snapshot roll back a committed transaction', async () => {
+    const { result } = await loginAndSubscribe();
+    await act(async () => h.snapshotCb(cloudSnap({ watchedList: [{ id: 1 }], syncRevision: 5 })));
+    let release;
+    h.setDoc.mockImplementationOnce(() => new Promise((resolve) => { release = resolve; }));
+    await act(async () => result.current.setWatchedList([{ id: 1 }, { id: 2 }]));
+    await tick(2000);
+    await act(async () => h.snapshotCb(cloudSnap({ watchedList: [{ id: 1 }], syncRevision: 5 })));
+    await act(async () => release());
+    expect(result.current.watchedList.map((a) => a.id)).toEqual([1, 2]);
+    await tick(2000);
+    expect(h.setDoc).toHaveBeenCalledTimes(1);
+  });
+
+  it('waits for a server snapshot after an offline cache miss', async () => {
+    const { result } = await loginAndSubscribe();
+    await act(async () => h.snapshotCb({ metadata: { fromCache: true, hasPendingWrites: false }, exists: () => false }));
+    await act(async () => result.current.setWatchedList([{ id: 1 }]));
+    await tick(2100);
+    expect(h.setDoc).not.toHaveBeenCalled();
+    expect(localStorage.getItem('anitracker-sync-base:u1')).toBeNull();
+    await act(async () => h.snapshotCb(cloudSnap({ watchedList: [{ id: 2 }] })));
+    await tick(2100);
+    expect(result.current.watchedList.map((a) => a.id)).toEqual([1]);
+    expect(result.current.syncConflict.conflicts[0].kind).toBe('missing-base');
+    expect(h.setDoc).not.toHaveBeenCalled();
+  });
+
+  it('applies a document deletion after loading it without reuploading the old library', async () => {
+    const { result } = await loginAndSubscribe();
+    await act(async () => h.snapshotCb(cloudSnap({ watchedList: [{ id: 1 }], syncRevision: 7 })));
+    await act(async () => h.snapshotCb({ metadata: { hasPendingWrites: false }, exists: () => false }));
+    await tick(2100);
+    expect(result.current.watchedList).toEqual([]);
+    expect(h.setDoc).not.toHaveBeenCalled();
+  });
+  it('accepts a recreated server document after its revision restarts', async () => {
+    const { result } = await loginAndSubscribe();
+    await act(async () => h.snapshotCb(cloudSnap({ watchedList: [{ id: 1 }], syncRevision: 7 })));
+    await act(async () => h.snapshotCb({ metadata: { hasPendingWrites: false }, exists: () => false }));
+    await act(async () => h.snapshotCb(cloudSnap({ watchedList: [{ id: 2 }], syncRevision: 1 })));
+    expect(result.current.watchedList).toEqual([{ id: 2 }]);
+  });
+
+  it('logout drains edits made while an earlier write was still running', async () => {
+    const { result } = await loginAndSubscribe();
+    await act(async () => h.snapshotCb(cloudSnap({ watchedList: [] })));
+    let release;
+    h.setDoc.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    await act(async () => result.current.setWatchedList([{ id: 1 }]));
+    await tick(2000);
+    await act(async () => result.current.setWatchedList([{ id: 1 }, { id: 2 }]));
+    let logout;
+    act(() => { logout = result.current.logout(); });
+    await act(async () => { release(); await logout; });
+    expect(h.setDoc.mock.calls.at(-1)[1].watchedList).toEqual([{ id: 1 }, { id: 2 }]);
+    expect(h.setDoc).toHaveBeenCalledTimes(2);
+    expect(result.current.user).toBeNull();
+  });
+
+  it('rechecks a revisionless document deletion observed while commit acknowledgment is pending', async () => {
+    const { result } = await loginAndSubscribe();
+    await act(async () => h.snapshotCb(cloudSnap({ watchedList: [{ id: 1 }], syncRevision: 7 })));
+    let release;
+    h.setDoc.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    await act(async () => result.current.setWatchedList([{ id: 1 }, { id: 2 }]));
+    await tick(2000);
+    const previousListener = h.snapshotCb;
+    await act(async () => h.snapshotCb({ metadata: { hasPendingWrites: false }, exists: () => false }));
+    await act(async () => release());
+    expect(h.snapshotCb).not.toBe(previousListener);
+    await act(async () => h.snapshotCb({ metadata: { hasPendingWrites: false }, exists: () => false }));
+    await tick(2100);
+    expect(result.current.watchedList).toEqual([]);
+    expect(h.setDoc).toHaveBeenCalledTimes(1);
+  });
+
+  it('remembers a deletion even if a recreated document replaces the pending snapshot', async () => {
+    const { result } = await loginAndSubscribe();
+    await act(async () => h.snapshotCb(cloudSnap({ watchedList: [{ id: 1 }], syncRevision: 7 })));
+    let release;
+    h.setDoc.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    await act(async () => result.current.setWatchedList([{ id: 1 }, { id: 2 }]));
+    await tick(2000);
+    const previousListener = h.snapshotCb;
+    await act(async () => h.snapshotCb({ metadata: { hasPendingWrites: false }, exists: () => false }));
+    await act(async () => h.snapshotCb(cloudSnap({ watchedList: [{ id: 3 }], syncRevision: 1 })));
+    await act(async () => release());
+    expect(h.snapshotCb).not.toBe(previousListener);
+    await act(async () => h.snapshotCb(cloudSnap({ watchedList: [{ id: 3 }], syncRevision: 1 })));
+    await tick(2100);
+    expect(result.current.watchedList).toEqual([{ id: 3 }]);
+    expect(h.setDoc).toHaveBeenCalledTimes(1);
+  });
+
 });

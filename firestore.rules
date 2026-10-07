@@ -1,23 +1,32 @@
 rules_version = '2';
-
-// Reglas de seguridad de Firestore para AniTracker.
-//
-// Este archivo es la referencia de lo que debe estar deployado en el proyecto
-// de Firebase (consola → Firestore → Reglas, o `firebase deploy --only
-// firestore:rules`). No se aplica solo por estar en el repo.
-//
-// El cliente escribe UN documento por usuario en `users/{uid}` con todo el
-// estado (schedule, watchedList, watchLater, customLists, schemaVersion,
-// updatedAt, updatedAtIso; si la biblioteca supera ~900 KB viaja comprimida en
-// libraryGz/libraryGzRev, ver src/cloudCodec.js). A propósito NO se valida la forma interna del
-// documento: reglas que enumeran claves o tipos rompen el sync en silencio
-// cuando el esquema del cliente evoluciona (los animes ganan campos nuevos,
-// p. ej. trailerUrl/streamingLinks), y el documento solo lo lee y escribe su
-// propio dueño.
+// Rules reference for protected sync. Netlify does not deploy this file.
+// Apply only through the approved transition after backing up active rules/data.
+// syncProtocol is separate from schemaVersion and the service-worker version.
 service cloud.firestore {
   match /databases/{database}/documents {
     match /users/{uid} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
+      function owner() {
+        return request.auth != null && request.auth.uid == uid;
+      }
+      function newProtocol() {
+        return request.resource.data.get('syncProtocol', 0) == 3
+          && request.resource.data.get('syncRevision', 0) is int
+          && request.resource.data.get('syncProtocolRevision', 0) == request.resource.data.syncRevision
+          && request.resource.data.syncRevision > 0
+          && request.resource.data.syncRevision <= 9007199254740991;
+      }
+      function nextRevision() {
+        let previous = resource.data.get('syncRevision', 0);
+        return previous is int && previous >= 0
+          && resource.data.get('syncProtocol', 3) == 3
+          && request.resource.data.syncRevision == previous + 1;
+      }
+      allow read: if owner();
+      allow create: if owner() && newProtocol()
+        && request.resource.data.syncRevision == 1;
+      allow update: if owner() && newProtocol() && nextRevision();
+      // Emptying the library is a normal revisioned update, not a doc deletion.
+      allow delete: if false;
     }
     match /{document=**} {
       allow read, write: if false;

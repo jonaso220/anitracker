@@ -76,7 +76,7 @@ describe('semana vacía', () => {
   it('con sesión, mientras no llegó la nube muestra "Trayendo tu semana…" en vez de la bienvenida', async () => {
     fb.state = { ...guest, user: { uid: 'u1' }, cloudLoaded: false };
     await renderApp();
-    expect(screen.getByRole('status')).toHaveTextContent('Trayendo tu semana…');
+    expect(screen.getByText('Trayendo tu semana…')).toHaveAttribute('role', 'status');
     expect(screen.queryByRole('heading', { name: 'Armá tu semana' })).not.toBeInTheDocument();
   });
 

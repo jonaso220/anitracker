@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { LOCAL_REV_KEY, readActiveLibrary, persistAccountLibrary, selectLibraryAccount, readSyncBase, writeSyncBase } from '../accountStorage';
-import { hashLibrary, resolveCloudSnapshot } from '../syncMerge';
+import { hashLibrary, inspectCloudSnapshot, chooseSyncConflicts } from '../syncMerge';
+import { checkpointSync, exportSyncRecovery } from '../syncRecovery';
 import { migrateLibrary } from '../idMigration';
-import { encodeLibrary, isCompressedDoc, decodeLibrary, LibraryTooLargeError } from '../cloudCodec';
+import { isCompressedDoc, decodeLibrary, LibraryTooLargeError } from '../cloudCodec';
+import { saveMergedLibrary, readCloudLibrary, serializeLibrary, SyncConflictError } from '../cloudSync';
 import { resolveAuthDomain, shouldRedirectGoogle } from '../authFlow';
 
 // Firebase config — these are public Firebase Web SDK keys (safe to commit).
@@ -37,7 +39,7 @@ const initFirebase = () => {
   initPromise = (async () => {
     const { initializeApp } = await import('firebase/app');
     const { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signOut, onAuthStateChanged, browserLocalPersistence, setPersistence } = await import('firebase/auth');
-    const { getFirestore, doc, setDoc, onSnapshot, serverTimestamp, deleteField, Bytes } = await import('firebase/firestore');
+    const { getFirestore, doc, runTransaction, onSnapshot, serverTimestamp, deleteField, Bytes } = await import('firebase/firestore');
 
     firebaseApp ||= initializeApp(FIREBASE_CONFIG);
     auth = getAuth(firebaseApp);
@@ -45,7 +47,7 @@ const initFirebase = () => {
     db = getFirestore(firebaseApp);
 
     firebaseAuth = { signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signOut, onAuthStateChanged };
-    firebaseDb = { doc, setDoc, onSnapshot, serverTimestamp, deleteField, Bytes };
+    firebaseDb = { doc, runTransaction, onSnapshot, serverTimestamp, deleteField, Bytes };
   })().catch((error) => { initPromise = null; throw error; });
   return initPromise;
 };
@@ -61,16 +63,6 @@ function authMessage(error) {
   }
 }
 
-const parseCloudField = (value, fallback) => {
-  if (value == null) return fallback;
-  if (typeof value !== 'string') return value;
-  try {
-    return JSON.parse(value);
-  } catch {
-    return fallback;
-  }
-};
-
 // Canonical serialization of the synced fields. Used to tell a genuine user
 // edit apart from the state change produced by applying a cloud snapshot: we
 // always set `lastSyncedRef` from the very data we put into state, so an echo
@@ -80,12 +72,7 @@ const parseCloudField = (value, fallback) => {
 // `finishedDate/droppedDate: undefined` on fresh search results, and Firestore
 // rejects any document containing `undefined` ("Unsupported field value"), so
 // saving the state objects directly made every save of the session fail.
-export const serializeData = (d) => JSON.stringify({
-  schedule: d.schedule,
-  watchedList: d.watchedList,
-  watchLater: d.watchLater,
-  customLists: d.customLists,
-});
+export const serializeData = serializeLibrary;
 const EMPTY_SYNC_JSON = serializeData({ schedule: {}, watchedList: [], watchLater: [], customLists: [] });
 
 // Timestamp (ISO) of the last local user edit. Only used as a legacy fallback
@@ -106,6 +93,12 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
   // True while saves are failing (rules, red, datos inválidos). Surfaced in the
   // header so a broken sync is visible instead of dying in la consola.
   const [syncError, setSyncError] = useState(false);
+  const [online, setOnline] = useState(() => navigator.onLine !== false);
+  const [syncedJson, setSyncedJson] = useState(null);
+  const [savePending, setSavePending] = useState(false);
+  const [syncConflict, setSyncConflict] = useState(null);
+  const conflictRef = useRef(null);
+  const requireReviewRef = useRef(false);
   // La biblioteca no entra en el documento de Firestore ni comprimida: no se
   // reintenta en loop, se avisa.
   const [syncTooLarge, setSyncTooLarge] = useState(false);
@@ -139,6 +132,9 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
   const prevJsonRef = useRef(null);
   const saveAttempts = useRef(0);
   const flushSaveRef = useRef(null);
+  const inFlightRef = useRef(null);
+  const applyCloudRef = useRef(null);
+  const cloudRevisionRef = useRef(-1);
 
   // Refs para que saveToCloud siempre lea los valores más recientes.
   const dataRef = useRef({ schedule, watchedList, watchLater, customLists });
@@ -149,38 +145,105 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
   // Record that the cloud holds exactly `json` for `uid`.
   const markSynced = useCallback((uid, json) => {
     lastSyncedRef.current = json;
+    setSyncedJson(json);
     syncBaseRef.current = hashLibrary(JSON.parse(json));
     writeSyncBase(uid, syncBaseRef.current);
+  }, []);
+
+  const blockConflict = useCallback((cloud) => {
+    const input = { base: syncBaseRef.current, local: dataRef.current, cloud, requireReview: requireReviewRef.current };
+    const decision = inspectCloudSnapshot(input);
+    conflictRef.current = input;
+    if (syncTimer.current) { clearTimeout(syncTimer.current); syncTimer.current = null; }
+    setSyncConflict({ conflicts: decision.conflicts, storageError: false });
+    setSyncing(false);
+  }, []);
+
+  const resolveConflict = useCallback((choice) => {
+    const pending = conflictRef.current;
+    const uid = hasLoadedUser.current;
+    if (!pending || !uid) return;
+    const input = { ...pending, local: dataRef.current };
+    try {
+      checkpointSync(uid, { ...input, choice });
+    } catch {
+      setSyncConflict({ conflicts: inspectCloudSnapshot(input).conflicts, storageError: true });
+      return;
+    }
+    const next = chooseSyncConflicts(input, choice);
+    conflictRef.current = null;
+    requireReviewRef.current = false;
+    setSyncConflict(null);
+    setSyncError(false);
+    setSyncTooLarge(false);
+    markSynced(uid, serializeData(input.cloud));
+    dataRef.current = next;
+    setSchedule(next.schedule); setWatchedList(next.watchedList);
+    setWatchLater(next.watchLater); setCustomLists(next.customLists);
+    if (serializeData(next) !== lastSyncedRef.current) {
+      setSyncing(true);
+      syncTimer.current = setTimeout(() => { syncTimer.current = null; flushSaveRef.current?.(); }, 0);
+    }
+  }, [markSynced, setSchedule, setWatchedList, setWatchLater, setCustomLists]);
+
+  const downloadRecovery = useCallback(() => {
+    const uid = hasLoadedUser.current || ownerRef.current;
+    if (!uid) return;
+    const pending = conflictRef.current;
+    const text = exportSyncRecovery(uid, { ...pending, local: dataRef.current, base: syncBaseRef.current });
+    const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+    const link = document.createElement('a'); link.href = url; link.download = 'anitracker-recuperacion.json'; link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }, []);
 
   // Returns 'ok', 'error' or 'too-large'.
   const saveToCloud = useCallback(async (uid, json) => {
     if (!firebaseDb || !db || !uid) return 'error';
     const session = sessionRef.current;
+    setSavePending(true);
     setSyncing(true);
     try {
-      // The payload comes from the canonical JSON instead of the state objects:
-      // the round-trip strips `undefined` values that Firestore rejects outright.
-      const updatedAtIso = new Date().toISOString();
-      const library = await encodeLibrary(json, updatedAtIso, firebaseDb);
-      await firebaseDb.setDoc(firebaseDb.doc(db, 'users', uid), {
-        schemaVersion: 2,
-        ...library,
-        updatedAt: firebaseDb.serverTimestamp(),
-        updatedAtIso,
-      }, { merge: true });
+      const saved = await saveMergedLibrary({
+        fs: firebaseDb, db, uid, local: JSON.parse(json), base: syncBaseRef.current,
+        isCurrent: () => session === sessionRef.current,
+      });
       if (session !== sessionRef.current) return 'error';
-      markSynced(uid, json);
+      cloudRevisionRef.current = saved.syncRevision;
+      // Rebase edits made while the transaction was running onto its result.
+      const rebaseBase = hashLibrary(JSON.parse(json));
+      const rebased = inspectCloudSnapshot({
+        base: rebaseBase, local: dataRef.current, cloud: JSON.parse(saved.json),
+      });
+      if (rebased.action === 'conflict') {
+        // Keep the pre-commit local snapshot as the comparison base across
+        // reloads; advancing to the committed cloud would hide this conflict.
+        syncBaseRef.current = rebaseBase;
+        writeSyncBase(uid, rebaseBase);
+        blockConflict(JSON.parse(saved.json));
+        return 'committed-conflict';
+      }
+      const next = rebased.data;
+      markSynced(uid, saved.json);
+      dataRef.current = next;
+      setSchedule(next.schedule);
+      setWatchedList(next.watchedList);
+      setWatchLater(next.watchLater);
+      setCustomLists(next.customLists);
       setSyncing(false);
       return 'ok';
     } catch (e) {
+      if (session !== sessionRef.current) return 'error';
+      if (e instanceof SyncConflictError) { blockConflict(e.cloud); return 'conflict'; }
       console.error('Save error:', e);
-      if (session === sessionRef.current) setSyncing(false);
+      setSyncing(false);
       return e instanceof LibraryTooLargeError ? 'too-large' : 'error';
+    } finally {
+      if (session === sessionRef.current) setSavePending(false);
     }
-  }, [markSynced]);
+  }, [markSynced, blockConflict, setSchedule, setWatchedList, setWatchLater, setCustomLists]);
 
   const scheduleSave = useCallback((delay) => {
+    if (conflictRef.current) return;
     if (syncTimer.current) clearTimeout(syncTimer.current);
     setSyncing(true);
     syncTimer.current = setTimeout(() => {
@@ -194,29 +257,54 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
   // failed save used to be marked as synced and never retried, so the cloud
   // doc went stale and clobbered local data on the next app open.
   const flushSave = useCallback(async () => {
+    if (conflictRef.current) return false;
     const uid = hasLoadedUser.current;
     if (!uid || lastSyncedRef.current === null) return false;
     const json = serializeData(dataRef.current);
     if (json === lastSyncedRef.current) { setSyncing(false); return true; }
     const session = sessionRef.current;
-    const result = await saveToCloud(uid, json);
-    if (session !== sessionRef.current) return false;
-    if (result === 'ok') {
-      saveAttempts.current = 0;
-      setSyncError(false);
-      setSyncTooLarge(false);
-      return true;
-    }
-    setSyncError(true);
-    if (result === 'too-large') {
-      // Reintentar no cambia nada: el próximo intento llega con la próxima edición.
-      setSyncTooLarge(true);
+    if (inFlightRef.current?.session === session) return inFlightRef.current.promise;
+    const flight = { session, pending: null, promise: null };
+    inFlightRef.current = flight;
+    flight.promise = (async () => {
+      const result = await saveToCloud(uid, json);
+      if (inFlightRef.current === flight) inFlightRef.current = null;
+      if (session !== sessionRef.current) return false;
+      // A listener event received before our commit must not roll it back.
+      // Outside a write, Firestore delivers snapshots in order; accept a new
+      // document whose revision restarted after deletion as well.
+      if (flight.sawDeletion) {
+        // Deletions have no revision. They may happen after the transaction
+        // committed but before its promise resolves. Read the server again
+        // instead of comparing a synthetic old revision and losing deletion.
+        retrySyncRef.current?.();
+        return false;
+      }
+      const pendingRevision = flight.pending?.syncRevision || 0;
+      const committed = result === 'ok' || result === 'committed-conflict';
+      if (flight.pending && (!committed || pendingRevision >= cloudRevisionRef.current)) {
+        applyCloudRef.current?.(uid, flight.pending);
+      }
+      if (result === 'conflict' || result === 'committed-conflict' || conflictRef.current) return false;
+      if (result === 'ok') {
+        saveAttempts.current = 0;
+        setSyncError(false);
+        setSyncTooLarge(false);
+        if (serializeData(dataRef.current) !== lastSyncedRef.current) scheduleSave(0);
+        return true;
+      }
+      setSyncError(true);
+      if (result === 'too-large') {
+        // Reintentar no cambia nada: el próximo intento llega con la próxima edición.
+        setSyncTooLarge(true);
+        return false;
+      }
+      saveAttempts.current += 1;
+      const delay = Math.min(RETRY_MAX_MS, RETRY_BASE_MS * 2 ** Math.min(saveAttempts.current - 1, 4));
+      scheduleSave(delay);
       return false;
-    }
-    saveAttempts.current += 1;
-    const delay = Math.min(RETRY_MAX_MS, RETRY_BASE_MS * 2 ** Math.min(saveAttempts.current - 1, 4));
-    scheduleSave(delay);
-    return false;
+    })();
+    return flight.promise;
   }, [saveToCloud, scheduleSave]);
   useEffect(() => { flushSaveRef.current = flushSave; }, [flushSave]);
 
@@ -229,25 +317,35 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
   // When both sides changed since the last sync, the libraries are merged
   // anime by anime (syncMerge.js) and the result is pushed back up.
   const applyCloudData = useCallback((uid, data) => {
+    const revision = Number.isSafeInteger(data.syncRevision) ? data.syncRevision : 0;
+    if (inFlightRef.current?.session === sessionRef.current) {
+      if (data._documentDeleted) inFlightRef.current.sawDeletion = true;
+      inFlightRef.current.pending = data;
+      return;
+    }
+    cloudRevisionRef.current = revision;
     const latest = dataRef.current;
-    const cloud = {
-      schedule:    data.schedule    != null ? parseCloudField(data.schedule, {})    : latest.schedule,
-      watchedList: data.watchedList != null ? parseCloudField(data.watchedList, []) : latest.watchedList,
-      watchLater:  data.watchLater  != null ? parseCloudField(data.watchLater, [])  : latest.watchLater,
-      customLists: data.customLists != null ? parseCloudField(data.customLists, []) : latest.customLists,
-    };
+    let cloud;
+    try { cloud = readCloudLibrary(data); } catch (error) {
+      console.error('Cloud data error:', error);
+      setSyncError(true);
+      return;
+    }
     // Lo sincronizado es lo que hay de verdad en la nube; la fusión trabaja
     // con los ids nuevos. Si la nube tenía ids viejos (la subió un dispositivo
     // sin actualizar), el resultado difiere de lo sincronizado y se vuelve a
     // subir ya migrado.
     const cloudJson = serializeData(cloud);
-    const { action, data: next } = resolveCloudSnapshot({
+    const { action, data: next } = inspectCloudSnapshot({
       base: syncBaseRef.current,
       local: latest,
       cloud: migrateLibrary(cloud).data,
-      localRev: localRevRef.current,
-      cloudRev: typeof data.updatedAtIso === 'string' ? data.updatedAtIso : '',
+      requireReview: requireReviewRef.current,
     });
+    if (action === 'conflict') { blockConflict(migrateLibrary(cloud).data); return; }
+    conflictRef.current = null;
+    setSyncConflict(null);
+    requireReviewRef.current = false;
     markSynced(uid, cloudJson);
     if (action === 'keep') {
       // Only this device changed since the last sync: push it up.
@@ -256,12 +354,14 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
     }
     // 'apply' puts the cloud data in state (an echo, never saved back);
     // 'merge' puts the fusion, which differs from the cloud and gets saved.
-    if (action === 'merge') dataRef.current = next;
+    dataRef.current = next;
     setSchedule(next.schedule);
     setWatchedList(next.watchedList);
     setWatchLater(next.watchLater);
     setCustomLists(next.customLists);
-  }, [setSchedule, setWatchedList, setWatchLater, setCustomLists, scheduleSave, markSynced]);
+  }, [setSchedule, setWatchedList, setWatchLater, setCustomLists, scheduleSave, markSynced, blockConflict]);
+
+  useEffect(() => { applyCloudRef.current = applyCloudData; }, [applyCloudData]);
 
   // Subscribe to the user's cloud doc in real time. The first snapshot acts as
   // the initial load; every later snapshot keeps this device in sync with
@@ -274,9 +374,15 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
     if (readRetryTimer.current) clearTimeout(readRetryTimer.current);
     if (syncTimer.current) { clearTimeout(syncTimer.current); syncTimer.current = null; }
     const session = ++sessionRef.current;
+    setSavePending(false);
+    cloudRevisionRef.current = -1;
     lastSyncedRef.current = null;
+    setSyncedJson(null);
+    conflictRef.current = null;
+    setSyncConflict(null);
     syncBaseRef.current = readSyncBase(uid);
     try {
+      requireReviewRef.current = !syncBaseRef.current && (initialAccount?.owner === uid || !!localStorage.getItem(`anitracker-account:${uid}`));
       const next = selectLibraryAccount(uid, ownerRef.current, dataRef.current, localRevRef.current);
       const switching = ownerRef.current && ownerRef.current !== uid;
       ownerRef.current = uid;
@@ -306,6 +412,7 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
     setCloudLoaded(false);
     cloudUnsub.current = firebaseDb.onSnapshot(
       firebaseDb.doc(db, 'users', uid),
+      { includeMetadataChanges: true },
       (snap) => {
         if (session !== sessionRef.current) return;
         // Skip echoes of our own not-yet-acked local writes: applying them is a
@@ -313,6 +420,9 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
         // version (hasPendingWrites === false), which is harmless for our own
         // writes and is exactly what we want for remote changes.
         if (snap.metadata.hasPendingWrites) return;
+        // A cache miss is not proof that the server document is empty. Wait
+        // for an authoritative snapshot before advancing the persisted base.
+        if (snap.metadata.fromCache) { setCloudLoaded(true); return; }
         const seq = ++snapshotSeq.current;
         setSyncError(false);
         if (snap.exists()) {
@@ -322,7 +432,7 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
             // drop the result if a newer snapshot or another session got in.
             decodeLibrary(data).then((fields) => {
               if (session !== sessionRef.current || seq !== snapshotSeq.current) return;
-              applyCloudData(uid, { ...fields, updatedAtIso: data.updatedAtIso });
+              applyCloudData(uid, { ...fields, syncRevision: data.syncRevision, updatedAtIso: data.updatedAtIso });
               setSyncing(false);
               setCloudLoaded(true);
             }).catch((e) => {
@@ -335,11 +445,9 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
             return;
           }
           applyCloudData(uid, data);
-        } else if (lastSyncedRef.current === null) {
-          // No cloud doc yet (new account): unlock saving and push any
-          // existing local data up right away (no-op if local is empty).
-          markSynced(uid, EMPTY_SYNC_JSON);
-          scheduleSave(0);
+        } else {
+          // A deleted document is an empty remote library, even after login.
+          applyCloudData(uid, { ...JSON.parse(EMPTY_SYNC_JSON), syncRevision: Math.max(0, cloudRevisionRef.current), _documentDeleted: true });
         }
         setSyncing(false);
         setCloudLoaded(true);
@@ -354,7 +462,7 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
         readRetryTimer.current = setTimeout(() => retrySyncRef.current?.(), RETRY_MAX_MS);
       }
     );
-  }, [applyCloudData, scheduleSave, markSynced, setSchedule, setWatchedList, setWatchLater, setCustomLists]);
+  }, [applyCloudData, initialAccount, setSchedule, setWatchedList, setWatchLater, setCustomLists]);
 
   const retrySync = useCallback(() => {
     if (hasLoadedUser.current) subscribeToCloud(hasLoadedUser.current);
@@ -363,11 +471,15 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
 
   const unsubscribeFromCloud = useCallback(() => {
     sessionRef.current += 1;
+    setSavePending(false);
     if (readRetryTimer.current) clearTimeout(readRetryTimer.current);
     if (syncTimer.current) { clearTimeout(syncTimer.current); syncTimer.current = null; }
     if (cloudUnsub.current) { cloudUnsub.current(); cloudUnsub.current = null; }
     hasLoadedUser.current = null;
     lastSyncedRef.current = null;
+    setSyncedJson(null);
+    conflictRef.current = null;
+    setSyncConflict(null);
     syncBaseRef.current = null;
     saveAttempts.current = 0;
     setSyncError(false);
@@ -444,6 +556,7 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
     }
 
     if (!user) return;
+    if (conflictRef.current) { blockConflict(conflictRef.current.cloud); return; }
     // Don't push anything until we've seen the cloud state at least once —
     // otherwise we could overwrite newer cloud data we haven't loaded yet.
     if (lastSyncedRef.current === null) return;
@@ -457,7 +570,7 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
     }
 
     scheduleSave(SAVE_DEBOUNCE_MS);
-  }, [schedule, watchedList, watchLater, customLists, user, scheduleSave]);
+  }, [schedule, watchedList, watchLater, customLists, user, scheduleSave, blockConflict]);
 
   // Flush a pending save when the tab is hidden or unloaded. The 2s debounce
   // above can be lost on mobile (iOS suspends timers when the app is
@@ -465,17 +578,23 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
   // apps would never reach the cloud. Saving on `visibilitychange`/`pagehide`
   // gives the write a chance to go out while the page is still alive.
   useEffect(() => {
-    if (!user) return;
     const flush = () => {
+      if (!user) return;
       if (syncTimer.current) { clearTimeout(syncTimer.current); syncTimer.current = null; }
       flushSaveRef.current?.(); // no-op if already in sync
     };
     const onVisibility = () => { if (document.visibilityState === 'hidden') flush(); };
+    const onOnline = () => { setOnline(true); retrySyncRef.current?.(); };
+    const onOffline = () => setOnline(false);
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
     document.addEventListener('visibilitychange', onVisibility);
     window.addEventListener('pagehide', flush);
     return () => {
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('pagehide', flush);
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
     };
   }, [user]);
 
@@ -516,12 +635,19 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
     // Subir lo pendiente antes de cortar la sesión (el debounce de 2 s o un
     // error de red lo dejarían sin subir). Si no llega a tiempo no se pierde:
     // queda en este dispositivo y se fusiona al volver a entrar.
-    let unsynced = false;
+    let unsynced = !!conflictRef.current;
     if (hasLoadedUser.current && lastSyncedRef.current !== null
       && serializeData(dataRef.current) !== lastSyncedRef.current) {
       if (syncTimer.current) { clearTimeout(syncTimer.current); syncTimer.current = null; }
       const timeout = new Promise((resolve) => { setTimeout(() => resolve(false), LOGOUT_FLUSH_TIMEOUT_MS); });
-      unsynced = !(await Promise.race([flushSave(), timeout]));
+      const session = sessionRef.current;
+      const drain = async () => {
+        do {
+          if (!(await flushSave()) || session !== sessionRef.current) return false;
+        } while (serializeData(dataRef.current) !== lastSyncedRef.current);
+        return true;
+      };
+      unsynced = !(await Promise.race([drain(), timeout]));
     }
     try {
       persistAccountLibrary(ownerRef.current, dataRef.current, localRevRef.current);
@@ -530,12 +656,15 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
       window.dispatchEvent(new Event('anitracker-account-changed'));
       setUser(null);
       if (unsynced) {
-        setAuthError('Cerraste sesión con cambios sin subir. Quedaron guardados en este dispositivo y se van a sincronizar la próxima vez que entres con esta cuenta.');
+        setAuthError('Cerraste sesión con cambios sin subir. Quedaron guardados en este dispositivo. Revisá la sincronización al volver a entrar con esta cuenta.');
       }
     } catch {
       setAuthError('No se pudo cerrar la sesión. Tus datos siguen en esta cuenta. Volvé a intentarlo.');
     }
   }, [flushSave, unsubscribeFromCloud]);
 
-  return { user, cloudLoaded, syncing, syncError, syncTooLarge, retrySync, authError, authReady, authBusy, loginWithGoogle, logout, FIREBASE_ENABLED };
+  const currentJson = serializeData({ schedule, watchedList, watchLater, customLists });
+  const syncStatus = !online ? 'offline' : syncConflict ? 'conflict'
+    : syncError || savePending || !cloudLoaded || currentJson !== syncedJson ? 'pending' : 'synced';
+  return { user, cloudLoaded, syncing, syncError, syncTooLarge, syncStatus, syncConflict, resolveConflict, downloadRecovery, retrySync, authError, authReady, authBusy, loginWithGoogle, logout, FIREBASE_ENABLED };
 }

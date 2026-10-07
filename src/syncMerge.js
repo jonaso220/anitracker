@@ -7,8 +7,6 @@
 // Así un cambio hecho en un solo lado nunca se pierde, sin depender de relojes.
 import { daysOfWeek } from './constants';
 
-const MAIN_PREFIXES = ['s:', 'w', 'l'];
-
 // JSON con claves ordenadas: Firestore no conserva el orden de los mapas, así
 // que la misma entrada leída de la nube y de local debe dar la misma huella.
 export function stableStringify(value) {
@@ -72,7 +70,14 @@ export function libraryEntries(lib) {
 /** Huella compacta de una biblioteca: { clave: hash }. Es lo que se guarda como base. */
 export function hashLibrary(lib) {
   const out = {};
-  for (const [key, value] of libraryEntries(lib)) out[key] = hashValue(value);
+  for (const [key, value] of libraryEntries(lib)) {
+    out[key] = hashValue(value);
+    if (isObject(value)) {
+      for (const [field, data] of Object.entries(value)) {
+        if (data !== undefined) out[`f|${key}|${field}`] = hashValue(data);
+      }
+    }
+  }
   return out;
 }
 
@@ -87,14 +92,13 @@ const hasContent = (hashes) => Object.keys(hashes).some((k) => !k.startsWith('o|
 
 /**
  * Fusión a tres vías. Por entrada: si solo cambió un lado gana ese lado; si
- * cambiaron los dos gana `local` (el dispositivo en uso), y una modificación
- * gana a un borrado (salvo que el anime se haya movido a otro lugar).
+ * cambiaron campos distintos conserva ambos; en el mismo campo gana `local`.
+ * El borrado de una entrada conocida gana a una edición offline: no resucita.
  */
 export function mergeLibraries({ base = {}, local, cloud }) {
   const L = libraryEntries(local);
   const C = libraryEntries(cloud);
   const merged = new Map();
-  const resurrected = new Set();
 
   for (const key of new Set([...C.keys(), ...L.keys()])) {
     const l = L.get(key);
@@ -106,24 +110,20 @@ export function mergeLibraries({ base = {}, local, cloud }) {
     if (hl === hc) value = l;
     else if (hl === b) value = c;
     else if (hc === b) value = l;
-    else if (l === undefined) { value = c; resurrected.add(key); }
-    else if (c === undefined) { value = l; resurrected.add(key); }
-    else value = l;
+    else if (b !== undefined && (l === undefined || c === undefined)) value = undefined;
+    else if (l === undefined) value = c;
+    else if (c === undefined) value = l;
+    else if (isObject(l) && isObject(c)) {
+      value = {};
+      for (const field of new Set([...Object.keys(l), ...Object.keys(c)])) {
+        const before = base[`f|${key}|${field}`];
+        const localHash = l[field] === undefined ? undefined : hashValue(l[field]);
+        const hasFieldBase = Object.hasOwn(base, `f|${key}|id`);
+        const chosen = hasFieldBase && localHash === before ? c[field] : l[field];
+        if (chosen !== undefined) value[field] = chosen;
+      }
+    } else value = l;
     if (value !== undefined) merged.set(key, value);
-  }
-
-  // Un anime borrado en un lado y editado en el otro vuelve, salvo que ese
-  // mismo borrado haya sido un movimiento (ej. de Lunes a Vistos).
-  const isMain = (container) => MAIN_PREFIXES.some((p) => (p.endsWith(':') ? container.startsWith(p) : container === p));
-  const mainHomes = new Map();
-  for (const key of merged.keys()) {
-    const [container, id] = key.split('|');
-    if (container === 'o' || container === 'm' || !isMain(container) || resurrected.has(key)) continue;
-    mainHomes.set(id, true);
-  }
-  for (const key of resurrected) {
-    const [container, id] = key.split('|');
-    if (container !== 'o' && container !== 'm' && isMain(container) && mainHomes.has(id)) merged.delete(key);
   }
 
   return rebuildLibrary(merged, [C, L]);
@@ -222,4 +222,91 @@ export function resolveCloudSnapshot({ base, local, cloud, localRev, cloudRev })
   if (sameHashes(localHashes, effectiveBase)) return { action: 'apply', data: cloud };
   if (sameHashes(cloudHashes, effectiveBase)) return { action: 'keep', data: local };
   return { action: 'merge', data: mergeLibraries({ base: effectiveBase, local, cloud }) };
+}
+
+// The automatic merge above is also used for rebasing edits made during a
+// save. Cloud boundaries use this stricter inspection: uncertainty is shown
+// to the owner instead of silently choosing one device's value.
+export function inspectCloudSnapshot({ base, local, cloud, requireReview = false }) {
+  const L = libraryEntries(local), C = libraryEntries(cloud);
+  if (sameHashes(hashLibrary(local), hashLibrary(cloud))) return { action: 'apply', data: cloud, conflicts: [] };
+  if (!base && (requireReview || hasContent(hashLibrary(local)))) {
+    return { action: 'conflict', data: local, conflicts: [{ key: '*', kind: 'missing-base', local, cloud }] };
+  }
+  if (!base) return { action: 'apply', data: cloud, conflicts: [] };
+  const conflicts = [];
+  const listConflicts = new Set();
+  const localLists = new Map((local.customLists || []).map(list => [String(list.id), list]));
+  const cloudLists = new Map((cloud.customLists || []).map(list => [String(list.id), list]));
+  const belongsTo = (key, id) => key === `m|${id}` || key === `o|c:${id}` || key.startsWith(`c:${id}|`);
+  for (const id of new Set([...localLists.keys(), ...cloudLists.keys()])) {
+    const l = localLists.get(id), c = cloudLists.get(id);
+    if (!base[`m|${id}`] || (!!l === !!c)) continue;
+    const present = l ? L : C;
+    const changed = [...new Set([...Object.keys(base), ...present.keys()])].some(key => {
+      if (!belongsTo(key, id)) return false;
+      const value = present.get(key);
+      return (value === undefined ? undefined : hashValue(value)) !== base[key];
+    });
+    if (changed) {
+      listConflicts.add(id);
+      conflicts.push({ key: `list|${id}`, kind: 'list-deletion', label: (l || c).name, local: l, cloud: c });
+    }
+  }
+  for (const key of new Set([...L.keys(), ...C.keys()])) {
+    // Ordering is best-effort; rebuildLibrary retains all surviving members.
+    if (key.startsWith('o|')) continue;
+    if ([...listConflicts].some(id => belongsTo(key, id))) continue;
+    const l = L.get(key), c = C.get(key), b = base?.[key];
+    const hl = l === undefined ? undefined : hashValue(l), hc = c === undefined ? undefined : hashValue(c);
+    if (hl === hc || hl === b || hc === b) continue;
+    const container = key.slice(0, key.indexOf('|'));
+    const location = container.startsWith('s:') ? `Semana · ${container.slice(2)}`
+      : container.startsWith('c:') ? (localLists.get(container.slice(2)) || cloudLists.get(container.slice(2)))?.name
+        : container === 'w' ? 'Vistas' : container === 'l' ? 'Después' : 'Listas';
+    const label = `${l?.title || c?.title || l?.name || c?.name || key} · ${location || 'Lista'}`;
+    if (l === undefined || c === undefined) {
+      if (b !== undefined) conflicts.push({ key, kind: 'deletion', label, local: l, cloud: c });
+    } else if (isObject(l) && isObject(c) && Object.hasOwn(base || {}, `f|${key}|id`)) {
+      for (const field of new Set([...Object.keys(l), ...Object.keys(c)])) {
+        const before = base[`f|${key}|${field}`];
+        const lh = l[field] === undefined ? undefined : hashValue(l[field]);
+        const ch = c[field] === undefined ? undefined : hashValue(c[field]);
+        if (lh !== ch && lh !== before && ch !== before) conflicts.push({ key, field, kind: 'field', label, local: l[field], cloud: c[field] });
+      }
+    } else conflicts.push({ key, kind: 'legacy-or-entry', label, local: l, cloud: c });
+  }
+  if (conflicts.length) return { action: 'conflict', data: local, conflicts };
+  return { ...resolveCloudSnapshot({ base, local, cloud }), conflicts };
+}
+
+// Resolve only the conflicts displayed for these exact snapshots. All other
+// fields keep the ordinary three-way merge. The caller checkpoints both sides
+// and uses the reviewed cloud as the base for the next server transaction.
+export function chooseSyncConflicts(input, choice) {
+  if (!['local', 'cloud'].includes(choice)) throw new Error('Invalid conflict choice');
+  const { conflicts } = inspectCloudSnapshot(input);
+  if (conflicts.some(c => c.key === '*')) return input[choice];
+  const entries = libraryEntries(mergeLibraries(input));
+  for (const conflict of conflicts) {
+    const value = conflict[choice];
+    if (conflict.kind === 'list-deletion') {
+      const id = conflict.key.slice(5);
+      for (const key of entries.keys()) {
+        if (key === `m|${id}` || key === `o|c:${id}` || key.startsWith(`c:${id}|`)) entries.delete(key);
+      }
+      if (value) {
+        const source = libraryEntries({ customLists: [value] });
+        for (const [key, data] of source) {
+          if (key === `m|${id}` || key === `o|c:${id}` || key.startsWith(`c:${id}|`)) entries.set(key, data);
+        }
+      }
+    } else if (conflict.field) {
+      const entry = { ...entries.get(conflict.key) };
+      if (value === undefined) delete entry[conflict.field]; else entry[conflict.field] = value;
+      entries.set(conflict.key, entry);
+    } else if (value === undefined) entries.delete(conflict.key);
+    else entries.set(conflict.key, value);
+  }
+  return rebuildLibrary(entries, [libraryEntries(input.cloud), libraryEntries(input.local)]);
 }

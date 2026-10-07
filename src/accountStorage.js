@@ -49,7 +49,9 @@ export function readSyncBase(uid) {
   try {
     const raw = localStorage.getItem(syncBaseKey(uid));
     const value = raw ? JSON.parse(raw) : null;
-    return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+    return value && typeof value === 'object' && !Array.isArray(value)
+      && ['o|w', 'o|l', 'o|lists'].every(key => typeof value[key] === 'string')
+      && Object.values(value).every(hash => typeof hash === 'string') ? value : null;
   } catch { return null; }
 }
 
