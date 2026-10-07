@@ -104,3 +104,18 @@ describe('semana vacía', () => {
     expect(JSON.parse(localStorage.getItem('anitracker-discovery-ignored'))).toEqual([800150001]);
   });
 });
+
+it('keeps the weekly library and history while removing Today and Stats navigation', async () => {
+  localStorage.clear(); fb.state = { ...guest };
+  localStorage.setItem('animeSchedule', JSON.stringify({ ...emptyWeek(), Lunes: [{ id: 7, title: 'Prueba semanal', currentEp: 2, episodes: 12 }] }));
+  localStorage.setItem('watchedAnimes', JSON.stringify([{ id: 8, title: 'Historial conservado', finished: true, userRating: 4 }]));
+  await renderApp();
+  expect(screen.getByRole('region', { name: 'Horario semanal' })).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Para hoy' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('tab', { name: 'Stats' })).not.toBeInTheDocument();
+  expect(screen.getAllByRole('tab')).toHaveLength(6);
+  fireEvent.click(screen.getByRole('tab', { name: /Vistas/ }));
+  expect(await screen.findByText('Historial conservado')).toBeInTheDocument();
+  expect(JSON.parse(localStorage.getItem('watchedAnimes'))[0].userRating).toBe(4);
+  cleanup(); localStorage.clear();
+});

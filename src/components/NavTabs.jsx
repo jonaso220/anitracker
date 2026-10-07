@@ -7,7 +7,6 @@ const TABS = [
   { id: 'lists',      icon: '📋', labelKey: 'Listas' },
   { id: 'season',     icon: '🌸', labelKey: 'Temporada' },
   { id: 'directory',  icon: '📚', labelKey: 'Directorio' },
-  { id: 'stats',      icon: '📊', labelKey: 'Stats' },
 ];
 
 const NavTabs = ({ activeTab, counts, onChange }) => {

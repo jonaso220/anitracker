@@ -18,7 +18,6 @@ const WatchedView = lazy(() => import('./components/views/WatchedView'));
 const SeasonSection = lazy(() => import('./components/SeasonSection'));
 const DirectorySection = lazy(() => import('./components/DirectorySection'));
 const CustomListsTab = lazy(() => import('./components/CustomListsTab'));
-const StatsPanel = lazy(() => import('./components/StatsPanel'));
 const SearchModal = lazy(() => import('./components/modals/SearchModal'));
 const AnimeDetailModal = lazy(() => import('./components/modals/AnimeDetailModal'));
 const DayPickerModal = lazy(() => import('./components/modals/DayPickerModal'));
@@ -39,7 +38,6 @@ import { useDiscovery } from './hooks/useDiscovery';
 import { useDirectory } from './hooks/useDirectory';
 import { useServiceWorkerUpdate } from './hooks/useServiceWorkerUpdate';
 import { daysOfWeek } from './constants';
-import { totalTrackedEpisodes } from './tracking';
 import { buildBackup } from './utils';
 import { readActiveLibrary } from './accountStorage';
 import { migrateSchedule, migrateList, migrateCustomLists, migrateDiscoveryIds } from './idMigration';
@@ -224,34 +222,6 @@ export default function AnimeTracker() {
   // Semana sin nada (ni en pausa): bienvenida en vez de siete días vacíos.
   const weekEmpty = useMemo(() => daysOfWeek.every((d) => !(schedule[d] || []).length), [schedule]);
 
-  // --- Stats ---
-  const stats = useMemo(() => {
-    const allSchedule = daysOfWeek.flatMap((d) => schedule[d] || []);
-    const allAnime = [...allSchedule, ...watchedList, ...watchLater];
-    const genreCount = {};
-    allAnime.forEach((a) => (a.genres || []).forEach((g) => { genreCount[g] = (genreCount[g] || 0) + 1; }));
-    const rated = allAnime.filter((a) => a.userRating > 0);
-    // ratingDist[i] = number of anime whose userRating rounds to (i + 1), i.e. ratings 1..10
-    const ratingDist = Array.from({ length: 10 }, () => 0);
-    rated.forEach((a) => {
-      const r = Math.round(a.userRating);
-      if (r >= 1 && r <= 10) ratingDist[r - 1] += 1;
-    });
-    return {
-      totalSchedule: allSchedule.length,
-      totalWatched: watchedList.length,
-      totalWatchLater: watchLater.length,
-      finished: watchedList.filter((a) => a.finished).length,
-      dropped: watchedList.filter((a) => !a.finished).length,
-      totalEps: allAnime.reduce((sum, a) => sum + totalTrackedEpisodes(a), 0),
-      avgRating: rated.length > 0 ? (rated.reduce((s, a) => s + a.userRating, 0) / rated.length).toFixed(1) : '—',
-      topGenres: Object.entries(genreCount).sort((a, b) => b[1] - a[1]).slice(0, 8),
-      allTotal: allAnime.length,
-      ratingDist,
-      ratedCount: rated.length,
-    };
-  }, [schedule, watchedList, watchLater]);
-
   return (
     <div className={`anime-tracker ${darkMode ? 'dark' : 'light'}`}>
       <Header
@@ -362,7 +332,6 @@ export default function AnimeTracker() {
           />
         )}
 
-        {activeTab === 'stats' && <StatsPanel stats={stats} />}
         </Suspense>
       </main>
 

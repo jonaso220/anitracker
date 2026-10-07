@@ -1,6 +1,5 @@
 import React, { useCallback, useMemo } from 'react';
 import AnimeCard from '../AnimeCard';
-import TodayPanel from '../TodayPanel';
 import ApiErrorState from '../ApiErrorState';
 import { daysOfWeek, dayEmojis } from '../../constants';
 
@@ -28,18 +27,9 @@ const ScheduleView = ({
   const openPaused = useCallback((_e, anime) => {
     setShowAnimeDetail({ ...anime, _isWatchLater: false, _isWatched: false });
   }, [setShowAnimeDetail]);
-  const openFromAgenda = useCallback((anime) => {
-    setShowAnimeDetail({ ...anime, _isWatchLater: false, _isWatched: false, _isSeason: false });
-  }, [setShowAnimeDetail]);
 
   return (
     <div className="schedule-rows" role="region" aria-label="Horario semanal">
-      <TodayPanel
-        schedule={schedule}
-        airingData={airingData}
-        onDetail={openFromAgenda}
-        onIncrementEpisode={onQuickEpisode}
-      />
       {airingError && <ApiErrorState error={airingError} onRetry={retryAiring} />}
       {daysOfWeek.map((day, i) => {
         const dayItems = schedule[day] || [];
