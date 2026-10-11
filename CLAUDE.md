@@ -246,6 +246,19 @@ Vitest + Testing Library (jsdom), setup en `src/test/setup.js`. Al tocar
   Firebase suma ~60 kB gzip para las mismas funciones (Dependabot lo ignora).
   Ya no hace falta comparar a mano: `npm run size` (y CI) falla si el chunk de
   Firebase se pasa del presupuesto de `scripts/check-bundle-size.mjs`.
+  **Y subirlo tampoco arregla la auditoría**: incluso el último
+  `@firebase/firestore` (4.18.0) sigue pidiendo `@grpc/grpc-js: ~1.9.0`, que es
+  justo la versión vulnerable. Pasar a 13.x cuesta ~60 kB y no cierra el aviso.
+- **`overrides` de `@grpc/grpc-js` (`^1.14.6`)**: está solo para que
+  `npm audit` quede limpio. `@grpc/grpc-js` es el transporte gRPC del SDK de
+  Firestore para **Node**: el bundle del navegador usa WebChannel y no incluye
+  ese código (verificado: no aparece en `dist/assets`), y los dos avisos son de
+  comportamiento de **servidor** gRPC (`getAuthContext` y mensajes de error de
+  los handlers), que esta PWA nunca ejecuta. El override deja el bundle
+  byte-idéntico; si en algún momento se agrega código Node que use Firestore,
+  revisar esto antes.
+- **No corras `npm audit fix --force`**: el "fix" que propone es instalar
+  `firebase@9.14.0`, un downgrade de tres majors.
 - **Chunks**: Vite 8 usa Rolldown; `vendor` (React) y `firebase` se definen
   en `build.rolldownOptions.output.codeSplitting.groups` (ya no existe
   `manualChunks` como objeto).
