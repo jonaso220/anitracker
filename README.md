@@ -35,7 +35,9 @@ opcional en la nube.
   puntuaciones y géneros favoritos.
 - **💾 Copia de seguridad** — exportá/importá todos tus datos en un `.json`.
 - **📥 Importar desde AniList** — traé tu lista por nombre de usuario.
-- **☁️ Sync con Firebase** — login con Google y guardado en la nube (opcional).
+- **☁️ Sync con Firebase** — login con Google y guardado en la nube (opcional),
+  con estado de sincronización a la vista y resolución guiada de conflictos
+  entre dispositivos (podés descargar ambas versiones antes de elegir).
 - **🌓 Tema claro/oscuro** y **📱 PWA** instalable con soporte offline.
 
 ## Stack
@@ -162,8 +164,9 @@ recargar a la fuerza.
 
 El núcleo de lógica pura está migrado a TypeScript y se chequea en modo
 `strict` (`npm run typecheck`): `constants`, `schemas/anime`, `libraryEdits`,
-`tracking`, `agenda`, `services/searchText`, `idMigration`, `cloudCodec` y
-`utils`. El resto de la app sigue en JavaScript y se migra **de a poco**.
+`tracking`, `agenda`, `services/searchText`, `idMigration`, `syncMerge`,
+`cloudCodec` y `utils`. El resto de la app sigue en JavaScript y se migra
+**de a poco**.
 
 Para convertir un archivo: cambiale la extensión a `.ts` (o `.tsx`) y arreglá lo
 que reporte `npm run typecheck`. Los imports son sin extensión, así que no hay

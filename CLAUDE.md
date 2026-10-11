@@ -46,17 +46,33 @@ store global ni context; el estado vive en `App.jsx` y baja por props.
     TVMaze y TMDB numeran por temporada (`season` en la info): la tarjeta
     muestra "T38 · Ep. 2" y la agenda solo cuenta pendientes si coincide con
     la temporada que se sigue (`airingMatchesProgress` en `tracking.ts`).
-  - `useFirebase` — auth con Google + auto-sync a Firestore con cuidado de
-    races (flags de carga, versionado de loads). Cada snapshot se resuelve con
-    `syncMerge.js`: fusión a tres vías por anime contra la *base* (huella de lo
-    último sincronizado en este dispositivo), así un cambio hecho en un solo
-    lado nunca se pierde y el reloj del dispositivo no decide. Sin base (cuenta
-    que nunca sincronizó acá, p. ej. datos de invitado) se fusiona todo.
-    `cloudCodec.ts` comprime la biblioteca con gzip si supera ~900 KB (límite
-    de 1 MiB por documento); al cerrar sesión se sube lo pendiente primero.
-    `cloudLoaded` avisa cuándo llegó el primer snapshot de la sesión: hasta
-    entonces una semana vacía puede ser solo que todavía no bajó (App muestra
-    "Trayendo tu semana…" en vez de la bienvenida `WeekOnboarding`).
+  - `useFirebase` — compositor de la auth y el sync; mantiene la API pública
+    que consume `App.jsx`. La lógica está partida en dos hooks, cada uno con una
+    responsabilidad:
+    - `useCloudSync` — suscripción a Firestore, guardado y conflictos. Cada
+      snapshot se resuelve con `syncMerge.ts`: fusión a tres vías por anime
+      contra la *base* (huella de lo último sincronizado en este dispositivo),
+      así un cambio hecho en un solo lado nunca se pierde y el reloj del
+      dispositivo no decide. La base guarda también una huella **por campo**
+      (`f|clave|campo`), así que dos dispositivos que tocaron campos distintos
+      se fusionan solos; si tocaron el mismo campo, o hay un borrado contra una
+      edición, la sincronización **se pausa** y el usuario elige (`SyncStatus` →
+      `chooseSyncConflicts`, con checkpoint y export en `syncRecovery.js`).
+      El guardado pasa por `cloudSync.js`, que lee y fusiona **dentro de una
+      transacción** y sella `syncProtocol`/`syncRevision` en cada escritura. Sin
+      base (cuenta que nunca sincronizó acá, p. ej. datos de invitado) se
+      fusiona todo. `cloudCodec.ts` comprime la biblioteca con gzip si supera
+      ~900 KB (límite de 1 MiB por documento); al cerrar sesión se sube lo
+      pendiente primero. `cloudLoaded` avisa cuándo llegó el primer snapshot de
+      la sesión: hasta entonces una semana vacía puede ser solo que todavía no
+      bajó (App muestra "Trayendo tu semana…" en vez de la bienvenida
+      `WeekOnboarding`).
+    - `useAuth` — estado y acciones de la sesión de Google (`loginWithGoogle`).
+    `useFirebase` se queda con lo que necesita a los dos a la vez: el ciclo de
+    vida de la sesión (`onAuthStateChanged` → suscribir/desuscribir la nube) y
+    `logout` (sube lo pendiente antes de cortar sesión). `firebaseClient.js`
+    aporta la config, la inicialización perezosa del SDK (con `runTransaction`),
+    `authMessage` y `serializeData`.
   - `useDirectory` — catálogo navegable ("Directorio") con filtros de AniList
     (género, demografía, formato, estado, año, temporada, orden) y paginado
     acumulativo con "cargar más".
@@ -149,8 +165,8 @@ con `strict`; los `.js`/`.jsx` siguen sin chequear (`allowJs: true`,
 `checkJs: false` en `tsconfig.json`).
 
 Ya migrados: `constants`, `types/anime`, `schemas/anime`, `libraryEdits`,
-`tracking`, `agenda`, `services/searchText`, `idMigration`, `cloudCodec`,
-`utils`.
+`tracking`, `agenda`, `services/searchText`, `idMigration`, `syncMerge`,
+`cloudCodec`, `utils`.
 
 **Para convertir un archivo**: cambiale la extensión a `.ts` (o `.tsx`) y
 arreglá lo que reporte `npm run typecheck`. Los imports son sin extensión y
@@ -186,6 +202,13 @@ Vitest + Testing Library (jsdom), setup en `src/test/setup.js`. Al tocar
   `.env.example`) con *fallback* al proyecto público compartido.
 - TMDB es opcional: sin `VITE_TMDB_API_KEY` la fuente no aparece en la
   búsqueda ni se consultan providers.
+- **Protocolo de sync** (`SYNC_PROTOCOL` en `cloudSync.js`): cada documento
+  lleva `syncProtocol` y un `syncRevision` monotónico. Un documento con un
+  protocolo **más nuevo** se rechaza en vez de degradarlo, y una revisión
+  inválida o agotada aborta el guardado; subí `SYNC_PROTOCOL` solo si cambia la
+  forma del documento de manera incompatible. Al leer, la base vieja (v28, sin
+  huellas por campo) exige revisión antes de escribir: `src/test/fixtures/`
+  guarda una copia congelada para probar esa compatibilidad.
 - **Firebase fijado en `~12.14`**: desde 12.15 (Firestore 4.16) el chunk de
   Firebase suma ~60 kB gzip para las mismas funciones (Dependabot lo ignora).
   Ya no hace falta comparar a mano: `npm run size` (y CI) falla si el chunk de

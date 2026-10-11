@@ -44,7 +44,7 @@ export function selectLibraryAccount(uid, owner, data, rev) {
 }
 
 // Huella de lo último que este dispositivo supo que había en la nube para una
-// cuenta (ver syncMerge.js). Sin base, la cuenta nunca sincronizó acá.
+// cuenta (ver syncMerge.ts). Sin base, la cuenta nunca sincronizó acá.
 export function readSyncBase(uid) {
   try {
     const raw = localStorage.getItem(syncBaseKey(uid));
