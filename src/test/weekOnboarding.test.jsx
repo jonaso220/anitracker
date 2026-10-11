@@ -32,8 +32,13 @@ async function renderApp() {
 }
 
 describe('semana vacía', () => {
-  beforeEach(() => { localStorage.clear(); fb.state = { ...guest }; fb.login.mockClear(); });
-  afterEach(() => { cleanup(); localStorage.clear(); });
+  beforeEach(() => {
+    localStorage.clear(); fb.state = { ...guest }; fb.login.mockClear();
+    // La pestaña activa vive en la URL: sin esto, la navegación de un test se
+    // filtra al siguiente y la app arranca donde quedó el anterior.
+    window.history.replaceState(null, '', '/');
+  });
+  afterEach(() => { cleanup(); localStorage.clear(); window.history.replaceState(null, '', '/'); });
 
   it('muestra la bienvenida en vez de siete días vacíos, con Buscar como acción principal', async () => {
     await renderApp();
@@ -107,6 +112,7 @@ describe('semana vacía', () => {
 
 it('keeps the weekly library and history while removing Today and Stats navigation', async () => {
   localStorage.clear(); fb.state = { ...guest };
+  window.history.replaceState(null, '', '/');
   localStorage.setItem('animeSchedule', JSON.stringify({ ...emptyWeek(), Lunes: [{ id: 7, title: 'Prueba semanal', currentEp: 2, episodes: 12 }] }));
   localStorage.setItem('watchedAnimes', JSON.stringify([{ id: 8, title: 'Historial conservado', finished: true, userRating: 4 }]));
   await renderApp();

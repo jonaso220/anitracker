@@ -139,12 +139,13 @@ src/
 ├── components/          # Componentes de UI
 │   ├── views/           # Vistas de cada pestaña (Schedule, WatchLater, Watched…)
 │   └── modals/          # Diálogos (búsqueda, detalle, backup, import…)
-├── hooks/               # Lógica por dominio (useFirebase, useAnimeData, useAnimeActions…)
+├── hooks/               # Lógica por dominio (useFirebase, useAnimeData, useHashRoute…)
 ├── services/            # Integraciones con cada API de anime
 ├── styles/              # CSS modular por feature (tokens en theme.css)
 ├── i18n/                # Strings en español (preparado para más locales)
 ├── schemas/            # Normalización de la forma de un "anime"
 ├── types/               # Tipos del dominio (Anime, Library, AiringInfo…)
+├── router.ts            # Mapeo pestaña ↔ hash de la URL
 ├── utils.ts             # Helpers puros (filtros, backup, etc.)
 └── constants.ts         # Días de la semana, sanitización de URLs, etc.
 public/
@@ -160,13 +161,30 @@ imágenes (stale-while-revalidate), y deja siempre pasar a red las llamadas a la
 APIs. Cuando hay una versión nueva, la app muestra un banner para actualizar sin
 recargar a la fuerza.
 
+## Rutas
+
+Cada pestaña tiene su propio enlace: podés compartir una sección, usar el botón
+atrás del navegador y no perder dónde estabas al refrescar.
+
+| Pestaña | Enlace |
+|---------|--------|
+| Semana | `#/semana` |
+| Después | `#/despues` |
+| Vistas | `#/vistas` |
+| Listas | `#/listas` |
+| Temporada | `#/temporada` |
+| Directorio | `#/directorio` |
+
+Se usa el hash de la URL (y no rutas con `/`) para que funcione igual en la PWA
+instalada y en el hosting estático, sin configuración extra del servidor.
+
 ## Tipos (TypeScript)
 
 El núcleo de lógica pura está migrado a TypeScript y se chequea en modo
 `strict` (`npm run typecheck`): `constants`, `schemas/anime`, `libraryEdits`,
 `tracking`, `agenda`, `services/searchText`, `idMigration`, `syncMerge`,
-`cloudCodec` y `utils`. El resto de la app sigue en JavaScript y se migra
-**de a poco**.
+`cloudCodec`, `router` y `utils`. El resto de la app sigue en JavaScript y se
+migra **de a poco**.
 
 Para convertir un archivo: cambiale la extensión a `.ts` (o `.tsx`) y arreglá lo
 que reporte `npm run typecheck`. Los imports son sin extensión, así que no hay

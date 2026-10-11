@@ -27,6 +27,7 @@ const BulkDayPickerModal = lazy(() => import('./components/modals/BulkDayPickerM
 const BackupModal = lazy(() => import('./components/modals/BackupModal'));
 
 import { useFirebase } from './hooks/useFirebase';
+import { useHashRoute } from './hooks/useHashRoute';
 import { useAnimeData } from './hooks/useAnimeData';
 import { useDragDrop } from './hooks/useDragDrop';
 import { usePersistedState } from './hooks/usePersistedState';
@@ -47,7 +48,9 @@ const EMPTY_SCHEDULE = { 'Lunes': [], 'Martes': [], 'Miércoles': [], 'Jueves': 
 
 export default function AnimeTracker() {
   // --- UI state ---
-  const [activeTab, setActiveTab] = useState('schedule');
+  // La pestaña activa es la ruta del hash (`#/vistas`): cada sección tiene un
+  // enlace compartible, el botón atrás funciona y un refresco no la pierde.
+  const [activeTab, navigateToTab] = useHashRoute();
   const [showSearch, setShowSearch] = useState(false);
   const [showAnimeDetail, setShowAnimeDetail] = useState(null);
   const [showDayPicker, setShowDayPicker] = useState(null);
@@ -132,12 +135,18 @@ export default function AnimeTracker() {
   const loadSeasonCurrent = discovery.loadSeasonCurrent;
   const loadDirectory = directory.loadInitial;
   const handleTabChange = useCallback((tab) => {
-    setActiveTab(tab);
+    navigateToTab(tab);
     setLocalSearch('');
     exitBulkMode();
-    if (tab === 'season') loadSeasonCurrent();
-    if (tab === 'directory') loadDirectory();
-  }, [exitBulkMode, loadSeasonCurrent, loadDirectory]);
+  }, [navigateToTab, exitBulkMode]);
+
+  // Temporada y Directorio piden sus datos al activarse la pestaña (y no solo
+  // al hacer clic), así entrar por un enlace directo (`#/directorio`) también
+  // los carga.
+  useEffect(() => {
+    if (activeTab === 'season') loadSeasonCurrent();
+    if (activeTab === 'directory') loadDirectory();
+  }, [activeTab, loadSeasonCurrent, loadDirectory]);
 
   // Props estables para los componentes memoizados: una función o un objeto
   // nuevo en cada render (p. ej. al tipear en el buscador) los obligaría a

@@ -6,8 +6,9 @@ ver [README.md](README.md).
 ## Qué es
 
 PWA de seguimiento de anime. React 19 + Vite 8, CSS modular. Firebase
-(Auth + Firestore) opcional para sync. Sin router: la navegación es por
-pestañas mediante estado en `App.jsx`.
+(Auth + Firestore) opcional para sync. La navegación es por pestañas y la
+pestaña activa vive en el **hash de la URL** (`#/vistas`), vía `router.ts` +
+`useHashRoute` (ver «Rutas» más abajo).
 
 El núcleo de lógica pura está en TypeScript (modo `strict`); el resto de la app
 sigue en JavaScript y se migra de a poco (ver «TypeScript» más abajo).
@@ -77,7 +78,7 @@ store global ni context; el estado vive en `App.jsx` y baja por props.
     (género, demografía, formato, estado, año, temporada, orden) y paginado
     acumulativo con "cargar más".
   - `useDragDrop`, `useBulkMode`, `useBulkActions`, `useDiscovery`,
-    `useToast`, `useServiceWorkerUpdate`.
+    `useToast`, `useServiceWorkerUpdate`, `useHashRoute` (ver «Rutas»).
 - **`services/`** — una API por archivo (`jikanService`, `kitsuService`,
   `anilistService`, `tvmazeService`, `itunesService`, `tmdbService`,
   `vikiService`, `wikipediaBridge`). `searchAnime.js` las orquesta en paralelo
@@ -100,6 +101,7 @@ store global ni context; el estado vive en `App.jsx` y baja por props.
 - **`schemas/anime.ts`** — normaliza la forma de un objeto "anime".
 - **`types/anime.ts`** — tipos del dominio (`Anime`, `CustomList`, `Library`,
   `AiringInfo`, `Schedule`…): la fuente de verdad de la forma de un anime.
+- **`router.ts`** — mapeo pestaña ↔ hash de la URL (ver «Rutas»).
 - **`i18n/`** — diccionario plano en español; helper `t(key, fallback)`.
 
 ### Datos persistidos (localStorage)
@@ -183,6 +185,37 @@ Reglas de estilo al migrar:
   biblioteca sin validar es `LibraryInput`. Agregá campos ahí en vez de
   inventar tipos locales.
 
+## Rutas
+
+La pestaña activa **es la URL**: `router.ts` mapea pestaña ↔ hash y
+`useHashRoute` mantiene el estado de React en sync.
+
+| Pestaña | Hash |
+|---------|------|
+| Semana | `#/semana` |
+| Después | `#/despues` |
+| Vistas | `#/vistas` |
+| Listas | `#/listas` |
+| Temporada | `#/temporada` |
+| Directorio | `#/directorio` |
+
+- Se usa **hash** y no la History API a propósito: la app es estática, el hash
+  no necesita rewrites del servidor ni toca el service worker, y se comporta
+  igual en la PWA instalada. **No agregues rutas por path** sin resolver antes
+  el fallback del servidor y el del service worker.
+- Un hash vacío o desconocido cae en Semana, y `useHashRoute` lo
+  **canonicaliza** con `replaceState` (sin entrada de historial) para que la
+  barra de direcciones siempre tenga un enlace compartible.
+- Los slugs son **estables**: cambiarlos rompe los enlaces ya compartidos.
+- Cambiar de pestaña deja rastro en el historial, así el botón atrás funciona.
+- La carga de datos va en un efecto sobre `activeTab` y no en el handler del
+  clic, para que entrar por `#/directorio` también cargue el catálogo.
+- Tests: `src/test/router.test.js` (mapeo y hook) y
+  `src/test/deepLinks.test.jsx` (la app entera abierta en un hash). Los tests
+  que renderizan `App` **deben resetear el hash** entre casos
+  (`window.history.replaceState(null, '', '/')`), o la navegación de un test se
+  filtra al siguiente.
+
 ## Tests
 
 Vitest + Testing Library (jsdom), setup en `src/test/setup.js`. Al tocar
@@ -191,7 +224,7 @@ Vitest + Testing Library (jsdom), setup en `src/test/setup.js`. Al tocar
 
 ## Notas
 
-- Sin router: pestaña activa = estado `activeTab` en `App.jsx`.
+- **Rutas**: ver la sección «Rutas» más abajo; no hay estado `activeTab` suelto.
 - Service worker hecho a mano en `public/sw.js`; la versión de cache se sube a
   mano (`CACHE_VERSION`). Las portadas van a `anitracker-images` (sin versión,
   sobrevive a los deploys, máx. 500): primero cache, pedidas con CORS para
