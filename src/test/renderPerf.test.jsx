@@ -24,7 +24,9 @@ vi.mock('../services/searchAnime', async (importOriginal) => ({
 }));
 vi.mock('../services/anilistService', async (importOriginal) => ({
   ...(await importOriginal()),
-  fetchAiringByIds: vi.fn(async () => ({ byAnilist: {}, byMal: {} })),
+  // Keep unrelated network completion out of render counts: the 1s airing
+  // debounce can finish mid-assertion on slower CI workers.
+  fetchAiringByIds: vi.fn(() => new Promise(() => {})),
   fetchSeason: vi.fn(() => new Promise(() => {})),
   fetchDirectory: vi.fn(() => new Promise(() => {})),
 }));
