@@ -102,7 +102,13 @@ store global ni context; el estado vive en `App.jsx` y baja por props.
 - **`types/anime.ts`** — tipos del dominio (`Anime`, `CustomList`, `Library`,
   `AiringInfo`, `Schedule`…): la fuente de verdad de la forma de un anime.
 - **`router.ts`** — mapeo pestaña ↔ hash de la URL (ver «Rutas»).
-- **`i18n/`** — diccionario plano en español; helper `t(key, fallback)`.
+- **`autoBackup.ts`** — copias automáticas de la biblioteca en IndexedDB
+  (ver «Copias automáticas»); enganchado por `useAutoBackup`.
+- **`errorReporter.ts`** — reporte de errores opt-in por `VITE_ERROR_REPORT_URL`
+  (ver «Reporte de errores»).
+- **`i18n/`** — `index.ts` es el motor (`t(key, fallback, params)` con
+  interpolación `{name}`, plurales `{ one, other }` por `count` y registro de
+  locales); `es.ts` es el diccionario tipado.
 
 ### Datos persistidos (localStorage)
 
@@ -168,7 +174,7 @@ con `strict`; los `.js`/`.jsx` siguen sin chequear (`allowJs: true`,
 
 Ya migrados: `constants`, `types/anime`, `schemas/anime`, `libraryEdits`,
 `tracking`, `agenda`, `services/searchText`, `idMigration`, `syncMerge`,
-`cloudCodec`, `utils`.
+`cloudCodec`, `router`, `autoBackup`, `errorReporter`, `i18n` y `utils`.
 
 **Para convertir un archivo**: cambiale la extensión a `.ts` (o `.tsx`) y
 arreglá lo que reporte `npm run typecheck`. Los imports son sin extensión y
@@ -225,6 +231,23 @@ Vitest + Testing Library (jsdom), setup en `src/test/setup.js`. Al tocar
 ## Notas
 
 - **Rutas**: ver la sección «Rutas» más abajo; no hay estado `activeTab` suelto.
+- **Copias automáticas**: `useAutoBackup` guarda una copia de la biblioteca en
+  **IndexedDB** (`anitracker-backups`) como máximo una vez por día y por cuenta,
+  conservando las últimas 3; se listan y restauran desde el modal de copia de
+  seguridad. Va en IndexedDB y no en localStorage a propósito: ahí vive el dato
+  vivo y comparten cuota, así que un respaldo grande podría dejar a la app sin
+  poder guardar. Todo es best-effort (sin IndexedDB es un no-op) y **no**
+  reemplaza a descargar una copia, que es lo único que sobrevive a un borrado de
+  datos del sitio.
+- **Reporte de errores**: apagado salvo que exista `VITE_ERROR_REPORT_URL`.
+  Engancha `error`, `unhandledrejection` y el `ErrorBoundary` (un error de chunk
+  viejo **no** se reporta: pasa en cada deploy y taparía los errores reales).
+  Deduplica y corta a 10 reportes por sesión. Se implementó sin SDK para no
+  sumar ~40 kB gzip por una función que puede estar apagada; si se quiere Sentry,
+  el camino es cargar su SDK de forma diferida cuando haya DSN.
+- **Idiomas**: hoy solo `es`. Para agregar otro: crear el diccionario tipado y
+  registrarlo con `registerLocale(id, dict)`; las claves nuevas conviene
+  escribirlas ya con `{placeholders}` y `{ one, other }` en vez de concatenar.
 - Service worker hecho a mano en `public/sw.js`; la versión de cache se sube a
   mano (`CACHE_VERSION`). Las portadas van a `anitracker-images` (sin versión,
   sobrevive a los deploys, máx. 500): primero cache, pedidas con CORS para

@@ -33,7 +33,8 @@ opcional en la nube.
 - **🌸 Descubrimiento** — animes de la temporada actual y top histórico.
 - **📊 Estadísticas** — composición de tu biblioteca, distribución de tus
   puntuaciones y géneros favoritos.
-- **💾 Copia de seguridad** — exportá/importá todos tus datos en un `.json`.
+- **💾 Copia de seguridad** — exportá/importá todos tus datos en un `.json`, más
+  una copia automática diaria en el navegador para salir de un cambio accidental.
 - **📥 Importar desde AniList** — traé tu lista por nombre de usuario.
 - **☁️ Sync con Firebase** — login con Google y guardado en la nube (opcional),
   con estado de sincronización a la vista y resolución guiada de conflictos
@@ -146,6 +147,8 @@ src/
 ├── schemas/            # Normalización de la forma de un "anime"
 ├── types/               # Tipos del dominio (Anime, Library, AiringInfo…)
 ├── router.ts            # Mapeo pestaña ↔ hash de la URL
+├── autoBackup.ts        # Copias automáticas en IndexedDB
+├── errorReporter.ts     # Reporte de errores opt-in
 ├── utils.ts             # Helpers puros (filtros, backup, etc.)
 └── constants.ts         # Días de la semana, sanitización de URLs, etc.
 public/
@@ -183,8 +186,8 @@ instalada y en el hosting estático, sin configuración extra del servidor.
 El núcleo de lógica pura está migrado a TypeScript y se chequea en modo
 `strict` (`npm run typecheck`): `constants`, `schemas/anime`, `libraryEdits`,
 `tracking`, `agenda`, `services/searchText`, `idMigration`, `syncMerge`,
-`cloudCodec`, `router` y `utils`. El resto de la app sigue en JavaScript y se
-migra **de a poco**.
+`cloudCodec`, `router`, `autoBackup`, `errorReporter`, `i18n` y `utils`. El resto
+de la app sigue en JavaScript y se migra **de a poco**.
 
 Para convertir un archivo: cambiale la extensión a `.ts` (o `.tsx`) y arreglá lo
 que reporte `npm run typecheck`. Los imports son sin extensión, así que no hay

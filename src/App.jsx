@@ -29,6 +29,7 @@ const BackupModal = lazy(() => import('./components/modals/BackupModal'));
 import { useFirebase } from './hooks/useFirebase';
 import { useHashRoute } from './hooks/useHashRoute';
 import { useAutoBackup } from './hooks/useAutoBackup';
+import { installGlobalErrorHandlers } from './errorReporter';
 import { useAnimeData } from './hooks/useAnimeData';
 import { useDragDrop } from './hooks/useDragDrop';
 import { usePersistedState } from './hooks/usePersistedState';
@@ -101,6 +102,10 @@ export default function AnimeTracker() {
     schedule, watchedList, watchLater, customLists,
     owner: user?.uid ?? null,
   });
+
+  // Errores que React no ve (promesas rechazadas y errores fuera del árbol).
+  // Sin `VITE_ERROR_REPORT_URL` configurada no hace nada.
+  useEffect(() => installGlobalErrorHandlers(), []);
   const exitBulkMode = bulk.exitBulkMode;
   useEffect(() => {
     // Old modals/undo callbacks must not write one account's data into another.

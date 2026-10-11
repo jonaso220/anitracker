@@ -1,5 +1,6 @@
 import React from 'react';
 import { isChunkLoadError, reloadForNewDeploy } from '../chunkReload';
+import { reportError } from '../errorReporter';
 
 export class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -11,9 +12,12 @@ export class ErrorBoundary extends React.Component {
     return { hasError: true, error };
   }
 
-  componentDidCatch(error) {
+  componentDidCatch(error, info) {
     // Pestaña abierta durante un deploy: recargar trae la versión nueva.
-    if (isChunkLoadError(error)) reloadForNewDeploy();
+    // Un chunk viejo es esperable en cada deploy, así que no se reporta: sería
+    // ruido que tapa los errores de verdad.
+    if (isChunkLoadError(error)) { reloadForNewDeploy(); return; }
+    reportError('boundary', error, { componentStack: info?.componentStack });
   }
 
   render() {
