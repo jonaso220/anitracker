@@ -9,6 +9,21 @@
 import type { Dictionary } from './index';
 
 export const es: Dictionary = {
+  'detail.open': 'Abrir ficha de {title}',
+  'detail.originalTitle': 'Título original',
+  'detail.fullTitle': 'Ver título completo',
+  'detail.lessTitle': 'Contraer título',
+  'detail.noSynopsis': 'Sin sinopsis.',
+  'detail.readMore': 'Leer sinopsis completa',
+  'detail.readLess': 'Leer menos',
+  'detail.watch': 'Dónde ver',
+  'detail.watchLink': 'Enlace para ver',
+  'detail.watchNow': 'Ver ahora',
+  'detail.watchOn': 'Ver en {platform}',
+  'detail.otherLinks': 'Otros enlaces de {platform}',
+  'detail.actions': 'Acciones de seguimiento',
+  'detail.removeActions': 'Quitar de esta colección',
+  'detail.unrated': 'Sin puntuar',
   'nav.schedule': 'Semana',
   'nav.watchLater': 'Después',
   'nav.watched': 'Vistas',

@@ -422,11 +422,11 @@ describe('AnimeDetailModal', () => {
     ] };
     const { container } = render(<AnimeDetailModal {...baseProps} showAnimeDetail={anime} setShowAnimeDetail={noop} />);
     const chips = [...container.querySelectorAll('.streaming-chip')].map((el) => el.textContent);
-    expect(chips[0]).toContain('Crunchyroll');
-    expect(chips[1]).toContain('JKAnime'); // link fan generado a partir del título
-    expect(chips[2]).toContain('AnimeFLV · buscar');
+    expect(chips.some((text) => text.includes('Crunchyroll'))).toBe(false); // primary link already shows it
+    expect(chips[0]).toContain('JKAnime'); // link fan generado a partir del título
+    expect(chips[1]).toContain('AnimeFLV · buscar');
     expect(chips[chips.length - 1]).toContain('HIDIVE');
-    const verAhora = screen.getByText('▶ Ver ahora').closest('a');
+    const verAhora = screen.getByRole('link', { name: '▶ Ver en Crunchyroll' }).closest('a');
     expect(verAhora.getAttribute('href')).toBe('https://www.crunchyroll.com/x');
     await screen.findByText('🎬 Más de este anime'); // dejar asentar el efecto de relacionados
   });

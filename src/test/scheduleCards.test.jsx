@@ -257,5 +257,57 @@ it('progress and viewing controls appear before the synopsis', () => {
  const synopsis=container.querySelector('.detail-synopsis');
  expect(primary.compareDocumentPosition(synopsis) & 4).toBe(4);
  expect(primary.querySelector('input[aria-label="Episodio actual"]')).not.toBeNull();
- expect(container.querySelector('.detail-more-actions').hasAttribute('open')).toBe(false);
+ expect(container.querySelector('.detail-more-actions')).toBeNull();
+ expect(screen.getByRole('button',{name:'✓ Finalizar'})).toBeVisible();
+ expect(screen.getByRole('button',{name:'↔ Mover día'})).toBeVisible();
+ expect(screen.getByRole('button',{name:'✗ Dropear'})).toBeVisible();
+});
+
+it.each([
+ ['✓ Finalizar', 'markAsFinished'],
+ ['✗ Dropear', 'dropAnime'],
+ ['↔ Mover día', 'setShowMoveDayPicker'],
+])('visible action %s keeps its existing handler', (name, handler) => {
+ const p=modalProps(); render(<AnimeDetailModal {...p}/>);
+ const button=screen.getByRole('button',{name});
+ expect(button.closest('details')).toBeNull();
+ fireEvent.click(button);
+ expect(p.setShowAnimeDetail).toHaveBeenCalledWith(null);
+ expect(p[handler]).toHaveBeenCalledWith(...(handler==='setShowMoveDayPicker' ? [{anime:p.showAnimeDetail,fromDay:'Lunes'}] : [p.showAnimeDetail,'Lunes']));
+});
+it('keeps removing an item separate from everyday actions', () => {
+ const p=modalProps();render(<AnimeDetailModal {...p}/>);
+ const remove=screen.getByRole('button',{name:'🗑 Eliminar'});
+ expect(remove.closest('[role="group"]')).toHaveAttribute('aria-label','Quitar de esta colección');
+ expect(remove.closest('details')).toBeNull();
+ fireEvent.click(remove);expect(p.deleteAnime).toHaveBeenCalledWith(p.showAnimeDetail);
+});
+it('expands long synopsis without losing text and restores the compact preview', () => {
+ const synopsis='Una historia de aventuras y amistad en la ciudad. '.repeat(20);
+ render(<AnimeDetailModal {...modalProps()} showAnimeDetail={{...a,_day:'Lunes',synopsis}}/>);
+ expect(screen.queryByText(synopsis.trim())).not.toBeInTheDocument();
+ fireEvent.click(screen.getByRole('button',{name:'Leer sinopsis completa'}));
+ expect(screen.getByRole('button',{name:'Leer menos'})).toHaveAttribute('aria-expanded','true');
+ expect(document.getElementById('detail-synopsis-text').textContent).toBe(synopsis);
+ fireEvent.click(screen.getByRole('button',{name:'Leer menos'}));
+ expect(document.getElementById('detail-synopsis-text').textContent.length).toBeLessThan(325);
+});
+it('shows one primary watch destination while preserving distinct alternative URLs', () => {
+ const watchLink='https://www.crunchyroll.com/series/original';
+ const alternative='https://www.crunchyroll.com/watch/episode';
+ render(<AnimeDetailModal {...modalProps()} showAnimeDetail={{...a,_day:'Lunes',watchLink,streamingLinks:[{site:'Crunchyroll',url:watchLink},{site:'Crunchyroll doblado',url:alternative,language:'Español'},{site:'Duplicate',url:alternative}]}}/>);
+ expect(document.querySelectorAll(`a[href="${watchLink}"]`)).toHaveLength(1);
+ expect(document.querySelectorAll(`a[href="${alternative}"]`)).toHaveLength(1);
+ expect(screen.getByRole('link',{name:'▶ Ver en Crunchyroll'})).toHaveAttribute('href',watchLink);
+ const disclosure=screen.getByText('Otros enlaces de Crunchyroll');
+ expect(disclosure.closest('details')).not.toHaveAttribute('open');
+ expect(disclosure.closest('details').querySelector('a')).toHaveAttribute('href',alternative);
+});
+it('retains the full long title and original title behind explicit disclosures', () => {
+ const title='Un título muy largo que no entra en una sola línea '.repeat(4);
+ const {container}=render(<AnimeDetailModal {...modalProps()} showAnimeDetail={{...a,title,titleJp:'原題'}}/>);
+ fireEvent.click(screen.getByRole('button',{name:'Ver título completo'}));
+ expect(container.querySelector('h2')).not.toHaveClass('detail-title-compact');
+ expect(container.querySelector('h2').textContent).toBe(title);
+ expect(container.querySelector('.detail-original-title p')).toHaveTextContent('原題');
 });

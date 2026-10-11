@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { trackingAiring } from '../tracking';
+import { t } from '../i18n';
 import StarRating from './StarRating';
 import { sanitizeUrl } from '../constants';
 import { getPlatformInfo, pickAutoWatchLink, formatAiringWhen, airingEpisodeLabel } from '../utils';
@@ -182,7 +183,9 @@ const AnimeCard = ({
 
         {/* Bottom: title + genre overlay */}
         <div className="anime-card-overlay">
-          <h3 className="anime-card-title">{anime.title}</h3>
+          <h3 className="anime-card-title" title={anime.title}>{onClick
+            ? <button type="button" className="card-open" aria-label={t('detail.open', undefined, { title: anime.title })}>{anime.title}</button>
+            : anime.title}</h3>
           <div className="anime-card-overlay-meta">
             <div className="anime-genres">
               {(anime.genres || []).slice(0, 2).map((g, i) => <span key={i} className="genre-tag">{g}</span>)}
