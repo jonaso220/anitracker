@@ -1,4 +1,5 @@
 import { daysOfWeek } from './constants';
+import type { Anime, CustomList, Library, Schedule } from './types/anime';
 
 // Id interno de un anime de AniList sin id de MAL. Antes era siempre
 // 300000 + id de AniList, pero AniList pasó el id 100000 y eso empezó a caer
@@ -9,7 +10,7 @@ export const ANILIST_LEGACY_BASE = 300000;
 export const ANILIST_LEGACY_LIMIT = 100000;
 export const ANILIST_ID_BASE = 800000000;
 
-export const anilistInternalId = (anilistId, malId) => {
+export const anilistInternalId = (anilistId: number, malId?: number | null): number => {
   if (malId) return malId;
   return anilistId < ANILIST_LEGACY_LIMIT ? ANILIST_LEGACY_BASE + anilistId : ANILIST_ID_BASE + anilistId;
 };
@@ -20,21 +21,22 @@ export const anilistInternalId = (anilistId, malId) => {
  * TVMaze). Devuelve el mismo objeto si no hay nada que cambiar. Determinista:
  * todos los dispositivos llegan al mismo id.
  */
-export function migrateAnime(anime) {
+export function migrateAnime<T extends { id?: number | string; sourceKey?: string }>(anime: T): T {
   const m = /^anilist:(\d+)$/.exec(anime?.sourceKey || '');
   if (!m) return anime;
   const anilistId = Number(m[1]);
   if (anilistId < ANILIST_LEGACY_LIMIT || anime.id !== ANILIST_LEGACY_BASE + anilistId) return anime;
-  return { ...anime, id: ANILIST_ID_BASE + anilistId };
+  // El id migrado es siempre numérico para una obra real de AniList.
+  return { ...anime, id: ANILIST_ID_BASE + anilistId } as T;
 }
 
 // Después de migrar puede quedar la misma obra dos veces en una lista: un
 // dispositivo sin actualizar la editó con el id viejo mientras la nube ya
 // tenía el nuevo. Queda una sola, en el lugar de la primera y con el progreso
 // más avanzado (la edición que se hizo después).
-function dedupeById(list) {
-  const index = new Map();
-  const out = [];
+function dedupeById(list: Anime[]): Anime[] {
+  const index = new Map<Anime['id'], number>();
+  const out: Anime[] = [];
   for (const anime of list) {
     const at = index.get(anime.id);
     if (at === undefined) {
@@ -47,7 +49,7 @@ function dedupeById(list) {
   return out;
 }
 
-export function migrateList(list) {
+export function migrateList(list: Anime[]): Anime[] {
   if (!Array.isArray(list)) return list;
   let changed = false;
   const mapped = list.map((anime) => {
@@ -58,10 +60,10 @@ export function migrateList(list) {
   return changed ? dedupeById(mapped) : list;
 }
 
-export function migrateSchedule(schedule) {
+export function migrateSchedule(schedule: Schedule): Schedule {
   if (!schedule || typeof schedule !== 'object') return schedule;
   let changed = false;
-  const next = { ...schedule };
+  const next: Schedule = { ...schedule };
   for (const day of daysOfWeek) {
     const list = migrateList(schedule[day]);
     if (list !== schedule[day]) { next[day] = list; changed = true; }
@@ -69,7 +71,7 @@ export function migrateSchedule(schedule) {
   return changed ? next : schedule;
 }
 
-export function migrateCustomLists(lists) {
+export function migrateCustomLists(lists: CustomList[]): CustomList[] {
   if (!Array.isArray(lists)) return lists;
   let changed = false;
   const next = lists.map((list) => {
@@ -82,9 +84,9 @@ export function migrateCustomLists(lists) {
 }
 
 /** Toda la biblioteca: { data, changed }; sin cambios devuelve el mismo objeto. */
-export function migrateLibrary(data) {
+export function migrateLibrary(data: Library): { data: Library; changed: boolean } {
   if (!data) return { data, changed: false };
-  const next = {
+  const next: Library = {
     ...data,
     schedule: migrateSchedule(data.schedule),
     watchedList: migrateList(data.watchedList),
@@ -98,9 +100,9 @@ export function migrateLibrary(data) {
 
 // Ids ocultados en Temporada/Directorio: ahí solo hay obras de AniList, así
 // que un id viejo en la zona que chocaba (≥ 400000) es de AniList sin MAL.
-export function migrateDiscoveryIds(ids) {
+export function migrateDiscoveryIds(ids: number[]): number[] {
   if (!Array.isArray(ids)) return ids;
-  const isOld = (id) => id >= ANILIST_LEGACY_BASE + ANILIST_LEGACY_LIMIT && id < 1000000;
+  const isOld = (id: number) => id >= ANILIST_LEGACY_BASE + ANILIST_LEGACY_LIMIT && id < 1000000;
   if (!ids.some(isOld)) return ids;
   return [...new Set(ids.map((id) => (isOld(id) ? ANILIST_ID_BASE + id - ANILIST_LEGACY_BASE : id)))];
 }

@@ -52,13 +52,13 @@ Thumbs.db
 coverage/
 
 # Package manager
-package-lock.json
+# `package-lock.json` SÍ se versiona: las instalaciones reproducibles y el
+# `npm ci` de CI dependen de él. Los lockfiles de otros gestores se ignoran.
 yarn.lock
 pnpm-lock.yaml
 
 # Vite specific
 !.vite/
-vite.config.js
 
 # Compressed files
 *.zip

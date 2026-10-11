@@ -5,20 +5,25 @@ ver [README.md](README.md).
 
 ## Qué es
 
-PWA de seguimiento de anime. React 19 + Vite 8, JavaScript (sin TypeScript),
-CSS modular. Firebase (Auth + Firestore) opcional para sync. Sin router: la
-navegación es por pestañas mediante estado en `App.jsx`.
+PWA de seguimiento de anime. React 19 + Vite 8, CSS modular. Firebase
+(Auth + Firestore) opcional para sync. Sin router: la navegación es por
+pestañas mediante estado en `App.jsx`.
+
+El núcleo de lógica pura está en TypeScript (modo `strict`); el resto de la app
+sigue en JavaScript y se migra de a poco (ver «TypeScript» más abajo).
 
 ## Comandos
 
 - `npm run dev` — dev server (puerto 5173)
 - `npm run build` — build a `dist/`
-- `npm run test` — Vitest (jsdom). Un solo archivo: `npx vitest run src/test/utils.test.js`
+- `npm run test` — Vitest (jsdom). Un solo archivo: `npx vitest run src/test/utils.test.ts`
+- `npm run typecheck` — `tsc --noEmit` sobre el núcleo en TypeScript
 - `npm run lint` — ESLint (debe quedar limpio antes de cerrar un cambio)
+- `npm run size` — presupuesto de tamaño del bundle (requiere `npm run build`)
 
-CI (`.github/workflows/ci.yml`) corre lint, tests y build en cada push a
-`main` y en cada PR, con el Node de `.nvmrc`. Dependabot abre un PR mensual
-agrupado con las actualizaciones menores.
+CI (`.github/workflows/ci.yml`) corre lint, typecheck, tests, build y size en
+cada push a `main` y en cada PR, con el Node de `.nvmrc`. Dependabot abre un PR
+mensual agrupado con las actualizaciones menores.
 
 ## Arquitectura
 
@@ -40,14 +45,14 @@ store global ni context; el estado vive en `App.jsx` y baja por props.
     (solo fecha: `dateOnly`), cada una por su id de fuente vía `sourceKey`.
     TVMaze y TMDB numeran por temporada (`season` en la info): la tarjeta
     muestra "T38 · Ep. 2" y la agenda solo cuenta pendientes si coincide con
-    la temporada que se sigue (`airingMatchesProgress` en `tracking.js`).
+    la temporada que se sigue (`airingMatchesProgress` en `tracking.ts`).
   - `useFirebase` — auth con Google + auto-sync a Firestore con cuidado de
     races (flags de carga, versionado de loads). Cada snapshot se resuelve con
     `syncMerge.js`: fusión a tres vías por anime contra la *base* (huella de lo
     último sincronizado en este dispositivo), así un cambio hecho en un solo
     lado nunca se pierde y el reloj del dispositivo no decide. Sin base (cuenta
     que nunca sincronizó acá, p. ej. datos de invitado) se fusiona todo.
-    `cloudCodec.js` comprime la biblioteca con gzip si supera ~900 KB (límite
+    `cloudCodec.ts` comprime la biblioteca con gzip si supera ~900 KB (límite
     de 1 MiB por documento); al cerrar sesión se sube lo pendiente primero.
     `cloudLoaded` avisa cuándo llegó el primer snapshot de la sesión: hasta
     entonces una semana vacía puede ser solo que todavía no bajó (App muestra
@@ -65,7 +70,7 @@ store global ni context; el estado vive en `App.jsx` y baja por props.
   formato (nunca dentro de una misma fuente ni por sinónimos; mergea
   streaming links / trailer del duplicado descartado), cachea consultas
   completas (TTL 10 min) y rankea por relevancia ignorando artículos
-  (`searchText.js`), con *fallback* a Wikipedia si no hay buen match: el
+  (`searchText.ts`), con *fallback* a Wikipedia si no hay buen match: el
   título del artículo se usa para rankear, nunca se agrega a `altTitles`. `tmdbService`
   solo se activa con `VITE_TMDB_API_KEY` y expone además "dónde ver" por país
   (providers de JustWatch, cache localStorage 24 h) y trailers. `vikiService`
@@ -74,9 +79,11 @@ store global ni context; el estado vive en `App.jsx` y baja por props.
   que `DayPickerModal` sugiere).
 - **`components/`** — UI. `views/` = contenido de cada pestaña; `modals/` =
   diálogos.
-- **`utils.js`** — helpers puros y testeables (`clean`, `filterByLocalSearch`,
+- **`utils.ts`** — helpers puros y testeables (`clean`, `filterByLocalSearch`,
   `getFilteredWatched`, `buildBackup`, `parseBackup`…).
-- **`schemas/anime.js`** — normaliza la forma de un objeto "anime".
+- **`schemas/anime.ts`** — normaliza la forma de un objeto "anime".
+- **`types/anime.ts`** — tipos del dominio (`Anime`, `CustomList`, `Library`,
+  `AiringInfo`, `Schedule`…): la fuente de verdad de la forma de un anime.
 - **`i18n/`** — diccionario plano en español; helper `t(key, fallback)`.
 
 ### Datos persistidos (localStorage)
@@ -102,7 +109,7 @@ sin MAL `300000 + id` si el id de AniList es `< 100000` y `800000000 + id` desde
 ahí (antes caía en el rango de TVMaze), TVMaze `+400000`, iTunes `+500000`, TMDB
 película `+600000000` / serie `+900000000`, Viki `+700000000`. La identidad real
 va por `sourceKey` (`anilist:N`, `tvmaze:N`…), nunca por el rango.
-`idMigration.js` pasa al rango nuevo los AniList guardados con el id viejo al
+`idMigration.ts` pasa al rango nuevo los AniList guardados con el id viejo al
 leer localStorage, cuentas guardadas, snapshots de la nube y copias de
 seguridad (determinista, idempotente; si queda la misma obra dos veces, gana
 la de más progreso).
@@ -123,7 +130,7 @@ la de más progreso).
   quedan inline en inglés.
 - **Undo**: las acciones destructivas toman un snapshot (vía refs) y lo pasan a
   `showToast(msg, undoFn)`. El snapshot cubre solo lo afectado
-  (`captureEntry`/`restoreEntry` de `libraryEdits.js`), nunca la biblioteca
+  (`captureEntry`/`restoreEntry` de `libraryEdits.ts`), nunca la biblioteca
   entera: así el deshacer no pisa ediciones ni cambios sincronizados mientras
   el toast está visible.
 - **Async cancelable**: búsquedas y fetches usan `AbortController`; respetá el
@@ -135,10 +142,35 @@ la de más progreso).
   callback sirva a todas las tarjetas. `src/test/renderPerf.test.jsx` cuenta
   renders y falla si esto se rompe.
 
+## TypeScript
+
+Migración **incremental**: los módulos de lógica pura ya son `.ts` y se chequean
+con `strict`; los `.js`/`.jsx` siguen sin chequear (`allowJs: true`,
+`checkJs: false` en `tsconfig.json`).
+
+Ya migrados: `constants`, `types/anime`, `schemas/anime`, `libraryEdits`,
+`tracking`, `agenda`, `services/searchText`, `idMigration`, `cloudCodec`,
+`utils`.
+
+**Para convertir un archivo**: cambiale la extensión a `.ts` (o `.tsx`) y
+arreglá lo que reporte `npm run typecheck`. Los imports son sin extensión y
+Vite/Vitest resuelven `.ts` solos, así que no hay que tocar a quien lo consume.
+El lint cubre `.ts`/`.tsx` con typescript-eslint.
+
+Reglas de estilo al migrar:
+
+- **Nada de `any` suelto.** Si un valor llega dinámico, usá `unknown` y angostalo
+  con un type guard (ver `isPlainObject` en `utils.ts`).
+- **El cast es el último recurso**, y va con un comentario que explique por qué
+  es seguro (ver `migrateAnime` en `idMigration.ts` o `pipe` en `cloudCodec.ts`).
+- **El dominio vive en `types/anime.ts`**: una entrada laxa es `AnimeLike`, una
+  biblioteca sin validar es `LibraryInput`. Agregá campos ahí en vez de
+  inventar tipos locales.
+
 ## Tests
 
 Vitest + Testing Library (jsdom), setup en `src/test/setup.js`. Al tocar
-`utils.js` o un componente, actualizá/añadí el test correspondiente en
+`utils.ts` o un componente, actualizá/añadí el test correspondiente en
 `src/test/`. Apuntá a helpers puros para la lógica y a render+queries para UI.
 
 ## Notas
@@ -155,8 +187,9 @@ Vitest + Testing Library (jsdom), setup en `src/test/setup.js`. Al tocar
 - TMDB es opcional: sin `VITE_TMDB_API_KEY` la fuente no aparece en la
   búsqueda ni se consultan providers.
 - **Firebase fijado en `~12.14`**: desde 12.15 (Firestore 4.16) el chunk de
-  Firebase suma ~60 kB gzip para las mismas funciones. Antes de subirlo,
-  compará el tamaño de `firebase-*.js` en el build (Dependabot lo ignora).
+  Firebase suma ~60 kB gzip para las mismas funciones (Dependabot lo ignora).
+  Ya no hace falta comparar a mano: `npm run size` (y CI) falla si el chunk de
+  Firebase se pasa del presupuesto de `scripts/check-bundle-size.mjs`.
 - **Chunks**: Vite 8 usa Rolldown; `vendor` (React) y `firebase` se definen
   en `build.rolldownOptions.output.codeSplitting.groups` (ya no existe
   `manualChunks` como objeto).

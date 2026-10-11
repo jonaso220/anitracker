@@ -1,7 +1,8 @@
-export const daysOfWeek = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
-export const dayEmojis = ['📅', '🎯', '⚡', '🔥', '🎉', '🌟', '💫'];
+export const daysOfWeek: string[] = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+export const dayEmojis: string[] = ['📅', '🎯', '⚡', '🔥', '🎉', '🌟', '💫'];
 
-export const sanitizeUrl = (url) => {
+/** Devuelve la URL si es http(s), '' en cualquier otro caso. */
+export const sanitizeUrl = (url: string | null | undefined): string => {
   if (!url) return '';
   try {
     const parsed = new URL(url);
@@ -14,9 +15,9 @@ const TR_PREFIX = 'anitracker-tr-';
 // cache se pisaba solo.
 const TR_MAX = 200;
 
-export const pruneTranslationCache = () => {
+export const pruneTranslationCache = (): void => {
   try {
-    const keys = [];
+    const keys: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
       if (k && k.startsWith(TR_PREFIX)) keys.push(k);
@@ -25,7 +26,7 @@ export const pruneTranslationCache = () => {
       // Remove oldest entries (order of localStorage.key is not guaranteed,
       // so we just remove random excess ones - simple and effective)
       const toRemove = keys.slice(0, keys.length - TR_MAX);
-      toRemove.forEach(k => localStorage.removeItem(k));
+      toRemove.forEach((k) => localStorage.removeItem(k));
     }
   } catch { /* empty */ }
 };

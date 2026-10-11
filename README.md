@@ -5,7 +5,8 @@ semana, mantené una lista de pendientes, registrá lo que ya viste, creá lista
 personalizadas y descubrí lo nuevo de la temporada — todo con sincronización
 opcional en la nube.
 
-> Hecho con React 19 + Vite. Funciona offline e instalable como app (PWA).
+> Hecho con React 19 + Vite (TypeScript en el núcleo de lógica). Funciona
+> offline e instalable como app (PWA).
 
 ## Funcionalidades
 
@@ -43,8 +44,9 @@ opcional en la nube.
 |------|-----------|
 | UI | React 19 |
 | Build / dev | Vite 8 |
+| Tipos | TypeScript 6 (núcleo de lógica pura; el resto migra de a poco) |
 | Tests | Vitest + Testing Library (jsdom) |
-| Lint | ESLint 9 |
+| Lint | ESLint 10 + typescript-eslint |
 | Backend opcional | Firebase (Auth + Firestore) |
 | Datos de anime | AniList, Jikan (MAL), Kitsu, TVMaze, iTunes |
 | Películas y series | Rakuten Viki (dramas asiáticos), TMDB (opcional, con disponibilidad por país vía JustWatch) |
@@ -66,7 +68,9 @@ npm run dev      # servidor de desarrollo (http://localhost:5173)
 | `npm run build` | Build de producción en `dist/` |
 | `npm run preview` | Previsualizar la build de producción |
 | `npm run test` | Correr la suite de tests (Vitest) |
-| `npm run lint` | Lint con ESLint |
+| `npm run typecheck` | Chequeo de tipos con TypeScript (`tsc --noEmit`) |
+| `npm run size` | Verifica el presupuesto de tamaño del bundle (requiere `npm run build`) |
+| `npm run lint` | Lint con ESLint (JS, JSX, TS y TSX) |
 
 ## Configuración (Firebase)
 
@@ -138,8 +142,9 @@ src/
 ├── styles/              # CSS modular por feature (tokens en theme.css)
 ├── i18n/                # Strings en español (preparado para más locales)
 ├── schemas/            # Normalización de la forma de un "anime"
-├── utils.js             # Helpers puros (filtros, backup, etc.)
-└── constants.js         # Días de la semana, sanitización de URLs, etc.
+├── types/               # Tipos del dominio (Anime, Library, AiringInfo…)
+├── utils.ts             # Helpers puros (filtros, backup, etc.)
+└── constants.ts         # Días de la semana, sanitización de URLs, etc.
 public/
 └── sw.js                # Service worker (cache de app shell e imágenes)
 ```
@@ -152,6 +157,17 @@ El service worker (`public/sw.js`) cachea el app shell (network-first) y las
 imágenes (stale-while-revalidate), y deja siempre pasar a red las llamadas a las
 APIs. Cuando hay una versión nueva, la app muestra un banner para actualizar sin
 recargar a la fuerza.
+
+## Tipos (TypeScript)
+
+El núcleo de lógica pura está migrado a TypeScript y se chequea en modo
+`strict` (`npm run typecheck`): `constants`, `schemas/anime`, `libraryEdits`,
+`tracking`, `agenda`, `services/searchText`, `idMigration`, `cloudCodec` y
+`utils`. El resto de la app sigue en JavaScript y se migra **de a poco**.
+
+Para convertir un archivo: cambiale la extensión a `.ts` (o `.tsx`) y arreglá lo
+que reporte `npm run typecheck`. Los imports son sin extensión, así que no hay
+que tocar a quien lo consume. CI corre el chequeo en cada push y PR.
 
 ## Tests
 

@@ -1,9 +1,30 @@
+import type { AiringInfo, Anime, Schedule } from './types/anime';
 import { trackingAiring, airingMatchesProgress } from './tracking';
 import { daysOfWeek } from './constants';
 
-const getTodayIndex = (now) => (now.getDay() + 6) % 7;
+/** Anime dentro de la agenda: lleva su día y cuántos episodios hay pendientes. */
+export interface AgendaItem extends Anime {
+  _day: string;
+  _nextToWatch: number;
+  _pendingEpisodes: number;
+}
 
-const getWatchableEpisode = (anime) => {
+export interface AgendaBucket {
+  day: string;
+  dayIndex: number;
+  distance: number;
+  items: AgendaItem[];
+}
+
+export interface Agenda {
+  active: AgendaBucket | null;
+  upcoming: AgendaItem[];
+  todayIndex: number;
+}
+
+const getTodayIndex = (now: Date): number => (now.getDay() + 6) % 7;
+
+const getWatchableEpisode = (anime: Anime): number => {
   const currentEp = anime.currentEp || 0;
   const airing = anime.airing;
 
@@ -22,7 +43,7 @@ const getWatchableEpisode = (anime) => {
   return currentEp + 1;
 };
 
-const compareAgendaItems = (a, b) => {
+const compareAgendaItems = (a: AgendaItem, b: AgendaItem): number => {
   const aUnstarted = (a.currentEp || 0) === 0;
   const bUnstarted = (b.currentEp || 0) === 0;
   if (aUnstarted !== bUnstarted) return aUnstarted ? 1 : -1;
@@ -36,15 +57,19 @@ const compareAgendaItems = (a, b) => {
 };
 
 /** Build a cyclic, day-by-day watch queue beginning today. */
-export const buildAgenda = (schedule, airingData, now = new Date()) => {
+export const buildAgenda = (
+  schedule: Schedule,
+  airingData: Record<number, AiringInfo | undefined>,
+  now: Date = new Date(),
+): Agenda => {
   const todayIndex = getTodayIndex(now);
-  const dayBuckets = daysOfWeek.map((day, dayIndex) => {
-    const items = (schedule[day] || []).flatMap((anime) => {
+  const dayBuckets: AgendaBucket[] = daysOfWeek.map((day, dayIndex) => {
+    const items = (schedule[day] || []).flatMap((anime): AgendaItem[] => {
       if (anime.paused) return [];
-      const enriched = { ...anime, _day: day, airing: trackingAiring(anime, airingData[anime.id]) };
+      const enriched: Anime & { _day: string } = { ...anime, _day: day, airing: trackingAiring(anime, airingData[anime.id]) };
       const watchableEpisode = getWatchableEpisode(enriched);
       const currentEp = anime.currentEp || 0;
-      const isFinished = Boolean(anime.episodes) && currentEp >= anime.episodes;
+      const isFinished = Boolean(anime.episodes) && currentEp >= (anime.episodes ?? 0);
 
       if (isFinished || watchableEpisode <= currentEp) return [];
       return [{

@@ -1,10 +1,28 @@
 import { daysOfWeek } from './constants';
 import { migrateLibrary } from './idMigration';
+import type {
+  AiringInfo,
+  Anime,
+  AnimeLike,
+  CustomList,
+  Library,
+  ParsedBackup,
+  RawAiring,
+  Schedule,
+  StreamingLink,
+} from './types/anime';
+
+/** Etiqueta + color de una plataforma de streaming. */
+export interface PlatformInfo {
+  label: string;
+  name: string;
+  color: string;
+}
 
 /**
  * Remove internal flags from anime objects before persisting.
  */
-export const clean = (anime) => {
+export const clean = <T extends AnimeLike>(anime: T): T => {
   const rest = { ...anime };
   delete rest._day;
   delete rest._isWatchLater;
@@ -22,7 +40,7 @@ export const clean = (anime) => {
 /**
  * Map a watch/streaming URL to a brand badge (label + tint) for the UI.
  */
-export const getPlatformInfo = (url) => {
+export const getPlatformInfo = (url: string | null | undefined): PlatformInfo | null => {
   if (!url) return null;
   const u = url.toLowerCase();
   if (u.includes('crunchyroll.com')) return { label: 'CR', name: 'Crunchyroll', color: '#f47521' };
@@ -60,13 +78,13 @@ const PLATFORM_PRIORITY = [
 // "Dónde ver" y nunca se eligen como link automático.
 const DEAD_PLATFORMS = ['hidive.com'];
 
-export const isDeadPlatformUrl = (url) =>
+export const isDeadPlatformUrl = (url: string | null | undefined): boolean =>
   !!url && DEAD_PLATFORMS.some((h) => url.toLowerCase().includes(h));
 
 const UNKNOWN_RANK = PLATFORM_PRIORITY.length;
 const DEAD_RANK = PLATFORM_PRIORITY.length + 1;
 
-const streamingRank = (url) => {
+const streamingRank = (url: string | null | undefined): number => {
   if (!url) return DEAD_RANK;
   const u = url.toLowerCase();
   if (isDeadPlatformUrl(u)) return DEAD_RANK;
@@ -78,7 +96,7 @@ const streamingRank = (url) => {
  * Sort streaming links by platform preference: PLATFORM_PRIORITY first (in
  * order), then unknown platforms, dead platforms last. Stable within a group.
  */
-export const sortStreamingLinks = (links) =>
+export const sortStreamingLinks = <T extends { url?: string | null }>(links: readonly T[] | null | undefined): T[] =>
   [...(links || [])].sort((a, b) => streamingRank(a?.url) - streamingRank(b?.url));
 
 const FAN_PLATFORM_SOURCES = ['MAL', 'Kitsu', 'AniList'];
@@ -88,7 +106,7 @@ const FAN_PLATFORM_SOURCES = ['MAL', 'Kitsu', 'AniList'];
 // cada sitio segmenta el romaji a su manera ("Yarikomi Zuki" vs
 // "Yarikomizuki"); el prefijo aguanta esas diferencias. Prefijos muy cortos
 // ("Re:Zero" → "Re") no identifican nada: ahí va el título completo.
-const fanSearchQuery = (title) => {
+const fanSearchQuery = (title: string): string => {
   const prefix = title.split(/[:~(]/)[0].trim();
   return prefix.length >= 4 ? prefix : title.trim();
 };
@@ -101,16 +119,16 @@ const fanSearchQuery = (title) => {
  * películas y series occidentales), y sin duplicar plataformas que ya vengan
  * en streamingLinks.
  */
-export const buildFanStreamingLinks = (anime) => {
+export const buildFanStreamingLinks = (anime: AnimeLike | null | undefined): StreamingLink[] => {
   if (!anime) return [];
-  const isAnimeSource = FAN_PLATFORM_SOURCES.includes(anime.source)
+  const isAnimeSource = (!!anime.source && FAN_PLATFORM_SOURCES.includes(anime.source))
     || (!anime.source && Number(anime.id) > 0 && Number(anime.id) < 400000);
   if (!isAnimeSource) return [];
   const title = (anime.titleOriginal || anime.title || '').trim();
   if (!title) return [];
   const query = encodeURIComponent(fanSearchQuery(title));
   const existing = (anime.streamingLinks || []).map((l) => (l?.url || '').toLowerCase());
-  const links = [];
+  const links: StreamingLink[] = [];
   if (!existing.some((u) => u.includes('jkanime.net'))) {
     links.push({ site: 'JKAnime', url: `https://jkanime.net/buscar/${query}/`, language: 'buscar' });
   }
@@ -124,7 +142,7 @@ export const buildFanStreamingLinks = (anime) => {
  * Every streaming link worth showing for an anime — the API-provided ones plus
  * the generated fan-platform links — sorted by platform preference.
  */
-export const getDisplayStreamingLinks = (anime) =>
+export const getDisplayStreamingLinks = (anime: AnimeLike | null | undefined): StreamingLink[] =>
   sortStreamingLinks([
     ...(anime?.streamingLinks || []).filter((l) => l && l.url),
     ...buildFanStreamingLinks(anime),
@@ -137,7 +155,7 @@ export const getDisplayStreamingLinks = (anime) =>
  * breaking ties within the same platform. Never returns a dead-platform URL —
  * '' when there's nothing usable to pick.
  */
-export const pickAutoWatchLink = (anime) => {
+export const pickAutoWatchLink = (anime: AnimeLike | null | undefined): string => {
   if (anime?.watchLink && !isDeadPlatformUrl(anime.watchLink)) return anime.watchLink;
   const links = getDisplayStreamingLinks(anime).filter((l) => !isDeadPlatformUrl(l.url));
   if (links.length === 0) return '';
@@ -146,15 +164,28 @@ export const pickAutoWatchLink = (anime) => {
   return (spanish || links[0]).url;
 };
 
+export interface BuildAiringInfoInput {
+  episode: number;
+  /** Timestamp unix en segundos. */
+  airingAt: number;
+  totalEpisodes?: number | null;
+  title?: string;
+  season?: number | null;
+  dateOnly?: boolean;
+}
+
 /**
  * Info de "próximo episodio" con la forma que consumen las tarjetas y la
  * agenda. `airingAt` en segundos unix. Compartido por AniList y Viki.
  */
-export const buildAiringInfo = ({ episode, airingAt, totalEpisodes = null, title = '', season = null, dateOnly = false }, now = new Date()) => {
+export const buildAiringInfo = (
+  { episode, airingAt, totalEpisodes = null, title = '', season = null, dateOnly = false }: BuildAiringInfoInput,
+  now: Date = new Date(),
+): AiringInfo => {
   const airingDate = new Date(airingAt * 1000);
   const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate() + 1);
   const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1);
-  const diffHours = (airingDate - now) / (1000 * 60 * 60);
+  const diffHours = (airingDate.getTime() - now.getTime()) / (1000 * 60 * 60);
   const isToday = airingDate.toDateString() === now.toDateString();
   return {
     episode,
@@ -175,13 +206,14 @@ export const buildAiringInfo = ({ episode, airingAt, totalEpisodes = null, title
 };
 
 /** 'Ep. 5' o, con temporada, 'T38 · Ep. 2'. */
-export const airingEpisodeLabel = (airing) => `${airing.season ? `T${airing.season} · ` : ''}Ep. ${airing.episode}`;
+export const airingEpisodeLabel = (airing: AiringInfo): string =>
+  `${airing.season ? `T${airing.season} · ` : ''}Ep. ${airing.episode}`;
 
 /**
  * Human-friendly "when does the next episode air" label, in Spanish:
  * '¡Ya disponible!', 'En 2h 15m', 'Mañana', or the weekday name ('Sábado').
  */
-export const formatAiringWhen = (airing) => {
+export const formatAiringWhen = (airing: AiringInfo | null | undefined): string => {
   if (!airing) return '';
   if (airing.hasAired) return '¡Ya disponible!';
   if (airing.isToday) {
@@ -199,7 +231,7 @@ export const formatAiringWhen = (airing) => {
  * Full air date of the next episode ('Sábado, 12 de julio, 14:30').
  * `airingAt` is a unix timestamp in seconds (AniList format).
  */
-export const formatAiringDate = (airingAt, { dateOnly = false } = {}) => {
+export const formatAiringDate = (airingAt: number, { dateOnly = false }: { dateOnly?: boolean } = {}): string => {
   const d = new Date(airingAt * 1000);
   const date = d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
   const capitalized = `${date.charAt(0).toUpperCase()}${date.slice(1)}`;
@@ -213,9 +245,9 @@ export const formatAiringDate = (airingAt, { dateOnly = false } = {}) => {
  * 'hace un momento', 'hace 5 minutos', 'hace 3 horas', 'hace 2 días',
  * 'hace 3 semanas', 'hace 2 meses'. `nowMs` is injectable for tests.
  */
-export const formatTimeAgo = (unixSeconds, nowMs = Date.now()) => {
+export const formatTimeAgo = (unixSeconds: number, nowMs: number = Date.now()): string => {
   const diff = Math.max(0, Math.floor(nowMs / 1000 - unixSeconds));
-  const label = (n, one, many) => `hace ${n} ${n === 1 ? one : many}`;
+  const label = (n: number, one: string, many: string): string => `hace ${n} ${n === 1 ? one : many}`;
   if (diff < 60) return 'hace un momento';
   const mins = Math.floor(diff / 60);
   if (mins < 60) return label(mins, 'minuto', 'minutos');
@@ -232,10 +264,10 @@ export const formatTimeAgo = (unixSeconds, nowMs = Date.now()) => {
  * Relative "time until" label in Spanish for a unix timestamp in seconds:
  * 'en 45 minutos', 'en 3 horas', 'en 2 días', 'en 3 semanas'.
  */
-export const formatTimeUntil = (unixSeconds, nowMs = Date.now()) => {
+export const formatTimeUntil = (unixSeconds: number, nowMs: number = Date.now()): string => {
   const diff = Math.floor(unixSeconds - nowMs / 1000);
   if (diff <= 0) return '¡ya disponible!';
-  const label = (n, one, many) => `en ${n} ${n === 1 ? one : many}`;
+  const label = (n: number, one: string, many: string): string => `en ${n} ${n === 1 ? one : many}`;
   const mins = Math.floor(diff / 60);
   if (mins < 60) return label(Math.max(1, mins), 'minuto', 'minutos');
   const hours = Math.floor(diff / 3600);
@@ -249,18 +281,20 @@ export const formatTimeUntil = (unixSeconds, nowMs = Date.now()) => {
  * Read a JSON cache entry written by `writeCache`. Returns null when the key
  * is missing, malformed, or older than `maxAgeMs`.
  */
-export const readCache = (key, maxAgeMs) => {
+export const readCache = <T = unknown>(key: string, maxAgeMs: number): T | null => {
   try {
-    const raw = JSON.parse(localStorage.getItem(key));
+    const stored = localStorage.getItem(key);
+    if (stored === null) return null;
+    const raw = JSON.parse(stored) as { at?: unknown; data?: unknown } | null;
     if (!raw || typeof raw.at !== 'number') return null;
     if (Date.now() - raw.at > maxAgeMs) return null;
-    return raw.data ?? null;
+    return (raw.data ?? null) as T | null;
   } catch {
     return null;
   }
 };
 
-export const writeCache = (key, data) => {
+export const writeCache = (key: string, data: unknown): void => {
   try {
     localStorage.setItem(key, JSON.stringify({ at: Date.now(), data }));
   } catch { /* quota exceeded or serialization error */ }
@@ -273,7 +307,7 @@ const EN_STOPWORDS = /\b(the|and|but|with|for|that|this|from|are|was|were|been|h
  * Heuristic: does this text already look like Spanish? Compares stop-word hits
  * in both languages; used to skip translating synopses that arrive in Spanish.
  */
-export const looksSpanish = (text) => {
+export const looksSpanish = (text: string | null | undefined): boolean => {
   if (!text) return false;
   const esMatches = (text.match(ES_STOPWORDS) || []).length;
   const enMatches = (text.match(EN_STOPWORDS) || []).length;
@@ -284,7 +318,7 @@ export const looksSpanish = (text) => {
 /**
  * Whether a unix timestamp (seconds) is still in the future.
  */
-export const isFutureTimestamp = (unixSeconds, nowMs = Date.now()) =>
+export const isFutureTimestamp = (unixSeconds: number | null | undefined, nowMs: number = Date.now()): boolean =>
   !!unixSeconds && unixSeconds * 1000 > nowMs;
 
 /**
@@ -292,7 +326,7 @@ export const isFutureTimestamp = (unixSeconds, nowMs = Date.now()) =>
  * in the user's local timezone. Prefers the upcoming episode and falls back to
  * the last aired one. Returns null when there's no airing data.
  */
-export const getAiringDayIndex = (airing) => {
+export const getAiringDayIndex = (airing: RawAiring | null | undefined): number | null => {
   const ts = airing?.nextAiringAt ?? airing?.lastAiredAt;
   if (!ts) return null;
   return (new Date(ts * 1000).getDay() + 6) % 7;
@@ -302,16 +336,20 @@ export const getAiringDayIndex = (airing) => {
  * Group a season list into the 7 local weekdays by airing time (Monday-first),
  * each day sorted by broadcast hour. Anime without airing info go to `undated`.
  */
-export const groupSeasonByDay = (list) => {
-  const days = Array.from({ length: 7 }, () => []);
-  const undated = [];
+export const groupSeasonByDay = <T extends { _airing?: RawAiring }>(
+  list: readonly T[] | null | undefined,
+): { days: T[][]; undated: T[] } => {
+  const days: T[][] = Array.from({ length: 7 }, () => [] as T[]);
+  const undated: T[] = [];
   for (const a of list || []) {
     const idx = getAiringDayIndex(a._airing);
     if (idx == null) undated.push(a);
     else days[idx].push(a);
   }
-  const minuteOfDay = (airing) => {
-    const d = new Date((airing.nextAiringAt ?? airing.lastAiredAt) * 1000);
+  const minuteOfDay = (airing: RawAiring | undefined): number => {
+    const ts = airing?.nextAiringAt ?? airing?.lastAiredAt;
+    if (!ts) return 0;
+    const d = new Date(ts * 1000);
     return d.getHours() * 60 + d.getMinutes();
   };
   days.forEach((bucket) => bucket.sort((a, b) => minuteOfDay(a._airing) - minuteOfDay(b._airing)));
@@ -321,12 +359,12 @@ export const groupSeasonByDay = (list) => {
 /**
  * Filter a list of anime by local search query (accent-insensitive, case-insensitive).
  */
-export const filterByLocalSearch = (list, localSearch) => {
+export const filterByLocalSearch = <T extends AnimeLike>(list: T[], localSearch: string): T[] => {
   if (!localSearch.trim()) return list;
   const q = localSearch.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  return list.filter(a => {
-    const titles = [a.title, a.titleJp, a.titleEn, a.titleOriginal].filter(Boolean);
-    return titles.some(t => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes(q));
+  return list.filter((a) => {
+    const titles = [a.title, a.titleJp, a.titleEn, a.titleOriginal].filter((t): t is string => Boolean(t));
+    return titles.some((t) => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes(q));
   });
 };
 
@@ -334,23 +372,39 @@ export const filterByLocalSearch = (list, localSearch) => {
  * Apply a minimum-rating filter and an optional rating-desc sort to a list.
  * Items without a rating count as 0 and are kept only when minRating is 0.
  */
-export const applyRatingFilter = (list, { minRating = 0, sortByRating = false } = {}) => {
+export const applyRatingFilter = <T extends AnimeLike>(
+  list: T[],
+  { minRating = 0, sortByRating = false }: { minRating?: number; sortByRating?: boolean } = {},
+): T[] => {
   let out = list;
   if (minRating > 0) out = out.filter((a) => (a.rating || 0) >= minRating);
   if (sortByRating) out = [...out].sort((a, b) => (b.rating || 0) - (a.rating || 0));
   return out;
 };
 
+/** Campos que agrega el ranking de descubrimiento. */
+export interface RecommendationFields {
+  _recommendationScore: number;
+  _recommendationReason: string;
+}
+
 /** Rank discovery results from the user's genres, ratings and completion history. */
-export const personalizeDiscovery = (items = [], library = []) => {
-  const genreWeights = {};
+export const personalizeDiscovery = <T extends AnimeLike>(
+  items: T[] = [],
+  library: AnimeLike[] = [],
+): (T & RecommendationFields)[] => {
+  const genreWeights: Record<string, number> = {};
   for (const anime of library) {
-    const ratingWeight = anime.userRating > 0 ? (anime.userRating - 5) / 2 : 0;
+    const userRating = anime.userRating ?? 0;
+    const ratingWeight = userRating > 0 ? (userRating - 5) / 2 : 0;
     const statusWeight = anime.finished === false ? -2 : anime.finished ? 1 : 0.25;
     for (const genre of anime.genres || []) genreWeights[genre] = (genreWeights[genre] || 0) + ratingWeight + statusWeight;
   }
   return items.map((anime) => {
-    const matches = (anime.genres || []).map((genre) => [genre, genreWeights[genre] || 0]).filter(([, weight]) => weight > 0).sort((a, b) => b[1] - a[1]);
+    const matches: [string, number][] = (anime.genres || [])
+      .map((genre): [string, number] => [genre, genreWeights[genre] || 0])
+      .filter(([, weight]) => weight > 0)
+      .sort((a, b) => b[1] - a[1]);
     return {
       ...anime,
       _recommendationScore: matches.reduce((sum, [, weight]) => sum + weight, 0) + (anime.rating ? anime.rating / 4 : 0),
@@ -359,10 +413,22 @@ export const personalizeDiscovery = (items = [], library = []) => {
   }).sort((a, b) => b._recommendationScore - a._recommendationScore || (b.rating || 0) - (a.rating || 0));
 };
 
-export const filterDiscovery = (items = [], { genre = 'all', platform = 'all', hideAdded = false, ignoredIds = [] } = {}, addedIds = new Set()) => {
+export interface DiscoveryFilterOptions {
+  genre?: string;
+  platform?: string;
+  hideAdded?: boolean;
+  ignoredIds?: (number | string)[];
+}
+
+export const filterDiscovery = <T extends AnimeLike>(
+  items: T[] = [],
+  { genre = 'all', platform = 'all', hideAdded = false, ignoredIds = [] }: DiscoveryFilterOptions = {},
+  addedIds: Set<number | string> = new Set(),
+): T[] => {
   const ignored = new Set(ignoredIds);
   return items.filter((anime) => {
-    if (ignored.has(anime.id) || (hideAdded && addedIds.has(anime.id))) return false;
+    const id = anime.id;
+    if (id !== undefined && (ignored.has(id) || (hideAdded && addedIds.has(id)))) return false;
     if (genre !== 'all' && !(anime.genres || []).includes(genre)) return false;
     if (platform !== 'all' && !(anime.streamingLinks || []).some((link) => link.site === platform)) return false;
     return true;
@@ -372,21 +438,26 @@ export const filterDiscovery = (items = [], { genre = 'all', platform = 'all', h
 /**
  * Filter and sort the watched list based on filter, sort, and search criteria.
  */
-export const getFilteredWatched = (watchedList, watchedFilter, watchedSort, localSearch) => {
+export const getFilteredWatched = <T extends AnimeLike>(
+  watchedList: T[],
+  watchedFilter: string,
+  watchedSort: string,
+  localSearch: string,
+): T[] => {
   let list = [...watchedList];
-  if (watchedFilter === 'finished') list = list.filter(a => a.finished);
-  else if (watchedFilter === 'dropped') list = list.filter(a => !a.finished);
+  if (watchedFilter === 'finished') list = list.filter((a) => a.finished === true);
+  else if (watchedFilter === 'dropped') list = list.filter((a) => !a.finished);
   list = filterByLocalSearch(list, localSearch);
-  if (watchedSort === 'date') list.sort((a, b) => new Date(b.finishedDate || b.droppedDate || 0) - new Date(a.finishedDate || a.droppedDate || 0));
+  if (watchedSort === 'date') list.sort((a, b) => new Date(b.finishedDate || b.droppedDate || 0).getTime() - new Date(a.finishedDate || a.droppedDate || 0).getTime());
   else if (watchedSort === 'rating') list.sort((a, b) => (b.userRating || 0) - (a.userRating || 0));
-  else if (watchedSort === 'title') list.sort((a, b) => a.title.localeCompare(b.title));
+  else if (watchedSort === 'title') list.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
   return list;
 };
 
 /**
  * Simple string hash (for generating stable IDs from strings).
  */
-export const hashString = (str) => {
+export const hashString = (str: string): number => {
   let hash = 0;
   for (let i = 0; i < str.length; i++) { hash = ((hash << 5) - hash) + str.charCodeAt(i); hash |= 0; }
   return Math.abs(hash) % 100000;
@@ -395,14 +466,22 @@ export const hashString = (str) => {
 const BACKUP_APP_ID = 'anitracker';
 const BACKUP_SCHEMA_VERSION = 2;
 
+/** Copia de seguridad exportable. */
+export interface Backup {
+  app: string;
+  schemaVersion: number;
+  exportedAt: string;
+  data: Library;
+}
+
 /**
  * Build a portable, serializable backup object from the user's data.
  * `now` is injectable so the result can be made deterministic in tests.
  */
 export const buildBackup = (
-  { schedule = {}, watchedList = [], watchLater = [], customLists = [] } = {},
-  now = new Date().toISOString(),
-) => ({
+  { schedule = {}, watchedList = [], watchLater = [], customLists = [] }: Partial<Library> = {},
+  now: string = new Date().toISOString(),
+): Backup => ({
   app: BACKUP_APP_ID,
   schemaVersion: BACKUP_SCHEMA_VERSION,
   exportedAt: now,
@@ -418,8 +497,8 @@ export const buildBackup = (
  * a broken file can't reach the state (and from there, every synced device).
  * Throws an Error with a user-facing (Spanish) message on invalid input.
  */
-export const parseBackup = (jsonString) => {
-  let parsed;
+export const parseBackup = (jsonString: string): ParsedBackup => {
+  let parsed: unknown;
   try {
     parsed = JSON.parse(jsonString);
   } catch {
@@ -428,22 +507,27 @@ export const parseBackup = (jsonString) => {
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
     throw new Error('El archivo no tiene un formato reconocible.');
   }
-  const container = (parsed.data && typeof parsed.data === 'object') ? parsed.data : parsed;
+  const root = parsed as Record<string, unknown>;
+  const container = (root.data && typeof root.data === 'object') ? root.data as Record<string, unknown> : root;
   const keys = ['schedule', 'watchedList', 'watchLater', 'customLists'];
   if (!keys.some((k) => k in container)) {
     throw new Error('El archivo no contiene datos de AniTracker.');
   }
-  const isPlainObject = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
-  const isEntry = (a) => isPlainObject(a) && typeof a.id === 'number' && Number.isFinite(a.id) && a.id > 0;
+  const isPlainObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+  const isEntry = (a: unknown): a is Anime => {
+    if (!isPlainObject(a)) return false;
+    const id = a.id;
+    return typeof id === 'number' && Number.isFinite(id) && id > 0;
+  };
   let skipped = 0;
-  const entries = (v) => {
+  const entries = (v: unknown): Anime[] => {
     if (!Array.isArray(v)) return [];
     const valid = v.filter(isEntry);
     skipped += v.length - valid.length;
     return valid;
   };
 
-  const schedule = {};
+  const schedule: Schedule = {};
   if (isPlainObject(container.schedule)) {
     for (const [day, items] of Object.entries(container.schedule)) {
       if (daysOfWeek.includes(day)) schedule[day] = entries(items);
@@ -451,13 +535,15 @@ export const parseBackup = (jsonString) => {
     }
   }
 
-  const customLists = [];
-  (Array.isArray(container.customLists) ? container.customLists : []).forEach((list, i) => {
+  const customLists: CustomList[] = [];
+  (Array.isArray(container.customLists) ? container.customLists : []).forEach((list: unknown, i: number) => {
     if (!isPlainObject(list)) { skipped += 1; return; }
+    const rawId = list.id;
+    const rawName = list.name;
     customLists.push({
       ...list,
-      id: typeof list.id === 'string' || typeof list.id === 'number' ? list.id : `list-restored-${i}`,
-      name: typeof list.name === 'string' && list.name.trim() ? list.name : 'Lista',
+      id: typeof rawId === 'string' || typeof rawId === 'number' ? rawId : `list-restored-${i}`,
+      name: typeof rawName === 'string' && rawName.trim() ? rawName : 'Lista',
       items: entries(list.items),
     });
   });
