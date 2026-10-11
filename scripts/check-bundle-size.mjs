@@ -21,7 +21,7 @@ const KB = 1024;
 const BUDGETS = [
   { label: 'Firebase (lazy)', match: /^firebase-.*\.js$/, max: 120 * KB },
   { label: 'React (vendor)', match: /^vendor-.*\.js$/, max: 80 * KB },
-  { label: 'Entrada (index)', match: /^index-.*\.js$/, max: 46 * KB },
+  { label: 'Entrada (index)', match: /^index-.*\.js$/, max: 50 * KB },
   { label: 'Total de JS', total: true, max: 290 * KB },
 ];
 

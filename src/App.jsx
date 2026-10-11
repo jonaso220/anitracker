@@ -28,6 +28,7 @@ const BackupModal = lazy(() => import('./components/modals/BackupModal'));
 
 import { useFirebase } from './hooks/useFirebase';
 import { useHashRoute } from './hooks/useHashRoute';
+import { useAutoBackup } from './hooks/useAutoBackup';
 import { useAnimeData } from './hooks/useAnimeData';
 import { useDragDrop } from './hooks/useDragDrop';
 import { usePersistedState } from './hooks/usePersistedState';
@@ -93,6 +94,13 @@ export default function AnimeTracker() {
   const { updateAvailable, applyUpdate, dismissUpdate } = useServiceWorkerUpdate();
   const discovery = useDiscovery();
   const directory = useDirectory();
+
+  // Red de seguridad local: una copia diaria en IndexedDB para quien no usa el
+  // sync. Ver `useAutoBackup` y `autoBackup.ts`.
+  useAutoBackup({
+    schedule, watchedList, watchLater, customLists,
+    owner: user?.uid ?? null,
+  });
   const exitBulkMode = bulk.exitBulkMode;
   useEffect(() => {
     // Old modals/undo callbacks must not write one account's data into another.

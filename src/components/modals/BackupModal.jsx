@@ -1,17 +1,39 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAccessibleDialog } from '../../hooks/useAccessibleDialog';
 import { parseBackup } from '../../utils';
 import { daysOfWeek } from '../../constants';
+import { MAX_SNAPSHOTS, listAutoBackups, readAutoBackup } from '../../autoBackup';
 
 function countSchedule(schedule) {
   return daysOfWeek.reduce((sum, d) => sum + (Array.isArray(schedule?.[d]) ? schedule[d].length : 0), 0);
 }
 
+const formatWhen = (iso) => {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime())
+    ? ''
+    : date.toLocaleString('es-ES', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+};
+
 export default function BackupModal({ onClose, onExport, onRestore, synced = false }) {
   const [pending, setPending] = useState(null); // parsed data awaiting confirmation
   const [error, setError] = useState('');
+  const [autoBackups, setAutoBackups] = useState([]);
   const fileRef = useRef(null);
   const dialogRef = useAccessibleDialog(onClose);
+
+  useEffect(() => {
+    let cancelled = false;
+    listAutoBackups().then((list) => { if (!cancelled) setAutoBackups(list); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const loadAuto = async (id) => {
+    setError('');
+    const data = await readAutoBackup(id);
+    if (data) setPending({ ...data, skipped: 0 });
+    else setError('No se pudo leer esa copia.');
+  };
 
   const handleFile = async (e) => {
     const file = e.target.files?.[0];
@@ -63,6 +85,24 @@ export default function BackupModal({ onClose, onExport, onRestore, synced = fal
               <label htmlFor="backup-file" className="backup-btn backup-btn-secondary">Elegir archivo…</label>
               {error && <p className="backup-error" role="alert">⚠ {error}</p>}
             </section>
+
+            {autoBackups.length > 0 && (
+              <section className="backup-section">
+                <h3>🕒 Copias automáticas</h3>
+                <p>La app guarda una copia local por día y conserva las últimas {MAX_SNAPSHOTS}. Sirven para salir de un cambio accidental; no reemplazan a una copia descargada.</p>
+                <ul className="backup-auto-list">
+                  {autoBackups.map((backup) => (
+                    <li key={backup.id}>
+                      <span className="backup-auto-when">{formatWhen(backup.at)}</span>
+                      <span className="backup-auto-count">
+                        {backup.counts.schedule + backup.counts.watched + backup.counts.watchLater} animes
+                      </span>
+                      <button type="button" className="backup-inline-link" onClick={() => loadAuto(backup.id)}>Restaurar</button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
           </div>
         ) : (
           <div className="backup-confirm">

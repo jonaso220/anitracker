@@ -35,5 +35,20 @@ export default defineConfig({
     setupFiles: './src/test/setup.js',
     css: true,
     pool: 'vmThreads',
+    coverage: {
+      provider: 'v8',
+      reporter: ['text-summary'],
+      include: ['src/**/*.{js,jsx,ts,tsx}'],
+      exclude: ['src/test/**', 'src/**/*.d.ts'],
+      // Baseline medido al agregar el chequeo (85/80/72/70). Un punto de margen
+      // para que un refactor legítimo no rompa CI por ruido, pero una regresión
+      // real (módulo nuevo sin tests) sí lo hace.
+      thresholds: {
+        lines: 84,
+        statements: 79,
+        functions: 70,
+        branches: 69,
+      },
+    },
   },
 })

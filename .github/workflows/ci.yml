@@ -17,6 +17,10 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
-      - run: npm test
+      # Corre la suite con cobertura: falla si baja de los umbrales de vite.config.js.
+      - run: npm run coverage
+      # Con los `overrides` de package.json la auditoría queda limpia; esto evita
+      # que entre una dependencia nueva con un aviso alto.
+      - run: npm audit --audit-level=high
       - run: npm run build
       - run: npm run size
