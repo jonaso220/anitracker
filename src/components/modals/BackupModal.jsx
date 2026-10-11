@@ -3,6 +3,7 @@ import { useAccessibleDialog } from '../../hooks/useAccessibleDialog';
 import { parseBackup } from '../../utils';
 import { daysOfWeek } from '../../constants';
 import { MAX_SNAPSHOTS, listAutoBackups, readAutoBackup } from '../../autoBackup';
+import { t } from '../../i18n';
 
 function countSchedule(schedule) {
   return daysOfWeek.reduce((sum, d) => sum + (Array.isArray(schedule?.[d]) ? schedule[d].length : 0), 0);
@@ -89,13 +90,15 @@ export default function BackupModal({ onClose, onExport, onRestore, synced = fal
             {autoBackups.length > 0 && (
               <section className="backup-section">
                 <h3>🕒 Copias automáticas</h3>
-                <p>La app guarda una copia local por día y conserva las últimas {MAX_SNAPSHOTS}. Sirven para salir de un cambio accidental; no reemplazan a una copia descargada.</p>
+                <p>{t('backup.autoHint', undefined, { max: MAX_SNAPSHOTS })}</p>
                 <ul className="backup-auto-list">
                   {autoBackups.map((backup) => (
                     <li key={backup.id}>
                       <span className="backup-auto-when">{formatWhen(backup.at)}</span>
                       <span className="backup-auto-count">
-                        {backup.counts.schedule + backup.counts.watched + backup.counts.watchLater} animes
+                        {t('backup.animeCount', undefined, {
+                          count: backup.counts.schedule + backup.counts.watched + backup.counts.watchLater,
+                        })}
                       </span>
                       <button type="button" className="backup-inline-link" onClick={() => loadAuto(backup.id)}>Restaurar</button>
                     </li>
@@ -114,7 +117,7 @@ export default function BackupModal({ onClose, onExport, onRestore, synced = fal
               <li><strong>{pending.customLists.length}</strong> listas personalizadas</li>
             </ul>
             {pending.skipped > 0 && (
-              <p className="backup-note">{pending.skipped === 1 ? 'Se omitirá 1 entrada inválida' : `Se omitirán ${pending.skipped} entradas inválidas`} del archivo.</p>
+              <p className="backup-note">{t('backup.skippedFile', undefined, { count: pending.skipped })}</p>
             )}
             <p className="backup-warning">
               ⚠ Esto reemplazará tu biblioteca actual{synced ? ' en todos tus dispositivos sincronizados' : ''}.

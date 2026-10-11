@@ -1,10 +1,14 @@
 /**
  * Spanish (es-ES / es-AR) strings.
- * This is a flat dictionary keyed by dot-path so it's easy to extract for other
- * locales later. Only user-facing strings live here; log/console messages stay
- * inline in their source file.
+ *
+ * Flat dictionary keyed by dot-path, easy to extract for other locales. Values
+ * can be a plain string or `{ one, other }` for plurals (see i18n/index.ts).
+ * Only user-facing strings live here; log/console messages stay inline in their
+ * source file.
  */
-export const es = {
+import type { Dictionary } from './index';
+
+export const es: Dictionary = {
   'nav.schedule': 'Semana',
   'nav.watchLater': 'Después',
   'nav.watched': 'Vistas',
@@ -92,6 +96,13 @@ export const es = {
   'stats.composition': 'Composición de tu biblioteca',
   'stats.yourRatings': 'Tus puntuaciones',
   'stats.topGenres': 'Géneros favoritos',
+
+  'backup.skippedFile': {
+    one: 'Se omitirá 1 entrada inválida del archivo.',
+    other: 'Se omitirán {count} entradas inválidas del archivo.',
+  },
+  'backup.animeCount': { one: '1 anime', other: '{count} animes' },
+  'backup.autoHint': 'La app guarda una copia local por día y conserva las últimas {max}. Sirven para salir de un cambio accidental; no reemplazan a una copia descargada.',
 };
 
 export default es;
