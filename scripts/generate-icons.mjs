@@ -186,3 +186,6 @@ for (const [file, data] of Object.entries(outputs)) {
   writeFileSync(join(PUBLIC_DIR, file), data);
   console.log(`${file.padEnd(24)} ${(data.length / 1024).toFixed(1)} kB`);
 }
+// Chrome (144+) trata la URL de un ícono como inmutable: sin URL nueva, las
+// apps ya instaladas se quedan con el ícono viejo.
+console.log('\nSi el ícono cambió: subí el ?v=N de los íconos en public/manifest.json y CACHE_VERSION en public/sw.js.');

@@ -276,8 +276,12 @@ Vitest + Testing Library (jsdom), setup en `src/test/setup.js`. Al tocar
   ahí `icon-192.png`, `icon-512.png`, `icon-maskable-512.png` (a sangre, glifo
   al 86% para la zona segura), `apple-touch-icon.png` (a sangre) y
   `favicon.ico` (16/32/48; el de 16 va sin destello). Rasteriza con un Chrome
-  instalado, sin dependencias nuevas. Al cambiarlos, subí `CACHE_VERSION`: están
-  en `PRECACHE_URLS`.
+  instalado, sin dependencias nuevas. Al cambiarlos, subí `CACHE_VERSION` (están
+  en `PRECACHE_URLS`) **y el `?v=N` de los íconos en `manifest.json`**: desde
+  Chrome 144 la URL de un ícono se trata como inmutable, así que cambiar el
+  archivo sin cambiar la URL no actualiza el ícono de las apps ya instaladas.
+  Con la URL nueva, Chrome le ofrece al usuario «Revisar actualización de la
+  app» en el menú ⋮ de la ventana.
 - Firebase config admite override por env (`VITE_FIREBASE_*`, ver
   `.env.example`) con *fallback* al proyecto público compartido.
 - TMDB es opcional: sin `VITE_TMDB_API_KEY` la fuente no aparece en la
