@@ -61,6 +61,7 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
     const [synopsisExpanded, setSynopsisExpanded] = useState(false);
     const [titleExpanded, setTitleExpanded] = useState(false);
     const [coverFailed, setCoverFailed] = useState(false);
+    const [askRating, setAskRating] = useState(false);
 
     useEffect(() => {
         if (!bingeMode) return undefined;
@@ -229,6 +230,22 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
     };
 
 
+    // Terminada (o ya en Vistas), la nota es lo que falta: sube al bloque principal.
+    const ratingFirst = !!a._isWatched || episodeComplete;
+    const ratingSection = (
+        <div className="detail-section detail-rating-section">
+            <h4>{t('detail.yourRating', '★ Tu valoración')}</h4>
+            <div className="detail-rating-row">
+                <StarRating rating={localRating} size={24} interactive onChange={(r) => { setLocalRating(r); updateUserRating(a.id, r); }} />
+                <span className="detail-rating-value" aria-live="polite">{localRating ? `${localRating}/5` : t('detail.unrated')}</span>
+            </div>
+        </div>
+    );
+    const finish = () => closeAndDo(() => markAsFinished(a, a._day));
+    // Primero pasa a Vistas y después se aplica la nota: así la nota cae sobre la
+    // entrada ya movida (las dos actualizaciones corren en ese orden).
+    const finishWithRating = (rating) => closeAndDo(() => { markAsFinished(a, a._day); updateUserRating(a.id, rating); });
+
     return (
         <div className="modal-overlay" onClick={closeDetail}>
             <div ref={dialogRef} className="detail-modal tracking-detail fade-in" role="dialog" aria-modal="true" aria-labelledby="anime-detail-title" tabIndex={-1} onClick={e => e.stopPropagation()}>
@@ -241,12 +258,19 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                     <div className="detail-info">
                         <h2 id="anime-detail-title" className={titleExpanded || a.title?.length <= 90 ? '' : 'detail-title-compact'}>{a.title}</h2>
                         {a.title?.length > 90 && <button className="detail-disclosure" aria-expanded={titleExpanded} aria-controls="anime-detail-title" onClick={() => setTitleExpanded(!titleExpanded)}>{t(titleExpanded ? 'detail.lessTitle' : 'detail.fullTitle')}</button>}
-                        {a.titleJp && a.titleJp !== a.title && <details className="detail-original-title"><summary>{t('detail.originalTitle')}</summary><p className="title-jp">{a.titleJp}</p></details>}
+                        {a.titleJp && a.titleJp !== a.title && <p className="title-jp detail-original-title"><span className="sr-only">{t('detail.originalTitle')}: </span>{a.titleJp}</p>}
                         <div className="detail-meta">
                             {a.type && <span className="meta-tag type">{typeLabel(a.type)}</span>}
                             {a.year && <span className="meta-tag year">{a.year}</span>}
                             {a.episodes > 0 && <span className="meta-tag eps">{t('card.episodeCount', '{count} episodios', { count: a.episodes })}</span>}
                         </div>
+                        {airing && (
+                            <p className={`detail-next-ep detail-header-airing ${airing.hasAired ? 'aired' : airing.isToday ? 'today' : ''}`}>
+                                {airing.hasAired
+                                    ? <>🆕 {t('detail.episodeAvailable', '{episode}: ¡ya disponible!', { episode: airingEpisodeLabel(airing) })}</>
+                                    : <>📅 {t('detail.nextEpisodeOn', 'Próximo episodio ({episode}): {date}', { episode: airingEpisodeLabel(airing), date: formatAiringDate(airing.airingAt, airing) })}</>}
+                            </p>
+                        )}
                         {a.paused && isSchedule && <span className="detail-paused-label">{t('card.pausedOn', 'En pausa · {day}', { day: dayLabel(a._day) })}</span>}
                         <div className="detail-genres">{(a.genres || []).map((g, i) => <span key={i} className="genre-tag">{genreLabel(g)}</span>)}</div>
                         {a.rating > 0 && <div className="detail-score"><span className="score-label">{t('detail.score', 'Valoración:')}</span><span className="score-value">⭐ {Number(a.rating).toFixed(1)}</span></div>}
@@ -258,9 +282,6 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                     <div className="detail-section detail-progress-section">
                         <div className="detail-section-header">
                             <h4>{t('detail.progressTitle', '📺 Tu avance')}</h4>
-                            <button className={`binge-toggle ${bingeMode ? 'active' : ''}`} onClick={toggleBinge} aria-pressed={bingeMode}>
-                                {t('detail.binge', '🔥 Maratón')}
-                            </button>
                         </div>
                         <div className="episode-controls">
                             <button className="ep-control-btn" disabled={localEp <= 0} onClick={() => changeLocalEpisode(-1)} aria-label={t('detail.prevEpisode', 'Episodio anterior')}>−</button>
@@ -291,14 +312,19 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                         )}
                         <p id="episode-entry-hint" className="episode-entry-hint">{t('detail.editHint', 'Tocá el número para editar')}</p>
                         {episodeError && <p className="tracking-error" role="alert">{episodeError}</p>}
-                        {setAnimeSeason && <SeasonControls anime={{ ...a, currentEp: localEp }} onChange={changeSeason} />}
-                        {airing && (
-                            <p className={`detail-next-ep ${airing.hasAired ? 'aired' : airing.isToday ? 'today' : ''}`}>
-                                {airing.hasAired
-                                    ? <>🆕 {t('detail.episodeAvailable', '{episode}: ¡ya disponible!', { episode: airingEpisodeLabel(airing) })}</>
-                                    : <>📅 {t('detail.nextEpisodeOn', 'Próximo episodio ({episode}): {date}', { episode: airingEpisodeLabel(airing), date: formatAiringDate(airing.airingAt, airing) })}</>}
-                            </p>
-                        )}
+                        {/* Con el seguimiento por temporadas prendido, sus controles van a
+                            la vista; lo que se usa de vez en cuando queda plegado. */}
+                        {setAnimeSeason && a.currentSeason && <SeasonControls anime={{ ...a, currentEp: localEp }} onChange={changeSeason} />}
+                        <details className="detail-progress-more">
+                            <summary>{t('detail.moreOptions', 'Más opciones')}</summary>
+                            <div className="detail-progress-more-body">
+                                <button className={`binge-toggle ${bingeMode ? 'active' : ''}`} onClick={toggleBinge} aria-pressed={bingeMode}>
+                                    {t('detail.binge', '🔥 Maratón')}
+                                </button>
+                                {setAnimeSeason && !a.currentSeason && <SeasonControls anime={{ ...a, currentEp: localEp }} onChange={changeSeason} />}
+                            </div>
+                            <p className="detail-progress-more-hint">{t('detail.moreOptionsHint', 'Maratón suma varios episodios de una y cuenta la sesión. Por temporadas guarda el avance de cada una por separado.')}</p>
+                        </details>
                         {bingeMode && (
                             <div className="binge-panel fade-in">
                                 <div className="binge-quick-btns">
@@ -314,6 +340,8 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                         )}
                     </div>
                 )}
+
+                {ratingFirst && ratingSection}
 
                 {/* Una sola sección "Dónde ver": el enlace principal y, debajo, el
                     resto de las opciones (otras plataformas, proveedores por país). */}
@@ -380,8 +408,19 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
 
                 {/* Una acción principal por contexto, las secundarias de a dos y
                     "Dropear" aparte: es la única que no se quiere tocar por error. */}
+                {askRating ? (
+                    <div className="detail-finish-rating" role="group" aria-labelledby="detail-finish-rating-title">
+                        <p id="detail-finish-rating-title" className="detail-finish-rating-title">{t('detail.finishRatingTitle', '¿Qué te pareció?')}</p>
+                        <p className="detail-finish-rating-hint">{t('detail.finishRatingHint', 'Ponele una nota y la paso a Vistas.')}</p>
+                        <StarRating rating={0} size={30} interactive onChange={finishWithRating} />
+                        <div className="detail-finish-rating-actions">
+                            <button className="tracking-text-button" onClick={finish}>{t('detail.finishUnrated', 'Finalizar sin nota')}</button>
+                            <button className="tracking-text-button" onClick={() => setAskRating(false)}>{t('common.cancel', 'Cancelar')}</button>
+                        </div>
+                    </div>
+                ) : (
                 <div className="detail-secondary-row" role="group" aria-label={t('detail.actions')}>
-                    {isSchedule && <button className="detail-action-btn finish detail-action-primary" onClick={() => closeAndDo(() => markAsFinished(a, a._day))}>{t('detail.finish', '✓ Finalizar')}</button>}
+                    {isSchedule && <button className="detail-action-btn finish detail-action-primary" onClick={() => (localRating > 0 ? finish() : setAskRating(true))}>{t('detail.finish', '✓ Finalizar')}</button>}
                     {(a._isWatchLater || a._isCustomList || isDiscovery) && <button className="tracking-text-button detail-action-primary" onClick={() => closeAndDo(() => setShowDayPicker(a))}>{t('detail.addToWeek', '📅 Añadir a semana')}</button>}
                     {a._isWatched && !a.finished && <button className="tracking-pause-button resume detail-action-primary" onClick={() => closeAndDo(() => resumeAnime(a))}>{t('detail.resume', '▶ Retomar')}</button>}
 
@@ -395,6 +434,7 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
 
                     {isSchedule && <button className="detail-action-btn drop detail-action-danger" onClick={() => closeAndDo(() => dropAnime(a, a._day))}>{t('detail.drop', '✗ Dropear')}</button>}
                 </div>
+                )}
                 </div>
                 <div className="detail-synopsis">
                     <div className="detail-synopsis-header">
@@ -421,24 +461,7 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                         {longSynopsis && <button className="detail-disclosure" aria-expanded={synopsisExpanded} aria-controls="detail-synopsis-text" onClick={() => setSynopsisExpanded(!synopsisExpanded)}>{t(synopsisExpanded ? 'detail.readLess' : 'detail.readMore')}</button>}</>}
                 </div>
 
-                {/* For schedule items this info lives inside "Episodio actual" below. */}
-                {airing && !isSchedule && (
-                    <div className={`detail-section detail-airing ${airing.hasAired ? 'aired' : airing.isToday ? 'today' : ''}`}>
-                        <h4>{airing.hasAired ? t('detail.airingAvailable', '🆕 ¡Episodio disponible!') : airing.isToday ? t('detail.airingToday', '🔴 Sale hoy') : airing.isTomorrow ? t('detail.airingTomorrow', '📢 Sale mañana') : t('detail.airingSoon', '📡 Próximamente')}</h4>
-                        <div className="detail-airing-info">
-                            <span className="detail-airing-ep">{airingEpisodeLabel(airing)}</span>
-                            <span className="detail-airing-date">{formatAiringDate(airing.airingAt, airing)}</span>
-                        </div>
-                    </div>
-                )}
-
-                <div className="detail-section">
-                    <h4>{t('detail.yourRating', '★ Tu valoración')}</h4>
-                    <div className="detail-rating-row">
-                        <StarRating rating={localRating} size={24} interactive onChange={(r) => { setLocalRating(r); updateUserRating(a.id, r); }} />
-                        <span className="detail-rating-value" aria-live="polite">{localRating ? `${localRating}/5` : t('detail.unrated')}</span>
-                    </div>
-                </div>
+                {!ratingFirst && ratingSection}
 
                 {customLists.length > 0 && (
                     <div className="detail-section">

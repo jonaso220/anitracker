@@ -1,6 +1,6 @@
 import React, {useState,useRef,useEffect} from 'react';
 import {it,expect,vi,afterEach} from 'vitest';
-import {render,renderHook,screen,fireEvent,act,cleanup} from '@testing-library/react';
+import {render,renderHook,screen,fireEvent,act,cleanup,within} from '@testing-library/react';
 import {useAnimeActions} from '../hooks/useAnimeActions.js';
 import {useDragDrop} from '../hooks/useDragDrop.js';
 import AnimeDetailModal from '../components/modals/AnimeDetailModal.jsx';
@@ -303,13 +303,14 @@ it('shows one primary watch destination while preserving distinct alternative UR
  expect(disclosure.closest('details')).not.toHaveAttribute('open');
  expect(disclosure.closest('details').querySelector('a')).toHaveAttribute('href',alternative);
 });
-it('retains the full long title and original title behind explicit disclosures', () => {
+it('retains the full long title behind a disclosure and shows the original title as a subtitle', () => {
  const title='Un título muy largo que no entra en una sola línea '.repeat(4);
  const {container}=render(<AnimeDetailModal {...modalProps()} showAnimeDetail={{...a,title,titleJp:'原題'}}/>);
  fireEvent.click(screen.getByRole('button',{name:'Ver título completo'}));
  expect(container.querySelector('h2')).not.toHaveClass('detail-title-compact');
  expect(container.querySelector('h2').textContent).toBe(title);
- expect(container.querySelector('.detail-original-title p')).toHaveTextContent('原題');
+ expect(container.querySelector('p.detail-original-title')).toHaveTextContent('原題');
+ expect(container.querySelector('details.detail-original-title')).toBeNull();
 });
 
 // ---- Rediseño del detalle: avance, acciones y "Dónde ver" ----
@@ -357,4 +358,63 @@ it('has a single "Dónde ver" section holding the main link and the other option
  const trailer=screen.getByRole('link',{name:'🎬 Ver trailer'});
  expect(section.contains(trailer)).toBe(false);
  expect(container.querySelector('.detail-synopsis').contains(trailer)).toBe(true);
+});
+
+// ---- Detalle: próximo episodio arriba, "Más opciones" y nota al finalizar ----
+const airingSoon={episode:12,airingAt:1794000000,hasAired:false,isToday:false,isTomorrow:false};
+it('shows the next episode in the header, once, for scheduled and discovery items alike', () => {
+ const {container,unmount}=render(<AnimeDetailModal {...modalProps()} airingData={{[a.id]:airingSoon}}/>);
+ expect(container.querySelectorAll('.detail-next-ep')).toHaveLength(1);
+ expect(container.querySelector('.detail-header .detail-next-ep')).toHaveTextContent(/Próximo episodio \(Ep\. 12\)/);
+ unmount();
+ const discovery=render(<AnimeDetailModal {...modalProps()} showAnimeDetail={{...a,_isDirectory:true}} airingData={{[a.id]:{...airingSoon,hasAired:true}}} addToWatchLater={vi.fn()} markAsWatched={vi.fn()} setShowDayPicker={vi.fn()}/>);
+ expect(discovery.container.querySelectorAll('.detail-next-ep')).toHaveLength(1);
+ expect(discovery.container.querySelector('.detail-header .detail-next-ep')).toHaveTextContent('Ep. 12: ¡ya disponible!');
+});
+it('keeps Maratón and season tracking under "Más opciones", collapsed by default', () => {
+ const {container}=render(<AnimeDetailModal {...modalProps()} setAnimeSeason={vi.fn()}/>);
+ const more=container.querySelector('details.detail-progress-more');
+ expect(more).not.toHaveAttribute('open');
+ expect(more.querySelector('summary')).toHaveTextContent('Más opciones');
+ expect(more.contains(screen.getByRole('button',{name:'🔥 Maratón'}))).toBe(true);
+ expect(more.contains(screen.getByRole('button',{name:'Seguir por temporadas'}))).toBe(true);
+});
+it('season controls stay in view once season tracking is on', () => {
+ const {container}=render(<AnimeDetailModal {...modalProps()} showAnimeDetail={{...a,_day:'Lunes',currentSeason:2}} setAnimeSeason={vi.fn()}/>);
+ const controls=container.querySelector('.season-controls');
+ expect(controls).not.toBeNull();
+ expect(controls.closest('details.detail-progress-more')).toBeNull();
+});
+it('finishing an unrated series asks for a score, then finishes and rates it', () => {
+ const p=modalProps(); const calls=[];
+ p.markAsFinished.mockImplementation(()=>calls.push('finish'));
+ p.updateUserRating.mockImplementation(()=>calls.push('rate'));
+ render(<AnimeDetailModal {...p} showAnimeDetail={{...a,_day:'Lunes',currentEp:5,userRating:0}}/>);
+ fireEvent.click(screen.getByRole('button',{name:'✓ Finalizar'}));
+ expect(p.markAsFinished).not.toHaveBeenCalled();
+ const prompt=screen.getByRole('group',{name:'¿Qué te pareció?'});
+ fireEvent.click(within(prompt).getByRole('button',{name:'4 de 5 estrellas'}));
+ expect(p.markAsFinished).toHaveBeenCalledWith(expect.objectContaining({id:a.id}),'Lunes');
+ expect(p.updateUserRating).toHaveBeenCalledWith(a.id,4);
+ expect(calls).toEqual(['finish','rate']); // la nota cae sobre la entrada ya movida a Vistas
+ expect(p.setShowAnimeDetail).toHaveBeenCalledWith(null);
+});
+it('the score prompt can be skipped or cancelled', () => {
+ const p=modalProps();
+ render(<AnimeDetailModal {...p} showAnimeDetail={{...a,_day:'Lunes',currentEp:5,userRating:0}}/>);
+ fireEvent.click(screen.getByRole('button',{name:'✓ Finalizar'}));
+ fireEvent.click(screen.getByRole('button',{name:'Cancelar'}));
+ expect(screen.getByRole('button',{name:'✗ Dropear'})).toBeInTheDocument();
+ fireEvent.click(screen.getByRole('button',{name:'✓ Finalizar'}));
+ fireEvent.click(screen.getByRole('button',{name:'Finalizar sin nota'}));
+ expect(p.markAsFinished).toHaveBeenCalledTimes(1);
+ expect(p.updateUserRating).not.toHaveBeenCalled();
+});
+it('moves "Tu valoración" into the main block once the series is complete or already watched', () => {
+ const done=render(<AnimeDetailModal {...modalProps()} showAnimeDetail={{...a,_day:'Lunes',currentEp:12,episodes:12}}/>);
+ expect(done.container.querySelector('.detail-primary .detail-rating-section')).not.toBeNull();
+ done.unmount();
+ const watching=render(<AnimeDetailModal {...modalProps()} showAnimeDetail={{...a,_day:'Lunes',currentEp:3,episodes:12}}/>);
+ expect(watching.container.querySelector('.detail-primary .detail-rating-section')).toBeNull();
+ expect(watching.container.querySelectorAll('.detail-rating-section')).toHaveLength(1);
 });

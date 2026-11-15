@@ -86,7 +86,7 @@
 .tracking-detail .detail-info h2 { font-size: clamp(1.1rem, 2.5vw, 1.4rem); line-height: 1.3; padding: 0; overflow-wrap: anywhere; }
 .detail-title-compact { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
 .detail-cover-fallback { width: 84px; height: 112px; flex: none; display: grid; place-items: center; border-radius: 10px; background: var(--bg-surface-strong); color: var(--text-secondary); font-size: 2rem; }
-.detail-original-title summary, .detail-watch-alternatives summary { cursor: pointer; color: var(--text-secondary); font-size: 0.78rem; padding: 0.65rem 0; }
+.detail-watch-alternatives summary { cursor: pointer; color: var(--text-secondary); font-size: 0.78rem; padding: 0.65rem 0; }
 .tracking-detail .title-jp { opacity: 1; color: var(--text-secondary); font-size: 0.8rem; line-height: 1.5; font-style: normal; overflow-wrap: anywhere; }
 .tracking-detail .detail-meta { margin: 0.2rem 0 0.4rem; gap: 0.35rem; }
 .tracking-detail .meta-tag, .tracking-detail .genre-tag { background: var(--bg-surface); border-color: transparent; color: var(--text-secondary); font-size: 0.7rem; }
@@ -174,3 +174,23 @@
 @media (max-width: 600px) {
   .tracking-detail .ep-watch-btn { grid-column: 1; width: 100%; margin-top: 0.6rem; }
 }
+
+/* ---- Detalle: encabezado (título original y próximo episodio) ---- */
+.tracking-detail .detail-original-title { margin: 0.15rem 0 0.35rem; }
+.tracking-detail .detail-header-airing { margin: 0.45rem 0 0.1rem; font-size: 0.82rem; text-align: left; }
+
+/* ---- Detalle: "Más opciones" del avance (Maratón, temporadas) ---- */
+.detail-progress-section > .detail-progress-more { grid-column: 1 / -1; }
+.detail-progress-more summary { cursor: pointer; color: var(--text-secondary); font-size: 0.78rem; padding: 0.35rem 0; }
+.detail-progress-more-body { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.35rem; }
+.detail-progress-more-hint { margin: 0.5rem 0 0; color: var(--text-secondary); font-size: 0.75rem; line-height: 1.5; }
+
+/* ---- Detalle: nota al finalizar ---- */
+.detail-finish-rating { padding-top: 0.75rem; border-top: 1px solid var(--border-subtle); text-align: center; }
+.detail-finish-rating-title { margin: 0; font-size: 1rem; font-weight: 700; color: var(--text-primary); }
+.detail-finish-rating-hint { margin: 0.2rem 0 0.6rem; color: var(--text-secondary); font-size: 0.82rem; }
+.detail-finish-rating .star-rating { justify-content: center; }
+.detail-finish-rating-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem; margin-top: 0.75rem; }
+.tracking-detail .detail-primary .detail-rating-section { margin-bottom: 1rem; }
+/* Sin acciones para mostrar (p. ej. una serie ya finalizada) no queda la línea divisoria suelta. */
+.tracking-detail .detail-secondary-row:empty { display: none; }
