@@ -79,10 +79,16 @@ function useHarness() {
 
 const cloudSnap = (data) => ({ metadata: { hasPendingWrites: false }, exists: () => true, data: () => data });
 
+// Tomado antes de `vi.useFakeTimers()`: es el reloj real.
+const realSetTimeout = globalThis.setTimeout;
 async function waitUntil(cond) {
   for (let i = 0; i < 200; i++) {
     if (cond()) return;
     await act(async () => { await vi.advanceTimersByTimeAsync(5); });
+    // Además un respiro de reloj real: lo que corre fuera de los timers
+    // simulados (gzip en un hilo aparte, imports dinámicos) necesita tiempo
+    // de verdad, y con el CI cargado se agotaban las vueltas antes.
+    await new Promise((resolve) => realSetTimeout(resolve, 1));
   }
   throw new Error('waitUntil: condition never met');
 }

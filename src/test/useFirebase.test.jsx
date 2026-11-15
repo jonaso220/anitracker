@@ -93,10 +93,16 @@ const cloudSnap = (data, pending = false) => ({
 // time needs a macrotask, and how many turns it takes varies, so poll: advance
 // fake timers a little (which also flushes microtasks in between) until the
 // condition holds. Each small advance stays well under the 2s save debounce.
+// Tomado antes de `vi.useFakeTimers()`: es el reloj real.
+const realSetTimeout = globalThis.setTimeout;
 async function waitUntil(cond) {
   for (let i = 0; i < 200; i++) {
     if (cond()) return;
     await act(async () => { await vi.advanceTimersByTimeAsync(5); });
+    // Además un respiro de reloj real: lo que corre fuera de los timers
+    // simulados (gzip en un hilo aparte, imports dinámicos) necesita tiempo
+    // de verdad, y con el CI cargado se agotaban las vueltas antes.
+    await new Promise((resolve) => realSetTimeout(resolve, 1));
   }
   throw new Error('waitUntil: condition never met');
 }
