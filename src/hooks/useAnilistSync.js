@@ -21,7 +21,9 @@ import {
   AnilistRateLimitError,
   baselineOf,
   desiredEntries,
+  fullSyncPushed,
   pendingChanges,
+  prefetchMediaIds,
   prunePushed,
   pushChanges,
   readPushed,
@@ -46,9 +48,11 @@ const DISABLED = Object.freeze({
   pendingCount: 0,
   lastSyncedAt: null,
   lastError: '',
+  sendableCount: 0,
   connect: noop,
   disconnect: noop,
   syncNow: noop,
+  sendAll: noop,
 });
 
 const DISCONNECTED = Object.freeze({
@@ -58,6 +62,7 @@ const DISCONNECTED = Object.freeze({
   pendingCount: 0,
   lastSyncedAt: null,
   lastError: '',
+  sendableCount: 0,
 });
 
 const expiredMessage = () => t('anilistSync.error.expired', 'Tu sesión de AniList venció. Volvé a conectarla.');
@@ -97,6 +102,8 @@ function createEngine({ getLibrary, getOptions, patch }) {
   let controller = null;
   let running = false;
   let rerun = false;
+  // "Enviar toda mi biblioteca": la próxima pasada olvida la línea base.
+  let fullSync = false;
   // Lo deseado según la última biblioteca vista: sirve para saltear, a mitad de
   // un envío, un cambio que ya quedó viejo.
   let desired = new Map();
@@ -153,7 +160,15 @@ function createEngine({ getLibrary, getOptions, patch }) {
 
         const owner = `${viewer.id}|${scope ?? ''}`;
         desired = desiredEntries(getLibrary());
+        patch({ sendableCount: desired.size });
         let pushed = readPushed(owner);
+        if (fullSync) {
+          // Todo lo que AniList no confirmó tal cual vuelve a estar pendiente.
+          // La huella recortada queda guardada: si se corta, sigue después.
+          fullSync = false;
+          pushed = fullSyncPushed(pushed, readSent(viewer.id));
+          writePushed(pushed, owner);
+        }
         if (!pushed) {
           // Línea base: recién conectado (u otra cuenta, u otra biblioteca).
           // Lo que hay ahora se da por enviado; solo viaja lo que cambie después.
@@ -201,6 +216,9 @@ function createEngine({ getLibrary, getOptions, patch }) {
         }
         patch({ status: 'syncing', pendingCount: remaining, lastError: '' });
         const inLibrary = new Set(desired.keys());
+        // De a tandas: sin esto, cada anime que solo tiene id de MAL cuesta un
+        // pedido extra (se nota al enviar la biblioteca entera).
+        if (toSend.length > 1) await prefetchMediaIds(toSend.map((change) => change.anime), { signal });
         const { sent, rejected } = await pushChanges(auth.token, toSend, {
           signal,
           isCurrent: (change) => desired.get(change.key)?.signature === change.signature,
@@ -282,6 +300,10 @@ function createEngine({ getLibrary, getOptions, patch }) {
       window.removeEventListener('storage', onStorage);
     },
     schedule,
+    sendAll() {
+      fullSync = true;
+      schedule(0);
+    },
     disconnect() {
       clearTimer();
       abortInFlight();
@@ -304,7 +326,9 @@ function createEngine({ getLibrary, getOptions, patch }) {
  *   vez de mandar la biblioteca de la otra cuenta como si fueran cambios.
  *
  * Devuelve un objeto memoizado: `{ available, connected, viewerName, status,
- * pendingCount, lastSyncedAt, lastError, connect, disconnect, syncNow }`.
+ * pendingCount, lastSyncedAt, lastError, sendableCount, connect, disconnect,
+ * syncNow, sendAll }`. `sendAll()` manda toda la biblioteca (no solo lo que
+ * cambie): pisa en AniList el estado, el episodio y la nota de cada anime.
  * `status` es `'idle' | 'syncing' | 'error' | 'expired'`; con `'expired'`
  * `connected` sigue en true (se sabe de quién era la sesión) y hay que volver
  * a conectar. Sin `VITE_ANILIST_CLIENT_ID`, `available` es false y no hace nada.
@@ -351,9 +375,10 @@ export function useAnilistSync({ schedule, watchLater, watchedList, ready = true
   const connect = useCallback(() => { beginAnilistLogin(); }, []);
   const disconnect = useCallback(() => { engineRef.current?.disconnect(); }, []);
   const syncNow = useCallback(() => { engineRef.current?.schedule(0); }, []);
+  const sendAll = useCallback(() => { engineRef.current?.sendAll(); }, []);
 
   return useMemo(
-    () => (ANILIST_SYNC_ENABLED ? { available: true, ...state, connect, disconnect, syncNow } : DISABLED),
-    [state, connect, disconnect, syncNow],
+    () => (ANILIST_SYNC_ENABLED ? { available: true, ...state, connect, disconnect, syncNow, sendAll } : DISABLED),
+    [state, connect, disconnect, syncNow, sendAll],
   );
 }

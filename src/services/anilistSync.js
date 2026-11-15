@@ -87,6 +87,19 @@ export function desiredEntries({ schedule, watchLater, watchedList } = {}) {
 
 // --- Huella de lo enviado ---------------------------------------------------
 
+/**
+ * Huella para "enviar toda mi biblioteca": se queda solo con lo que AniList ya
+ * confirmó tal cual (`sent`), así todo lo demás vuelve a contar como pendiente.
+ * Al quedar guardada, un envío a medias se retoma al volver a abrir la app.
+ */
+export function fullSyncPushed(pushed, sent) {
+  const next = {};
+  for (const [key, signature] of Object.entries(pushed || {})) {
+    if (sent?.[key] === signature) next[key] = signature;
+  }
+  return next;
+}
+
 /** Línea base: la huella actual de todo, como si ya se hubiera enviado. */
 export function baselineOf(desired) {
   const pushed = {};
@@ -245,6 +258,32 @@ export function cachedMediaId(anime) {
 }
 
 const MEDIA_BY_MAL_QUERY = 'query ($id: Int) { Media(idMal: $id, type: ANIME) { id } }';
+const MEDIA_BY_MAL_BATCH_QUERY = 'query ($ids: [Int]) { Page(perPage: 50) { media(idMal_in: $ids, type: ANIME) { id idMal } } }';
+const MEDIA_BATCH_SIZE = 50;
+
+/**
+ * Resuelve de a tandas los ids de AniList de los anime que solo tienen id de
+ * MAL (uno por uno sería un pedido extra por anime, y el envío de la biblioteca
+ * entera tardaría el doble). Lo que AniList no devuelve queda sin cachear y
+ * `resolveMediaId` lo consulta después por separado.
+ */
+export async function prefetchMediaIds(animes, { signal, queue = anilistQueue } = {}) {
+  const missing = [...new Set((animes || [])
+    .filter((anime) => cachedMediaId(anime) === undefined)
+    .map((anime) => anilistIdsOf(anime).malId)
+    .filter(Boolean))];
+  let resolved = 0;
+  for (let i = 0; i < missing.length; i += MEDIA_BATCH_SIZE) {
+    const ids = missing.slice(i, i + MEDIA_BATCH_SIZE);
+    const data = await queue.run(() => anilistRequest(MEDIA_BY_MAL_BATCH_QUERY, { ids }, { signal }), { signal });
+    for (const media of data?.Page?.media || []) {
+      const malId = Number(media?.idMal);
+      const mediaId = Number(media?.id);
+      if (malId > 0 && mediaId > 0) { rememberMediaId(malId, mediaId); resolved += 1; }
+    }
+  }
+  return resolved;
+}
 
 /**
  * Id de AniList de un anime: directo si es de AniList, o buscándolo por su id

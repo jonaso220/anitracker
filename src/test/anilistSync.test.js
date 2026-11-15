@@ -31,6 +31,8 @@ import {
   entrySignature,
   pendingChanges,
   prunePushed,
+  prefetchMediaIds,
+  fullSyncPushed,
   pushChanges,
   readPushed,
   readSent,
@@ -403,6 +405,29 @@ describe('cola y envío', () => {
     expect(task).not.toHaveBeenCalled();
   });
 
+  it('prefetchMediaIds resuelve los ids de MAL de a tandas de 50 y deja afuera lo que ya se sabe', async () => {
+    const animes = [
+      anilistAnime(), // ya trae id de AniList
+      ...Array.from({ length: 60 }, (_, i) => malAnime({ id: 100 + i, malId: 100 + i, sourceKey: `mal:${100 + i}` })),
+    ];
+    fetchMock.mockImplementation(async (_url, init) => {
+      const { variables } = JSON.parse(init.body);
+      return reply({ data: { Page: { media: variables.ids.map((id) => ({ id: 5000 + id, idMal: id })) } } });
+    });
+    const run = prefetchMediaIds(animes, { queue: createRequestQueue() });
+    await vi.advanceTimersByTimeAsync(ANILIST_MIN_INTERVAL_MS * 3);
+    await expect(run).resolves.toBe(60);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(requests(fetchMock).map((r) => r.variables.ids.length)).toEqual([50, 10]);
+    expect(cachedMediaId(animes[1])).toBe(5100);
+  });
+
+  it('fullSyncPushed conserva solo lo que AniList confirmó tal cual', () => {
+    const pushed = { 1: 'CURRENT|5|', 2: 'PLANNING|0|', 3: 'COMPLETED|12|80' };
+    expect(fullSyncPushed(pushed, { 1: 'CURRENT|5|', 3: 'COMPLETED|11|80' })).toEqual({ 1: 'CURRENT|5|' });
+    expect(fullSyncPushed(null, {})).toEqual({});
+  });
+
   it('pushChanges corta ante un error de sesión y no manda lo que sigue', async () => {
     const desired = desiredEntries({ schedule: { Lunes: [anilistAnime({ currentEp: 1 }), anilistAnime({ id: 800150001, sourceKey: 'anilist:150001', currentEp: 2 })] } });
     fetchMock.mockResolvedValueOnce(reply({ errors: [{ message: 'Invalid token', status: 400 }] }, { status: 400 }));
@@ -712,6 +737,70 @@ describe('useAnilistSync', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  // --- "Enviar toda mi biblioteca" -------------------------------------------
+  // Responde según el pedido: tanda de ids de MAL, o la mutación.
+  const answerAll = async (_url, init) => {
+    const { query, variables } = JSON.parse(init.body);
+    if (query.includes('idMal_in')) return reply({ data: { Page: { media: variables.ids.map((id) => ({ id: 1000 + id, idMal: id })) } } });
+    if (query.includes('Media(idMal:')) return reply({ data: { Media: { id: 1000 + variables.id } } });
+    return saved(variables.mediaId);
+  };
+
+  it('enviar todo manda cada anime de la biblioteca, aunque la línea base lo diera por enviado', async () => {
+    connect();
+    fetchMock.mockImplementation(answerAll);
+    const { result } = await mount();
+    await settle();
+    expect(mutations(fetchMock)).toEqual([]); // línea base: nada
+    expect(result.current.sendableCount).toBe(2);
+
+    act(() => result.current.sendAll());
+    await flush(ANILIST_MIN_INTERVAL_MS * 6);
+
+    const sent = mutations(fetchMock).map((m) => m.variables);
+    expect(sent).toEqual([
+      { mediaId: 150000, status: 'CURRENT', progress: 5 },
+      { mediaId: 1030, status: 'PLANNING', progress: 0 },
+    ]);
+    expect(result.current).toMatchObject({ status: 'idle', pendingCount: 0 });
+    expect(readSent(77)).toEqual({ 800150000: 'CURRENT|5|', 30: 'PLANNING|0|' });
+    // Los ids de MAL se resolvieron en una sola tanda, no uno por anime.
+    expect(requests(fetchMock).filter((r) => r.query.includes('idMal_in'))).toHaveLength(1);
+    expect(requests(fetchMock).filter((r) => r.query.includes('Media(idMal:'))).toHaveLength(0);
+  });
+
+  it('enviar todo no repite lo que AniList ya confirmó tal cual', async () => {
+    connect();
+    fetchMock.mockImplementation(answerAll);
+    const { result, rerender } = await mount();
+    await settle();
+    rerender(library(6)); // este cambio viaja solo
+    await settle();
+    expect(mutations(fetchMock)).toHaveLength(1);
+
+    act(() => result.current.sendAll());
+    await flush(ANILIST_MIN_INTERVAL_MS * 6);
+    // Solo falta el que nunca se había mandado.
+    expect(mutations(fetchMock).map((m) => m.variables.mediaId)).toEqual([150000, 1030]);
+  });
+
+  it('un envío completo cortado a medias sigue al volver a abrir la app', async () => {
+    connect();
+    fetchMock.mockImplementation(answerAll);
+    const first = await mount();
+    await settle();
+    act(() => first.result.current.sendAll());
+    await flush(ANILIST_MIN_INTERVAL_MS + 100); // alcanza para uno solo
+    first.unmount();
+    const sentBefore = mutations(fetchMock).length;
+    expect(sentBefore).toBeLessThan(2);
+
+    await mount();
+    await settle();
+    await flush(ANILIST_MIN_INTERVAL_MS * 4);
+    expect(mutations(fetchMock).map((m) => m.variables.mediaId).sort()).toEqual([1030, 150000]);
   });
 
   it('sacar un anime no borra nada en AniList', async () => {

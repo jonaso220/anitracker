@@ -13,7 +13,7 @@ vi.mock('../episodeAlerts', async (original) => ({
 
 const anilistBase = {
   available: true, connected: false, viewerName: '', status: 'idle', pendingCount: 0,
-  lastSyncedAt: null, lastError: '', connect: vi.fn(), disconnect: vi.fn(), syncNow: vi.fn(),
+  lastSyncedAt: null, lastError: '', sendableCount: 0, connect: vi.fn(), disconnect: vi.fn(), syncNow: vi.fn(), sendAll: vi.fn(),
 };
 
 const renderModal = (props = {}) => {
@@ -85,6 +85,40 @@ describe('SettingsModal · AniList', () => {
     expect(screen.getByText(/Enviando/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Desconectar AniList' }));
     expect(anilist.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('enviar toda la biblioteca pide confirmación, dice cuántos son y cuánto tarda', () => {
+    const anilist = { ...anilistBase, connected: true, viewerName: 'jona', sendableCount: 172 };
+    renderModal({ anilist });
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar toda mi biblioteca' }));
+    expect(anilist.sendAll).not.toHaveBeenCalled();
+    const confirm = screen.getByRole('group', { name: '¿Enviar toda tu biblioteca a AniList?' });
+    expect(confirm).toHaveTextContent('Son 172 animes');
+    expect(confirm).toHaveTextContent('cerca de 7 min'); // 172 × 2,1 s
+    fireEvent.click(screen.getByRole('button', { name: 'Sí, enviar todo' }));
+    expect(anilist.sendAll).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('group', { name: '¿Enviar toda tu biblioteca a AniList?' })).toBeNull();
+  });
+
+  it('cancelar la confirmación no envía nada', () => {
+    const anilist = { ...anilistBase, connected: true, sendableCount: 5 };
+    renderModal({ anilist });
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar toda mi biblioteca' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    expect(anilist.sendAll).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Enviar toda mi biblioteca' })).toBeEnabled();
+  });
+
+  it('mientras envía muestra cuántos quedan y no deja lanzar otro envío', () => {
+    const anilist = { ...anilistBase, connected: true, status: 'syncing', pendingCount: 40, sendableCount: 172 };
+    renderModal({ anilist });
+    expect(screen.getByText('Enviando… quedan 40.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Enviar toda mi biblioteca' })).toBeDisabled();
+  });
+
+  it('sin nada que se pueda enviar el botón queda deshabilitado', () => {
+    renderModal({ anilist: { ...anilistBase, connected: true, sendableCount: 0 } });
+    expect(screen.getByRole('button', { name: 'Enviar toda mi biblioteca' })).toBeDisabled();
   });
 
   it('con la sesión vencida ofrece volver a conectar', () => {

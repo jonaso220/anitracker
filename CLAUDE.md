@@ -293,7 +293,11 @@ Vitest + Testing Library (jsdom), setup en `src/test/setup.js`. Al tocar
   compartida, dos contextos con distinto scope (otra pestaña, o la sesión de
   Google todavía sin resolver) se la pisaban, cada pasada retomaba la línea
   base y no se mandaba nunca nada. Las pasadas corren dentro de un Web Lock
-  (`anitracker-anilist-sync`) para que dos pestañas no envíen a la vez.
+  (`anitracker-anilist-sync`) para que dos pestañas no envíen a la vez. «Enviar toda
+  mi biblioteca» (Ajustes, con confirmación) recorta la huella a lo que AniList
+  ya confirmó (`fullSyncPushed`), así todo lo demás vuelve a quedar pendiente y
+  un envío cortado se retoma solo; los ids de MAL se resuelven de a tandas de
+  50 (`prefetchMediaIds`).
 - **Reporte de errores**: apagado salvo que exista `VITE_ERROR_REPORT_URL`.
   Engancha `error`, `unhandledrejection` y el `ErrorBoundary` (un error de chunk
   viejo **no** se reporta: pasa en cada deploy y taparía los errores reales).

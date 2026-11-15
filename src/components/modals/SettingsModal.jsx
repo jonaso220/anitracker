@@ -7,7 +7,7 @@ const anilistStatusText = (anilist) => {
   if (anilist.status === 'expired') return t('settings.anilistExpired', 'La conexión venció. Volvé a conectar tu cuenta.');
   if (anilist.status === 'error') return ''; // el detalle va aparte, en `lastError`
   if (anilist.status === 'syncing' || anilist.pendingCount > 0) {
-    return t('settings.anilistPending', 'Enviando cambios…', { count: anilist.pendingCount || 1 });
+    return t('settings.anilistRemaining', 'Enviando…', { count: anilist.pendingCount || 1 });
   }
   return t('settings.anilistUpToDate', 'AniList está al día.');
 };
@@ -18,10 +18,15 @@ const anilistStatusText = (anilist) => {
  */
 const reloadPage = () => window.location.reload();
 
+// AniList deja pasar un pedido cada ~2 s: de ahí sale el tiempo estimado.
+const SECONDS_PER_ENTRY = 2.1;
+const minutesFor = (count) => Math.max(1, Math.ceil((count * SECONDS_PER_ENTRY) / 60));
+
 const SettingsModal = ({ onClose, alertsEnabled, onSetAlerts, anilist, reload = reloadPage }) => {
   const dialogRef = useAccessibleDialog(onClose);
   const [permission, setPermission] = useState(alertsPermission);
   const [locale, setLocale] = useState(getLocalePreference);
+  const [confirmSendAll, setConfirmSendAll] = useState(false);
   const supported = alertsSupported();
 
   const toggleAlerts = async (event) => {
@@ -74,10 +79,29 @@ const SettingsModal = ({ onClose, alertsEnabled, onSetAlerts, anilist, reload = 
                     {' '}<span role="status">{anilistStatusText(anilist)}</span>
                   </p>
                   {anilist.status === 'error' && anilist.lastError && <p className="settings-note warn" role="alert">{anilist.lastError}</p>}
-                  <div className="settings-actions">
-                    {anilist.status === 'expired' && <button className="backup-btn backup-btn-primary" onClick={anilist.connect}>{t('settings.anilistReconnect', 'Volver a conectar')}</button>}
-                    <button className="backup-btn" onClick={anilist.disconnect}>{t('settings.anilistDisconnect', 'Desconectar AniList')}</button>
-                  </div>
+                  {confirmSendAll ? (
+                    // Pisa datos en AniList: se pide confirmación con lo que va a pasar.
+                    <div className="settings-confirm" role="group" aria-labelledby="settings-sendall-title">
+                      <p id="settings-sendall-title" className="settings-confirm-title">{t('settings.anilistSendAllTitle', '¿Enviar toda tu biblioteca a AniList?')}</p>
+                      <p className="settings-note">{t('settings.anilistSendAllHint', undefined, { count: anilist.sendableCount, minutes: minutesFor(anilist.sendableCount) })}</p>
+                      <div className="settings-actions">
+                        <button className="backup-btn backup-btn-primary" onClick={() => { anilist.sendAll(); setConfirmSendAll(false); }}>{t('settings.anilistSendAllConfirm', 'Sí, enviar todo')}</button>
+                        <button className="backup-btn" onClick={() => setConfirmSendAll(false)}>{t('common.cancel', 'Cancelar')}</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="settings-actions">
+                      {anilist.status === 'expired' && <button className="backup-btn backup-btn-primary" onClick={anilist.connect}>{t('settings.anilistReconnect', 'Volver a conectar')}</button>}
+                      <button
+                        className="backup-btn"
+                        onClick={() => setConfirmSendAll(true)}
+                        disabled={anilist.status === 'expired' || anilist.status === 'syncing' || !(anilist.sendableCount > 0)}
+                      >
+                        {t('settings.anilistSendAll', 'Enviar toda mi biblioteca')}
+                      </button>
+                      <button className="backup-btn" onClick={anilist.disconnect}>{t('settings.anilistDisconnect', 'Desconectar AniList')}</button>
+                    </div>
+                  )}
                 </>
               ) : (
                 <>
