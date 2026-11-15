@@ -271,6 +271,13 @@ Vitest + Testing Library (jsdom), setup en `src/test/setup.js`. Al tocar
   de chunks (`self.__PRECACHE_ASSETS`): se precachean al instalar para que las
   pestañas y modales lazy abran sin conexión, y al activar se borran los
   `/assets/*` viejos. En dev la lista queda vacía.
+- **Íconos**: la fuente es `public/icon.svg` (tele + check de «visto» sobre el
+  degradé de marca). `npm run icons` (`scripts/generate-icons.mjs`) genera desde
+  ahí `icon-192.png`, `icon-512.png`, `icon-maskable-512.png` (a sangre, glifo
+  al 86% para la zona segura), `apple-touch-icon.png` (a sangre) y
+  `favicon.ico` (16/32/48; el de 16 va sin destello). Rasteriza con un Chrome
+  instalado, sin dependencias nuevas. Al cambiarlos, subí `CACHE_VERSION`: están
+  en `PRECACHE_URLS`.
 - Firebase config admite override por env (`VITE_FIREBASE_*`, ver
   `.env.example`) con *fallback* al proyecto público compartido.
 - TMDB es opcional: sin `VITE_TMDB_API_KEY` la fuente no aparece en la

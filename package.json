@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "size": "node scripts/check-bundle-size.mjs",
+    "icons": "node scripts/generate-icons.mjs",
     "coverage": "vitest run --coverage",
     "preview": "vite preview",
     "test": "vitest run"
