@@ -382,10 +382,11 @@
   box-shadow: 0 0 6px rgba(34, 197, 94, 0.7);
 }
 
-/* Status pill for watched view (replaces inline status) */
+/* Status pill for watched view (replaces inline status). Arriba a la izquierda:
+   abajo va el título con los géneros y la nota, y el tilde los tapaba. */
 .anime-card-status-pill {
   position: absolute;
-  bottom: 0.5rem;
+  top: 0.5rem;
   left: 0.5rem;
   display: inline-flex;
   align-items: center;
@@ -407,6 +408,8 @@
   background: rgba(251, 191, 36, 0.9);
   color: #1a1a2e;
 }
+/* En modo selección esa esquina es de la casilla: el estado baja un escalón. */
+.bulk-card-wrapper.selectable .anime-card-status-pill { top: 2.6rem; }
 
 /* Image fallback */
 .img-fallback {
