@@ -34,7 +34,7 @@
     "globals": "^17.14.0",
     "jsdom": "^31.0.0",
     "terser": "^5.48.0",
-    "typescript": "^6.0.3",
+    "typescript": "^7.0.2",
     "typescript-eslint": "^8.71.1",
     "vite": "^8.3.1",
     "vitest": "^5.0.2"
