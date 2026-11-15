@@ -142,7 +142,8 @@ store global ni context; el estado vive en `App.jsx` y baja por props.
 | `anitracker-locale` | idioma elegido a mano (`'es'` / `'en'`); ausente = el del navegador |
 | `anitracker-episode-alerts` | booleano: avisos de episodio nuevo prendidos |
 | `anitracker-anilist-auth` | sesión de AniList (`{ token, expiresAt, viewer }`) para enviar el progreso |
-| `anitracker-anilist-pushed` | firma de lo último enviado a AniList por anime (`ESTADO\|progreso\|nota`) |
+| `anitracker-anilist-pushed:<viewerId>\|<scope>` | firma de lo último enviado a AniList por anime (`ESTADO\|progreso\|nota`), **una por dueño** (cuenta de AniList + uid de Google, `''` invitado) |
+| `anitracker-anilist-sent:<viewerId>` | lo que AniList confirmó, por cuenta: evita repetir un envío que ya hizo otra pestaña |
 | `anitracker-anilist-ids` | cache id de MAL → id de AniList (máx. 2000) |
 | `anitracker-directory-filters` | filtros elegidos en Directorio (sin el texto de búsqueda) |
 | `anitracker-directory-view` | modo de vista de Directorio (`'grid'` / `'list'`) |
@@ -288,7 +289,11 @@ Vitest + Testing Library (jsdom), setup en `src/test/setup.js`. Al tocar
   DROPPED; estrellas ×20 = `scoreRaw`). Al conectar se toma lo actual como
   base y **no se envía nada**; después solo van los cambios, de a uno cada
   ~2 s (límite de AniList), y nunca se borra nada allá. Lo que no tiene id de
-  AniList o MAL se saltea.
+  AniList o MAL se saltea. La huella va **una por dueño**: con una sola
+  compartida, dos contextos con distinto scope (otra pestaña, o la sesión de
+  Google todavía sin resolver) se la pisaban, cada pasada retomaba la línea
+  base y no se mandaba nunca nada. Las pasadas corren dentro de un Web Lock
+  (`anitracker-anilist-sync`) para que dos pestañas no envíen a la vez.
 - **Reporte de errores**: apagado salvo que exista `VITE_ERROR_REPORT_URL`.
   Engancha `error`, `unhandledrejection` y el `ErrorBoundary` (un error de chunk
   viejo **no** se reporta: pasa en cada deploy y taparía los errores reales).

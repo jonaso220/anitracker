@@ -2,6 +2,7 @@ import { anilistIdsOf } from './anilistService';
 import {
   ANILIST_PUSHED_KEY,
   ANILIST_PUSHED_OWNER_KEY,
+  ANILIST_SENT_KEY,
   AnilistAuthError,
   AnilistRateLimitError,
   AnilistRequestError,
@@ -114,32 +115,95 @@ export function prunePushed(pushed, desired) {
   return next;
 }
 
+// La huella se guarda **una por dueño** (`viewerId|scope`). Antes era una sola
+// con una marca de a quién pertenecía: si dos contextos con distinto scope se
+// alternaban (otra pestaña, o la sesión de Google todavía sin resolver), cada
+// uno veía la del otro, volvía a tomar la línea base y daba todo por enviado
+// sin mandar nada. Con una por dueño nadie le pisa la huella a nadie.
+const pushedKeyFor = (owner) => `${ANILIST_PUSHED_KEY}:${owner}`;
+/** Cuántos dueños se recuerdan (cuentas de Google usadas en este dispositivo). */
+const PUSHED_OWNERS_MAX = 4;
+
+const parseSignatures = (raw) => {
+  const parsed = JSON.parse(raw || 'null');
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  const signatures = {};
+  for (const [key, value] of Object.entries(parsed)) {
+    if (typeof value === 'string') signatures[key] = value;
+  }
+  return signatures;
+};
+
+// Huella del formato viejo (una sola clave + marca de dueño): si es de este
+// dueño se adopta; en cualquier caso las claves viejas se van.
+function adoptLegacyPushed(owner) {
+  const legacy = localStorage.getItem(ANILIST_PUSHED_KEY);
+  if (legacy === null) return null;
+  const mine = localStorage.getItem(ANILIST_PUSHED_OWNER_KEY) === String(owner);
+  localStorage.removeItem(ANILIST_PUSHED_KEY);
+  localStorage.removeItem(ANILIST_PUSHED_OWNER_KEY);
+  if (!mine) return null;
+  localStorage.setItem(pushedKeyFor(owner), legacy);
+  return legacy;
+}
+
 /**
- * Huella guardada, o null si todavía no hay (hay que tomar la línea base).
- * Con `owner` (`'<viewerId>|<scope>'`) también es null si la huella es de otra
- * cuenta de AniList o de otra biblioteca: sus diferencias no son cambios del
- * usuario y no se deben mandar.
+ * Huella guardada de un dueño (`'<viewerId>|<scope>'`), o null si todavía no
+ * tiene (hay que tomar la línea base): otra cuenta de AniList u otra biblioteca
+ * tienen la suya, y sus diferencias no son cambios del usuario.
  */
-export function readPushed(owner) {
+export function readPushed(owner = '') {
   try {
-    if (owner !== undefined && localStorage.getItem(ANILIST_PUSHED_OWNER_KEY) !== String(owner)) return null;
-    const parsed = JSON.parse(localStorage.getItem(ANILIST_PUSHED_KEY) || 'null');
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
-    const pushed = {};
-    for (const [key, value] of Object.entries(parsed)) {
-      if (typeof value === 'string') pushed[key] = value;
-    }
-    return pushed;
+    let raw = localStorage.getItem(pushedKeyFor(owner));
+    if (raw === null) raw = adoptLegacyPushed(owner);
+    return parseSignatures(raw);
   } catch {
     return null;
   }
 }
 
-/** Guarda la huella (y de quién es). Devuelve false si no se pudo escribir. */
-export function writePushed(pushed, owner) {
+/** Guarda la huella de un dueño. Devuelve false si no se pudo escribir. */
+export function writePushed(pushed, owner = '') {
   try {
-    localStorage.setItem(ANILIST_PUSHED_KEY, JSON.stringify(pushed));
-    if (owner !== undefined) localStorage.setItem(ANILIST_PUSHED_OWNER_KEY, String(owner));
+    const key = pushedKeyFor(owner);
+    localStorage.setItem(key, JSON.stringify(pushed));
+    // Tope de dueños recordados: se van los demás, nunca el que se acaba de escribir.
+    const others = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(`${ANILIST_PUSHED_KEY}:`) && k !== key) others.push(k);
+    }
+    for (const k of others.slice(0, Math.max(0, others.length - (PUSHED_OWNERS_MAX - 1)))) localStorage.removeItem(k);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// --- Lo que de verdad llegó a AniList --------------------------------------
+// Va por cuenta de AniList, no por dueño: si otro contexto (otra pestaña, otro
+// scope) ya mandó exactamente este cambio, no hace falta repetir el pedido.
+
+const sentKeyFor = (viewerId) => `${ANILIST_SENT_KEY}:${viewerId}`;
+
+/** `{ [animeId]: firma }` de lo último confirmado por AniList para esa cuenta. */
+export function readSent(viewerId) {
+  try {
+    return parseSignatures(localStorage.getItem(sentKeyFor(viewerId))) || {};
+  } catch {
+    return {};
+  }
+}
+
+/** Anota un envío confirmado. `keep` (opcional): claves que siguen en la biblioteca. */
+export function rememberSent(viewerId, key, signature, keep) {
+  try {
+    const sent = readSent(viewerId);
+    sent[key] = signature;
+    if (keep) {
+      for (const k of Object.keys(sent)) if (!keep.has(k)) delete sent[k];
+    }
+    localStorage.setItem(sentKeyFor(viewerId), JSON.stringify(sent));
     return true;
   } catch {
     return false;

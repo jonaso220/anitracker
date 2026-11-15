@@ -25,6 +25,8 @@ import {
   prunePushed,
   pushChanges,
   readPushed,
+  readSent,
+  rememberSent,
   writePushed,
 } from '../services/anilistSync';
 import { t } from '../i18n';
@@ -74,6 +76,16 @@ function initialState() {
 }
 
 const isOffline = () => typeof navigator !== 'undefined' && navigator.onLine === false;
+
+// Una pasada a la vez entre todas las pestañas de la app (Web Locks): dos
+// motores mandando lo mismo duplicarían pedidos y se pisarían la huella. Sin
+// soporte del navegador corre directo.
+const SYNC_LOCK = 'anitracker-anilist-sync';
+function exclusive(signal, task) {
+  const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
+  if (!locks?.request) return task();
+  return locks.request(SYNC_LOCK, { signal }, task);
+}
 
 /**
  * Motor de la sincronización. `getLibrary()` y `getOptions()` leen siempre lo
@@ -125,72 +137,91 @@ function createEngine({ getLibrary, getOptions, patch }) {
     controller = new AbortController();
     const { signal } = controller;
     try {
-      let { viewer } = auth;
-      if (!viewer) {
-        if (isOffline()) return; // el evento `online` relanza
-        viewer = await fetchAnilistViewer(auth.token, { signal });
-        saveAnilistViewer(viewer);
-      }
-      patch({ connected: true, viewerName: viewer.name });
+      await exclusive(signal, async () => {
+        let { viewer } = auth;
+        if (!viewer) {
+          if (isOffline()) return; // el evento `online` relanza
+          viewer = await fetchAnilistViewer(auth.token, { signal });
+          saveAnilistViewer(viewer);
+        }
+        patch({ connected: true, viewerName: viewer.name });
 
-      const { ready, scope } = getOptions();
-      // Sin la biblioteca definitiva (p. ej. la nube todavía no bajó) no se
-      // compara nada: una lista a medio cargar parecería cientos de cambios.
-      if (!ready) return;
+        const { ready, scope } = getOptions();
+        // Sin la biblioteca definitiva (p. ej. la nube todavía no bajó) no se
+        // compara nada: una lista a medio cargar parecería cientos de cambios.
+        if (!ready) return;
 
-      const owner = `${viewer.id}|${scope ?? ''}`;
-      desired = desiredEntries(getLibrary());
-      let pushed = readPushed(owner);
-      if (!pushed) {
-        // Línea base: recién conectado (u otra cuenta, u otra biblioteca).
-        // Lo que hay ahora se da por enviado; solo viaja lo que cambie después.
-        writePushed(baselineOf(desired), owner);
-        patch({ status: 'idle', pendingCount: 0, lastError: '' });
-        return;
-      }
-      const pruned = prunePushed(pushed, desired);
-      if (pruned !== pushed) {
-        writePushed(pruned, owner);
-        pushed = pruned;
-      }
+        const owner = `${viewer.id}|${scope ?? ''}`;
+        desired = desiredEntries(getLibrary());
+        let pushed = readPushed(owner);
+        if (!pushed) {
+          // Línea base: recién conectado (u otra cuenta, u otra biblioteca).
+          // Lo que hay ahora se da por enviado; solo viaja lo que cambie después.
+          writePushed(baselineOf(desired), owner);
+          patch({ status: 'idle', pendingCount: 0, lastError: '' });
+          return;
+        }
+        const pruned = prunePushed(pushed, desired);
+        if (pruned !== pushed) {
+          writePushed(pruned, owner);
+          pushed = pruned;
+        }
 
-      const pending = pendingChanges(desired, pushed);
-      if (pending.length === 0) {
-        patch({ status: 'idle', pendingCount: 0, lastError: '' });
-        return;
-      }
-      if (isOffline()) {
-        patch({ status: 'idle', pendingCount: pending.length });
-        return; // el evento `online` relanza
-      }
+        const pending = pendingChanges(desired, pushed);
+        if (pending.length === 0) {
+          patch({ status: 'idle', pendingCount: 0, lastError: '' });
+          return;
+        }
+        if (isOffline()) {
+          patch({ status: 'idle', pendingCount: pending.length });
+          return; // el evento `online` relanza
+        }
 
-      let remaining = pending.length;
-      patch({ status: 'syncing', pendingCount: remaining, lastError: '' });
-      const settle = (change) => {
-        // Se relee: otra pestaña pudo haber anotado lo suyo mientras tanto.
-        const current = readPushed(owner);
-        if (!current) return;
-        current[change.key] = change.signature;
-        writePushed(current, owner);
-        remaining -= 1;
-        patch({ pendingCount: remaining });
-      };
-      const { sent, rejected } = await pushChanges(auth.token, pending, {
-        signal,
-        isCurrent: (change) => desired.get(change.key)?.signature === change.signature,
-        onPushed: settle,
-        onRejected: (change, err) => {
-          console.error(`[AniTracker] AniList rejected an update for "${change.anime?.title || change.key}":`, err?.message);
-          // Se da por resuelto: reintentar lo mismo no lo va a arreglar, y
-          // trabaría todo lo que viene atrás. Vuelve a salir si cambia.
-          settle(change);
-        },
-      });
-      patch({
-        status: rejected > 0 ? 'error' : 'idle',
-        pendingCount: remaining,
-        lastError: rejected > 0 ? t('anilistSync.error.rejected', 'Cambios que AniList no aceptó: {count}', { count: rejected }) : '',
-        ...(sent > 0 ? { lastSyncedAt: Date.now() } : {}),
+        let remaining = pending.length;
+        const settle = (change) => {
+          // Se relee: otra pestaña pudo haber anotado lo suyo mientras tanto.
+          const current = readPushed(owner);
+          if (!current) return;
+          current[change.key] = change.signature;
+          writePushed(current, owner);
+          remaining -= 1;
+          patch({ pendingCount: remaining });
+        };
+        // Lo que otra pestaña (u otro scope) ya mandó tal cual no se repite: se
+        // anota como enviado y listo.
+        const alreadySent = readSent(viewer.id);
+        const toSend = [];
+        for (const change of pending) {
+          if (alreadySent[change.key] === change.signature) settle(change);
+          else toSend.push(change);
+        }
+        if (toSend.length === 0) {
+          patch({ status: 'idle', pendingCount: 0, lastError: '' });
+          return;
+        }
+        patch({ status: 'syncing', pendingCount: remaining, lastError: '' });
+        const inLibrary = new Set(desired.keys());
+        const { sent, rejected } = await pushChanges(auth.token, toSend, {
+          signal,
+          isCurrent: (change) => desired.get(change.key)?.signature === change.signature,
+          onPushed: (change, mediaId) => {
+            settle(change);
+            // Solo lo que de verdad viajó (lo no mapeable se anota sin pedido).
+            if (mediaId) rememberSent(viewer.id, change.key, change.signature, inLibrary);
+          },
+          onRejected: (change, err) => {
+            console.error(`[AniTracker] AniList rejected an update for "${change.anime?.title || change.key}":`, err?.message);
+            // Se da por resuelto: reintentar lo mismo no lo va a arreglar, y
+            // trabaría todo lo que viene atrás. Vuelve a salir si cambia.
+            settle(change);
+          },
+        });
+        patch({
+          status: rejected > 0 ? 'error' : 'idle',
+          pendingCount: remaining,
+          lastError: rejected > 0 ? t('anilistSync.error.rejected', 'Cambios que AniList no aceptó: {count}', { count: rejected }) : '',
+          ...(sent > 0 ? { lastSyncedAt: Date.now() } : {}),
+        });
       });
     } catch (err) {
       if (stopped || signal.aborted || err?.name === 'AbortError') return;

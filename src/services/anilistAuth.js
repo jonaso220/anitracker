@@ -20,10 +20,16 @@ const AUTHORIZE_URL = 'https://anilist.co/api/v2/oauth/authorize';
 
 /** `{ token, expiresAt, viewer? }` de la cuenta conectada. */
 export const ANILIST_AUTH_KEY = 'anitracker-anilist-auth';
-/** `{ [animeId]: 'STATUS|progreso|scoreRaw' }`: lo último que se mandó (ver anilistSync.js). */
+/**
+ * Prefijo de la huella de lo ya enviado: una clave por dueño,
+ * `anitracker-anilist-pushed:<viewerId>|<scope>` → `{ [animeId]: 'STATUS|progreso|scoreRaw' }`
+ * (ver anilistSync.js). Sola, sin sufijo, es la clave vieja de una única huella.
+ */
 export const ANILIST_PUSHED_KEY = 'anitracker-anilist-pushed';
-/** De quién es esa huella (`viewerId|scope`): si cambia, se vuelve a tomar la línea base. */
+/** Clave vieja: de quién era la única huella. Solo se lee para migrarla. */
 export const ANILIST_PUSHED_OWNER_KEY = 'anitracker-anilist-pushed-owner';
+/** Prefijo de lo que de verdad llegó a AniList, por cuenta: `anitracker-anilist-sent:<viewerId>`. */
+export const ANILIST_SENT_KEY = 'anitracker-anilist-sent';
 /** Marca de "el usuario tocó Conectar": sin ella no se acepta un token del hash. */
 export const ANILIST_LOGIN_PENDING_KEY = 'anitracker-anilist-login-pending';
 
@@ -177,6 +183,15 @@ export function expireAnilistSession() {
 /** Desconecta: borra la sesión y la huella de lo ya enviado. */
 export function clearAnilistSession() {
   removeKeys(ANILIST_AUTH_KEY, ANILIST_PUSHED_KEY, ANILIST_PUSHED_OWNER_KEY, ANILIST_LOGIN_PENDING_KEY);
+  // Las huellas van una por dueño y lo enviado una por cuenta: todas afuera.
+  try {
+    const stale = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith(`${ANILIST_PUSHED_KEY}:`) || key.startsWith(`${ANILIST_SENT_KEY}:`))) stale.push(key);
+    }
+    removeKeys(...stale);
+  } catch { /* best-effort */ }
 }
 
 // --- Errores tipados (los comparten el viewer y las mutaciones) ---

@@ -33,6 +33,8 @@ import {
   prunePushed,
   pushChanges,
   readPushed,
+  readSent,
+  rememberSent,
   resolveMediaId,
   saveMediaListEntry,
   writePushed,
@@ -143,8 +145,13 @@ describe('anilistAuth', () => {
     expect(getAnilistSession().viewer).toEqual({ id: 5, name: 'ana' });
 
     writePushed({ 21: 'CURRENT|3|' }, '5|');
+    writePushed({ 21: 'CURRENT|3|' }, '5|uid-1');
+    rememberSent(5, '21', 'CURRENT|3|');
     clearAnilistSession();
     expect(getAnilistSession()).toBeNull();
+    expect(readPushed('5|')).toBeNull();
+    expect(readPushed('5|uid-1')).toBeNull();
+    expect(readSent(5)).toEqual({});
     expect(localStorage.getItem(ANILIST_PUSHED_KEY)).toBeNull();
     expect(localStorage.getItem(ANILIST_PUSHED_OWNER_KEY)).toBeNull();
   });
@@ -609,6 +616,102 @@ describe('useAnilistSync', () => {
     await settle();
     expect(fetchMock).not.toHaveBeenCalled();
     expect(readPushed('77|uid-2')).toEqual({ 800150000: 'CURRENT|11|' });
+  });
+
+  // El caso real: la huella era una sola con una marca de dueño. Otro contexto
+  // con otro scope (otra pestaña, o la sesión de Google sin resolver) la pisaba,
+  // cada pasada volvía a tomar la línea base y nunca se mandaba nada.
+  it('otro scope tomando su línea base no se traga los cambios de este', async () => {
+    connect();
+    fetchMock.mockImplementation(async () => saved(150000));
+    const { rerender } = await mount({ ...library(5), ready: true, scope: 'uid-1' });
+    await settle();
+    expect(readPushed('77|uid-1')).toEqual({ 800150000: 'CURRENT|5|', 30: 'PLANNING|0|' });
+
+    // Otro contexto, como invitado, ve la biblioteca ya cambiada y toma SU base.
+    writePushed({ 800150000: 'CURRENT|6|', 30: 'PLANNING|0|' }, '77|');
+
+    rerender({ ...library(6), ready: true, scope: 'uid-1' });
+    await settle();
+    expect(mutations(fetchMock)).toHaveLength(1);
+    expect(mutations(fetchMock)[0].variables).toMatchObject({ mediaId: 150000, status: 'CURRENT', progress: 6 });
+    expect(readPushed('77|uid-1')[800150000]).toBe('CURRENT|6|');
+    expect(readPushed('77|')).toEqual({ 800150000: 'CURRENT|6|', 30: 'PLANNING|0|' }); // intacta
+  });
+
+  it('volver a un scope ya visto no retoma la línea base', async () => {
+    connect();
+    fetchMock.mockImplementation(async () => saved(150000));
+    const { rerender } = await mount({ ...library(5), ready: true, scope: 'uid-1' });
+    await settle();
+    rerender({ ...library(5), ready: true, scope: '' }); // p. ej. la sesión de Google tarda en resolverse
+    await settle();
+    rerender({ ...library(6), ready: true, scope: 'uid-1' });
+    await settle();
+    expect(mutations(fetchMock)).toHaveLength(1);
+    expect(mutations(fetchMock)[0].variables.progress).toBe(6);
+  });
+
+  it('no repite un cambio que otro contexto ya mandó tal cual', async () => {
+    connect();
+    fetchMock.mockImplementation(async () => saved(150000));
+    const { rerender } = await mount();
+    await settle();
+    rememberSent(77, '800150000', 'CURRENT|6|'); // lo mandó otra pestaña
+    rerender(library(6));
+    await settle();
+    expect(mutations(fetchMock)).toEqual([]);
+    expect(readPushed('77|')[800150000]).toBe('CURRENT|6|');
+  });
+
+  it('anota lo que de verdad llegó a AniList', async () => {
+    connect();
+    fetchMock.mockImplementation(async () => saved(150000));
+    const { rerender } = await mount();
+    await settle();
+    expect(readSent(77)).toEqual({}); // la línea base no manda nada
+    rerender(library(6));
+    await settle();
+    expect(readSent(77)).toEqual({ 800150000: 'CURRENT|6|' });
+  });
+
+  it('adopta la huella del formato viejo si es de este dueño, y descarta la de otro', async () => {
+    localStorage.setItem(ANILIST_PUSHED_KEY, JSON.stringify({ 800150000: 'CURRENT|5|' }));
+    localStorage.setItem(ANILIST_PUSHED_OWNER_KEY, '77|uid-1');
+    expect(readPushed('77|uid-1')).toEqual({ 800150000: 'CURRENT|5|' });
+    expect(localStorage.getItem(ANILIST_PUSHED_KEY)).toBeNull();
+    expect(localStorage.getItem(ANILIST_PUSHED_OWNER_KEY)).toBeNull();
+
+    localStorage.setItem(ANILIST_PUSHED_KEY, JSON.stringify({ 800150000: 'CURRENT|9|' }));
+    localStorage.setItem(ANILIST_PUSHED_OWNER_KEY, '77|');
+    expect(readPushed('77|uid-2')).toBeNull();
+    expect(localStorage.getItem(ANILIST_PUSHED_KEY)).toBeNull();
+  });
+
+  it('recuerda la huella de pocos dueños, sin perder la que se acaba de escribir', () => {
+    for (let i = 1; i <= 6; i++) writePushed({ 1: `CURRENT|${i}|` }, `77|uid-${i}`);
+    const kept = [1, 2, 3, 4, 5, 6].filter((i) => readPushed(`77|uid-${i}`));
+    expect(kept).toHaveLength(4);
+    expect(kept).toContain(6);
+  });
+
+  it('corre cada pasada dentro del candado compartido entre pestañas', async () => {
+    const request = vi.fn((name, options, task) => task());
+    vi.stubGlobal('navigator', { ...globalThis.navigator, onLine: true, locks: { request } });
+    try {
+      connect();
+      fetchMock.mockImplementation(async () => saved(150000));
+      const { rerender } = await mount();
+      await settle();
+      rerender(library(6));
+      await settle();
+      expect(request).toHaveBeenCalled();
+      expect(request.mock.calls[0][0]).toBe('anitracker-anilist-sync');
+      expect(request.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
+      expect(mutations(fetchMock)).toHaveLength(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('sacar un anime no borra nada en AniList', async () => {
