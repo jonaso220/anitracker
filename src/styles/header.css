@@ -60,14 +60,12 @@
   100% { filter: drop-shadow(0 0 12px rgba(168, 85, 247, 0.4)); }
 }
 
-/* Sparkle twinkle — two sparkles offset out of phase so the icon
-   always has one star at peak brightness. */
+/* Sparkle twinkle on the mark's single star. */
 .logo-sparkle {
   transform-origin: center;
   transform-box: fill-box;
   animation: logoSparkleTwinkle 3.2s var(--ease-in-out) infinite;
 }
-.logo-sparkle-2 { animation-delay: 1.6s; }
 @keyframes logoSparkleTwinkle {
   0%, 100% { transform: scale(1) rotate(0deg);   opacity: 1; }
   50%      { transform: scale(0.55) rotate(45deg); opacity: 0.55; }

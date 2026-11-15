@@ -75,23 +75,17 @@ const Header = ({
                   <animate attributeName="stop-color" values="#4ecdc4; #c084fc; #a855f7; #4ecdc4" dur="5s" repeatCount="indefinite" />
                 </stop>
               </linearGradient>
-              <linearGradient id="logoBookmarkHighlight" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="rgba(255,255,255,0.55)" />
-                <stop offset="100%" stopColor="rgba(255,255,255,0)" />
-              </linearGradient>
+              {/* Recorta el check de la tele: deja ver el fondo, en tema claro u oscuro. */}
+              <mask id="logoTvCheck" maskUnits="userSpaceOnUse" x="0" y="0" width="80" height="80">
+                <rect width="80" height="80" fill="#fff" />
+                <path d="M24.5 51 L33 60 L48.5 42.5" fill="none" stroke="#000" strokeWidth="7.5" strokeLinecap="round" strokeLinejoin="round" />
+              </mask>
             </defs>
-            {/* Top-left sparkle */}
-            <path className="logo-sparkle logo-sparkle-1" d="M11 14 L12.2 17 L15.2 18.2 L12.2 19.4 L11 22.4 L9.8 19.4 L6.8 18.2 L9.8 17 Z" fill="url(#logoBrandGrad)" />
-            {/* Main circle (round linecaps for softer ends if it ever becomes a partial arc) */}
-            <circle cx="40" cy="46" r="25" fill="none" stroke="url(#logoBrandGrad)" strokeWidth="3.5" strokeLinecap="round" />
-            {/* Play triangle */}
-            <path d="M33 35 L54 46 L33 57 Z" fill="url(#logoBrandGrad)" strokeLinejoin="round" />
-            {/* Bookmark on top of circle, sticking upward */}
-            <path d="M48 8 L64 8 L64 30 L56 25 L48 30 Z" fill="url(#logoBrandGrad)" />
-            {/* Subtle inner highlight on the bookmark's left edge gives it volume */}
-            <path d="M49 9 L49 28.6" stroke="url(#logoBookmarkHighlight)" strokeWidth="1.2" strokeLinecap="round" />
-            {/* Mid-right sparkle */}
-            <path className="logo-sparkle logo-sparkle-2" d="M70 40 L70.9 42.2 L73.1 43.1 L70.9 44 L70 46.2 L69.1 44 L66.9 43.1 L69.1 42.2 Z" fill="url(#logoBrandGrad)" />
+            {/* Misma marca que el ícono de la app (public/icon.svg): tele con
+                antenas, check de «visto» y destello. */}
+            <path d="M36 30 L24 11 M36 30 L48 11" fill="none" stroke="url(#logoBrandGrad)" strokeWidth="6" strokeLinecap="round" />
+            <rect x="6" y="28" width="60" height="46" rx="13" fill="url(#logoBrandGrad)" mask="url(#logoTvCheck)" />
+            <path className="logo-sparkle" d="M66 5 c0.9 5.8 2.2 7.1 8 8 c-5.8 0.9 -7.1 2.2 -8 8 c-0.9 -5.8 -2.2 -7.1 -8 -8 c5.8 -0.9 7.1 -2.2 8 -8 Z" fill="url(#logoBrandGrad)" />
           </svg>
           <span className="logo-text">
             <span className="logo-text-ani">
