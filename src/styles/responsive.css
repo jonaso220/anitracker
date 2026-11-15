@@ -123,6 +123,8 @@
   /* Los avisos flotan sobre la barra inferior en vez de taparla. */
   .update-banner,
   .storage-error-banner { bottom: calc(5rem + env(safe-area-inset-bottom, 0px)); }
+  .update-banner ~ .toast,
+  .storage-error-banner ~ .toast { bottom: calc(11rem + env(safe-area-inset-bottom, 0px)); }
 
   /* Nav tabs: emoji-only on mobile. The label stays for screen readers
      (VoiceOver announced a nameless "tab" with display: none). */

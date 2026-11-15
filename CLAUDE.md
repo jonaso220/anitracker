@@ -42,7 +42,10 @@ store global ni context; el estado vive en `App.jsx` y baja por props.
     listas personalizadas, import). Recibe setters y refs por parámetro.
     Una obra vive en **un solo lugar** (un día, Después o Vistas; las listas
     personalizadas van aparte): agregar algo que ya está guardado lo mueve con
-    su progreso (`locate`/`resolveIncoming`), nunca lo duplica en ep. 0.
+    su progreso (`locate`/`resolveIncoming`), nunca lo duplica en ep. 0. Si lo
+    guardado vino de otra fuente (otro id), se reconoce con `isSameWork` de
+    `services/sameWork.js`, la misma regla con la que la búsqueda fusiona
+    resultados, y se conserva el id de lo guardado.
   - `useAnimeData` — búsqueda (debounce + `AbortController`) e info de emisión
     (cache en localStorage con TTL). La emisión sale de AniList/MAL, Viki,
     TVMaze (fecha y hora exactas, de a tandas de 18 por su límite) y TMDB
@@ -294,7 +297,7 @@ Vitest + Testing Library (jsdom), setup en `src/test/setup.js`. Al tocar
   huellas por campo) exige revisión antes de escribir: `src/test/fixtures/`
   guarda una copia congelada para probar esa compatibilidad.
 - **Firebase fijado en `~12.14`**: desde 12.15 (Firestore 4.16) el chunk de
-  Firebase suma ~60 kB gzip para las mismas funciones (Dependabot lo ignora).
+  Firebase suma ~60 kB gzip para las mismas funciones (Dependabot ignora sus versiones menores y mayores).
   Ya no hace falta comparar a mano: `npm run size` (y CI) falla si el chunk de
   Firebase se pasa del presupuesto de `scripts/check-bundle-size.mjs`.
   **Y subirlo tampoco arregla la auditoría**: incluso el último

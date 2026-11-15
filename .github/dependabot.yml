@@ -11,9 +11,10 @@ updates:
         update-types: [minor, patch]
     ignore:
       # Firestore 4.16 (firebase 12.15+) suma ~60 kB gzip al bundle para las
-      # mismas funciones. Quedarse en 12.14.x hasta que eso cambie.
+      # mismas funciones, y 13.x tampoco cierra el aviso de @grpc/grpc-js.
+      # Quedarse en 12.14.x hasta que eso cambie (ver CLAUDE.md).
       - dependency-name: firebase
-        update-types: ["version-update:semver-minor"]
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:

@@ -127,3 +127,53 @@ describe('finishing with a stale day', () => {
     expect(result.current.watchedList).toHaveLength(0);
   });
 });
+
+describe('the same work coming from another source', () => {
+  // Guardada desde MAL; la búsqueda trae la ficha de Kitsu sin id de MAL
+  // (pasa cuando MAL no responde).
+  const stored = {
+    id: 52991, malId: 52991, sourceKey: 'mal:52991', source: 'MAL', title: 'Sousou no Frieren',
+    titleEn: "Frieren: Beyond Journey's End", year: '2023', type: 'TV', currentEp: 7, userRating: 9,
+  };
+  const kitsu = {
+    id: 146474, malId: null, sourceKey: 'kitsu:46474', source: 'Kitsu', title: 'Frieren: Beyond Journey’s End',
+    year: '2023', type: 'TV', episodes: 28,
+  };
+
+  it('moves the saved entry (keeping its id and progress) instead of adding a second one', () => {
+    const schedule = { ...emptySchedule(), Lunes: [stored] };
+    const { result } = renderHook(() => useHarness({ schedule }));
+    act(() => result.current.addToSchedule(kitsu, 'Jueves'));
+    expect(result.current.schedule.Lunes).toHaveLength(0);
+    expect(result.current.schedule.Jueves).toHaveLength(1);
+    expect(result.current.schedule.Jueves[0]).toMatchObject({ id: 52991, sourceKey: 'mal:52991', currentEp: 7, userRating: 9 });
+    act(() => result.current.toast.undo());
+    expect(result.current.schedule.Lunes.map((a) => a.id)).toEqual([52991]);
+    expect(result.current.schedule.Jueves).toHaveLength(0);
+  });
+
+  it('"Ya la vi" and Después also recognise it', () => {
+    const schedule = { ...emptySchedule(), Lunes: [stored] };
+    const { result } = renderHook(() => useHarness({ schedule }));
+    act(() => result.current.markAsWatched(kitsu));
+    expect(result.current.schedule.Lunes).toHaveLength(0);
+    expect(result.current.watchedList.map((a) => a.id)).toEqual([52991]);
+    act(() => result.current.addToWatchLater(kitsu));
+    expect(result.current.watchedList).toHaveLength(0);
+    expect(result.current.watchLater[0]).toMatchObject({ id: 52991, currentEp: 7 });
+  });
+
+  it.each([
+    ['another season', { ...kitsu, id: 149000, sourceKey: 'kitsu:49000', title: "Frieren: Beyond Journey's End Season 2", year: '2026' }],
+    ['a remake years later', { ...kitsu, year: '2031' }],
+    ['a movie with the same title', { ...kitsu, type: 'Película' }],
+    ['another work from the same source', { ...kitsu, source: 'MAL', sourceKey: 'mal:99999', id: 99999 }],
+    ['a different MAL id', { ...kitsu, malId: 59978 }],
+  ])('does not merge %s', (_label, other) => {
+    const schedule = { ...emptySchedule(), Lunes: [stored] };
+    const { result } = renderHook(() => useHarness({ schedule }));
+    act(() => result.current.addToSchedule(other, 'Jueves'));
+    expect(result.current.schedule.Lunes.map((a) => a.id)).toEqual([52991]);
+    expect(result.current.schedule.Jueves.map((a) => a.id)).toEqual([other.id]);
+  });
+});

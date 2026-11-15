@@ -21,6 +21,11 @@
   animation: toastSlideIn 0.4s var(--ease-out-bounce);
 }
 
+/* Con un banner visible (actualización o almacenamiento) el toast va arriba:
+   comparten el borde inferior y el banner taparía "Deshacer". */
+.update-banner ~ .toast,
+.storage-error-banner ~ .toast { bottom: 7.25rem; }
+
 @keyframes toastSlideIn {
   from { opacity: 0; transform: translate(-50%, 40px); }
   to { opacity: 1; transform: translate(-50%, 0); }

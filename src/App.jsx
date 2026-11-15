@@ -372,9 +372,11 @@ export default function AnimeTracker() {
         </Suspense>
       </main>
 
-      <Toast toast={toast} onUndo={undoToast} onAction={runToastAction} onDismiss={dismissToast} />
+      {/* Los banners van antes del toast: el CSS lo sube cuando hay uno visible
+          (`.update-banner ~ .toast`), así nunca tapan el botón "Deshacer". */}
       <StorageErrorBanner />
       <UpdateBanner visible={updateAvailable} onUpdate={applyUpdate} onDismiss={dismissUpdate} />
+      <Toast toast={toast} onUndo={undoToast} onAction={runToastAction} onDismiss={dismissToast} />
 
       <Suspense fallback={null}>
       {showSearch && (

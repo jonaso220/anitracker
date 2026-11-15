@@ -4,6 +4,7 @@ import { captureEntry, restoreEntry, changeEpisode } from '../libraryEdits';
 import { daysOfWeek, sanitizeUrl } from '../constants';
 import { clean, pickAutoWatchLink } from '../utils';
 import { planImport } from '../libraryImport';
+import { isSameWork } from '../services/sameWork';
 import { t } from '../i18n';
 
 const updateInList = (list, animeId, updater) =>
@@ -71,14 +72,30 @@ export function useAnimeActions({
     return null;
   }, [scheduleRef, watchLaterRef, watchedListRef]);
 
+  // La misma obra guardada desde otra fuente (p. ej. está con el id de MAL y la
+  // búsqueda trajo la ficha de Kitsu porque MAL no respondió): misma regla que
+  // usa la búsqueda para fusionar resultados entre fuentes.
+  const findSameWork = useCallback((anime) => {
+    const stored = [
+      ...daysOfWeek.flatMap((day) => scheduleRef.current[day] || []),
+      ...watchLaterRef.current,
+      ...watchedListRef.current,
+      ...customListsRef.current.flatMap((list) => list.items),
+    ];
+    return stored.find((entry) => isSameWork(entry, anime)) || null;
+  }, [scheduleRef, watchLaterRef, watchedListRef, customListsRef]);
+
   // Lo que el usuario ya cargó (progreso, nota, temporada, link) gana sobre los
   // datos de la API; un link pegado en la búsqueda sí reemplaza al guardado.
+  // El resultado conserva el id de lo guardado: las acciones siguen por ahí.
   const resolveIncoming = useCallback((anime) => {
     const fromLibrary = anime._day || anime._isCustomList || anime._isWatched || anime._isWatchLater;
-    const stored = latestAnime(anime);
-    if (fromLibrary || stored === anime) return stored;
+    const byId = latestAnime(anime);
+    if (fromLibrary) return byId;
+    const stored = byId !== anime ? byId : findSameWork(anime);
+    if (!stored) return anime;
     return { ...anime, ...stored, ...(anime.watchLink ? { watchLink: anime.watchLink } : {}) };
-  }, [latestAnime]);
+  }, [latestAnime, findSameWork]);
 
   const captureLocations = useCallback((id) => ({
     days: Object.fromEntries(daysOfWeek.map((d) => [d, captureEntry(scheduleRef.current[d] || [], id)])),
@@ -106,9 +123,10 @@ export function useAnimeActions({
 
   const addToSchedule = useCallback((anime, day) => {
     if (!daysOfWeek.includes(day)) return;
-    const from = locate(anime.id);
-    const snapshot = captureLocations(anime.id);
-    const a = prepare(resolveIncoming(anime));
+    const incoming = resolveIncoming(anime);
+    const from = locate(incoming.id);
+    const snapshot = captureLocations(incoming.id);
+    const a = prepare(incoming);
     if (from === 'watched' || anime._isWatched) {
       a.paused = false;
       delete a.finished;
@@ -169,9 +187,10 @@ export function useAnimeActions({
   }, [setSchedule, setWatchedList, scheduleRef, watchedListRef, showToast, latestAnime, currentDay]);
 
   const addToWatchLater = useCallback((anime) => {
-    const from = locate(anime.id);
-    const snapshot = captureLocations(anime.id);
-    const a = prepare(resolveIncoming(anime));
+    const incoming = resolveIncoming(anime);
+    const from = locate(incoming.id);
+    const snapshot = captureLocations(incoming.id);
+    const a = prepare(incoming);
     if (from === 'watched') {
       delete a.finished;
       delete a.finishedDate;
@@ -187,9 +206,9 @@ export function useAnimeActions({
   }, [setSchedule, setWatchedList, setWatchLater, locate, captureLocations, resolveIncoming, restoreLocations, closeSearch, showToast]);
 
   const markAsWatched = useCallback((anime) => {
-    const from = locate(anime.id);
-    const snapshot = captureLocations(anime.id);
     const current = resolveIncoming(anime);
+    const from = locate(current.id);
+    const snapshot = captureLocations(current.id);
     // Volver a marcar algo que ya estaba en Vistas no pisa su fecha ni su nota.
     if (from === 'watched' && current.finished) return;
     const entry = {
