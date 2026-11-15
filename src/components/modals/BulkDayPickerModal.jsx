@@ -1,7 +1,7 @@
 import React from 'react';
 import { daysOfWeek, dayEmojis } from '../../constants';
 import { useAccessibleDialog } from '../../hooks/useAccessibleDialog';
-import { t } from '../../i18n';
+import { dayLabel, t } from '../../i18n';
 
 const BulkDayPickerModal = ({ count, onPickDay, onClose }) => {
   const dialogRef = useAccessibleDialog(onClose);
@@ -19,7 +19,7 @@ const BulkDayPickerModal = ({ count, onPickDay, onClose }) => {
         <div className="days-grid">
           {daysOfWeek.map((day, i) => (
             <button key={day} className="day-btn" onClick={() => onPickDay(day)}>
-              <span aria-hidden="true">{dayEmojis[i]}</span> {day}
+              <span aria-hidden="true">{dayEmojis[i]}</span> {dayLabel(day)}
             </button>
           ))}
         </div>

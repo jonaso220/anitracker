@@ -34,6 +34,13 @@ opcional en la nube.
 - **💾 Copia de seguridad** — exportá/importá todos tus datos en un `.json`, más
   una copia automática diaria en el navegador para salir de un cambio accidental.
 - **📥 Importar desde AniList** — traé tu lista por nombre de usuario.
+- **🔄 Progreso a AniList** — conectá tu cuenta (Ajustes) y los episodios
+  vistos, el estado y tu nota se actualizan también allá. Requiere
+  `VITE_ANILIST_CLIENT_ID`.
+- **🔔 Avisos de episodio nuevo** — notificación cuando sale un episodio de tu
+  semana (Ajustes). Sin servidor: llegan con la app abierta o en segundo plano,
+  y con la app cerrada solo en la PWA instalada en Android/Chrome.
+- **🌐 Español e inglés** — según el idioma del dispositivo, o elegido en Ajustes.
 - **☁️ Sync con Firebase** — login con Google y guardado en la nube (opcional),
   con estado de sincronización a la vista y resolución guiada de conflictos
   entre dispositivos (podés descargar ambas versiones antes de elegir).

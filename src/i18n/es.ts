@@ -8,7 +8,10 @@
  */
 import type { Dictionary } from './index';
 
-export const es: Dictionary = {
+// `satisfies` (y no `: Dictionary`) conserva las claves literales: de ahí sale
+// el tipo de `en.ts`, que falla en `npm run typecheck` si le falta o le sobra
+// una clave.
+export const es = {
   'detail.open': 'Abrir ficha de {title}',
   'detail.originalTitle': 'Título original',
   'detail.fullTitle': 'Ver título completo',
@@ -550,6 +553,141 @@ export const es: Dictionary = {
   'errorBoundary.message': 'Ocurrió un error inesperado. Tus datos están guardados en el navegador.',
   'errorBoundary.reload': 'Recargar app',
   'errorBoundary.details': 'Detalles del error',
-};
+
+  // Ajustes (SettingsModal) y avisos de episodio nuevo (episodeAlerts).
+  'header.settings': 'Ajustes',
+  'settings.title': 'Ajustes',
+  'settings.alertsTitle': '🔔 Avisos de episodio nuevo',
+  'settings.alertsToggle': 'Avisarme cuando sale un episodio de mi semana',
+  'settings.alertsUnsupported': 'Este navegador no permite notificaciones. En iPhone, instalá la app en la pantalla de inicio.',
+  'settings.alertsDenied': 'Bloqueaste las notificaciones de este sitio. Habilitalas en los ajustes del navegador y volvé a intentar.',
+  'settings.alertsHint': 'Los avisos llegan con la app abierta o en segundo plano. Con la app instalada en Android también pueden llegar con la app cerrada, con algo de demora.',
+  'settings.anilistTitle': '🔄 Progreso en AniList',
+  'settings.anilistConnectedAs': 'Conectado como {name}.',
+  'settings.anilistConnected': 'Cuenta conectada.',
+  'settings.anilistDisconnect': 'Desconectar AniList',
+  'settings.anilistHint': 'Conectá tu cuenta para que los episodios vistos, el estado y tu nota se actualicen en AniList. Solo se envían los cambios que hagas desde ahora, nunca se borra nada allá y lo que no viene de AniList o MyAnimeList se saltea.',
+  'settings.anilistConnect': 'Conectar con AniList',
+  'settings.anilistExpired': 'La conexión venció. Volvé a conectar tu cuenta.',
+  'settings.anilistPending': 'Enviando cambios…',
+  'settings.anilistUpToDate': 'AniList está al día.',
+  'settings.anilistReconnect': 'Volver a conectar',
+  'anilistSync.error.expired': 'Tu sesión de AniList venció. Volvé a conectarla.',
+  'anilistSync.error.rejected': 'Cambios que AniList no aceptó: {count}',
+  'anilistSync.error.rateLimit': 'AniList pidió esperar un momento. Se reintenta solo.',
+  'anilistSync.error.network': 'No se pudo enviar tu progreso a AniList. Se reintenta solo en un rato.',
+  'settings.languageTitle': '🌐 Idioma',
+  'settings.languageLabel': 'Idioma de la app',
+  'settings.languageAuto': 'Automático (idioma del dispositivo)',
+  'alerts.title': 'Episodio nuevo',
+  'alerts.body': 'Salió el episodio {episode}',
+  'alerts.bodySeason': 'Salió el T{season} · Ep. {episode}',
+
+  // Textos sueltos que se armaban a mano.
+  'airing.episode': 'Ep. {episode}',
+  'airing.seasonEpisode': 'T{season} · Ep. {episode}',
+  'card.seasonProgress': 'T{season} · {progress}',
+  'platform.generic': 'Ver',
+  // Lo que `normalizeAnime` guarda cuando la fuente no trae sinopsis.
+  'detail.noSynopsisAvailable': 'Sin sinopsis disponible.',
+  'common.and': '{a} y {b}',
+  'discovery.reasonGenres': 'Porque te gusta {genres}',
+  'discovery.reasonPopular': 'Popular entre la comunidad',
+  'sync.place.week': 'Semana · {day}',
+  'sync.place.watched': 'Vistas',
+  'sync.place.watchLater': 'Después',
+  'sync.place.lists': 'Listas',
+  'sync.placement': 'Ubicación',
+  'sync.conflictLocation': '{title} · {location}',
+
+  // --- Etiquetas de valores que son DATOS ---------------------------------
+  // La parte de la clave después del punto es el valor tal como está guardado
+  // (o como lo devuelve un servicio) y NO se cambia: solo se traduce lo que se
+  // muestra. Ver `dayLabel`, `typeLabel`, `genreLabel`… en i18n/index.ts.
+
+  // Días: `daysOfWeek` (constants.ts) son las claves del horario guardado.
+  'day.Lunes': 'Lunes',
+  'day.Martes': 'Martes',
+  'day.Miércoles': 'Miércoles',
+  'day.Jueves': 'Jueves',
+  'day.Viernes': 'Viernes',
+  'day.Sábado': 'Sábado',
+  'day.Domingo': 'Domingo',
+  // El día en medio de una frase ("Nuevos episodios los lunes").
+  'day.inline.Lunes': 'lunes',
+  'day.inline.Martes': 'martes',
+  'day.inline.Miércoles': 'miércoles',
+  'day.inline.Jueves': 'jueves',
+  'day.inline.Viernes': 'viernes',
+  'day.inline.Sábado': 'sábado',
+  'day.inline.Domingo': 'domingo',
+
+  // `anime.type`: solo los valores que cambian entre idiomas.
+  'type.Película': 'Película',
+  'type.Serie': 'Serie',
+
+  // Géneros que TMDB y Viki guardan en español (los de AniList, MAL y TVMaze
+  // llegan en inglés y se muestran tal cual). Solo los que cambian.
+  'genre.Acción': 'Acción',
+  'genre.Acción y aventura': 'Acción y aventura',
+  'genre.Animación': 'Animación',
+  'genre.Aventura': 'Aventura',
+  'genre.Bélica': 'Bélica',
+  'genre.Ciencia ficción': 'Ciencia ficción',
+  'genre.Ciencia ficción y fantasía': 'Ciencia ficción y fantasía',
+  'genre.Comedia': 'Comedia',
+  'genre.Comedia romántica': 'Comedia romántica',
+  'genre.Cortometraje': 'Cortometraje',
+  'genre.Crimen': 'Crimen',
+  'genre.Crimen y misterio': 'Crimen y misterio',
+  'genre.Deportes': 'Deportes',
+  'genre.Documental': 'Documental',
+  'genre.Entretenimiento': 'Entretenimiento',
+  'genre.Época': 'Época',
+  'genre.Familia': 'Familia',
+  'genre.Fantasía': 'Fantasía',
+  'genre.Guerra y política': 'Guerra y política',
+  'genre.Historia': 'Historia',
+  'genre.Histórico': 'Histórico',
+  'genre.Infantil': 'Infantil',
+  'genre.Médico': 'Médico',
+  'genre.Misterio': 'Misterio',
+  'genre.Música': 'Música',
+  'genre.Noticias': 'Noticias',
+  'genre.Película de TV': 'Película de TV',
+  'genre.Sobrenatural': 'Sobrenatural',
+  'genre.Suspenso': 'Suspenso',
+  'genre.Telenovela': 'Telenovela',
+  'genre.Terror': 'Terror',
+  'genre.Variedades': 'Variedades',
+  'genre.Viajes': 'Viajes',
+
+  // Relación entre obras (`_relation`, de anilistService).
+  'relation.Precuela': 'Precuela',
+  'relation.Secuela': 'Secuela',
+  'relation.Historia principal': 'Historia principal',
+  'relation.Historia paralela': 'Historia paralela',
+  'relation.Spin-off': 'Spin-off',
+  'relation.Versión alternativa': 'Versión alternativa',
+  'relation.Historia completa': 'Historia completa',
+  'relation.Resumen': 'Resumen',
+  'relation.Relacionado': 'Relacionado',
+
+  // Nota de un enlace de streaming (`streamingLinks[].language`).
+  'linkLanguage.subtítulos en español': 'subtítulos en español',
+  'linkLanguage.subtítulos': 'subtítulos',
+  'linkLanguage.buscar': 'buscar',
+  'linkLanguage.enlace proporcionado': 'enlace proporcionado',
+
+  // Países de "Dónde ver" (TMDB_REGIONS), por código.
+  'region.AR': 'Argentina',
+  'region.MX': 'México',
+  'region.ES': 'España',
+  'region.CL': 'Chile',
+  'region.CO': 'Colombia',
+  'region.PE': 'Perú',
+  'region.UY': 'Uruguay',
+  'region.US': 'Estados Unidos',
+} satisfies Dictionary;
 
 export default es;

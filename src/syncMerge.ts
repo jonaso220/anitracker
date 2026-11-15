@@ -6,6 +6,7 @@
 // supo que había en la nube; `local` y `cloud` son las dos versiones actuales.
 // Así un cambio hecho en un solo lado nunca se pierde, sin depender de relojes.
 import { daysOfWeek } from './constants';
+import { dayLabel, t } from './i18n';
 import type { Anime, CustomList, Library, LibraryInput, Schedule } from './types/anime';
 
 /** Mapa clave → hash de una biblioteca (la "base" de la fusión). */
@@ -121,10 +122,15 @@ function placementsOf(entries: Map<string, unknown>): Map<string, string[]> {
   return out;
 }
 
+// Nombre de un lugar de la biblioteca para mostrar en un conflicto. El día va
+// traducido (`dayLabel`); la clave del contenedor sigue siendo el día guardado.
+const weekPlace = (container: string): string =>
+  t('sync.place.week', 'Semana · {day}', { day: dayLabel(container.slice(2)) });
+
 const placementName = (container: string | undefined): string | undefined =>
   container === undefined ? undefined
-    : container.startsWith('s:') ? `Semana · ${container.slice(2)}`
-      : container === 'w' ? 'Vistas' : 'Después';
+    : container.startsWith('s:') ? weekPlace(container)
+      : container === 'w' ? t('sync.place.watched', 'Vistas') : t('sync.place.watchLater', 'Después');
 
 // Contenedores de anime: 's:<día>', 'w' (vistos), 'l' (pendientes), 'c:<lista>'.
 function containersOf(lib: LibraryInput | null | undefined): [string, Anime[]][] {
@@ -401,10 +407,14 @@ export function inspectCloudSnapshot({ base = null, local, cloud, requireReview 
     const hl = l === undefined ? undefined : hashValue(l), hc = c === undefined ? undefined : hashValue(c);
     if (hl === hc || hl === b || hc === b) continue;
     const container = key.slice(0, key.indexOf('|'));
-    const location = container.startsWith('s:') ? `Semana · ${container.slice(2)}`
+    const location = container.startsWith('s:') ? weekPlace(container)
       : container.startsWith('c:') ? (localLists.get(container.slice(2)) || cloudLists.get(container.slice(2)))?.name
-        : container === 'w' ? 'Vistas' : container === 'l' ? 'Después' : 'Listas';
-    const label = `${conflictLabel(l, c, key)} · ${location || 'Lista'}`;
+        : container === 'w' ? t('sync.place.watched', 'Vistas')
+          : container === 'l' ? t('sync.place.watchLater', 'Después') : t('sync.place.lists', 'Listas');
+    const label = t('sync.conflictLocation', '{title} · {location}', {
+      title: conflictLabel(l, c, key),
+      location: location || t('sync.listFallback', 'Lista'),
+    });
     if (l === undefined || c === undefined) {
       if (b !== undefined) conflicts.push({ key, kind: 'deletion', label, local: l, cloud: c });
     } else if (isObject(l) && isObject(c) && Object.hasOwn(base, `f|${key}|id`)) {
@@ -446,7 +456,8 @@ function placementConflicts(
     const cloudPlace = cloudPlaces.get(id)?.[0];
     const l = L.get(`${localPlace}|${id}`), c = C.get(`${cloudPlace}|${id}`);
     return [{
-      key: `p|${id}`, kind: 'placement', label: `${conflictLabel(l, c, id)} · Ubicación`,
+      key: `p|${id}`, kind: 'placement',
+      label: t('sync.conflictLocation', '{title} · {location}', { title: conflictLabel(l, c, id), location: t('sync.placement', 'Ubicación') }),
       local: placementName(localPlace), cloud: placementName(cloudPlace),
     }];
   });

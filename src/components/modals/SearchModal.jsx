@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { useAccessibleDialog } from '../../hooks/useAccessibleDialog';
-import { t } from '../../i18n';
+import { genreLabel, t, typeLabel } from '../../i18n';
 import { parseAnimeSearchInput, SEARCH_SOURCE_NAMES } from '../../services/searchAnime';
 
 const Highlight = ({ text, query }) => {
@@ -27,9 +27,10 @@ const Highlight = ({ text, query }) => {
     return <>{text.slice(0, start)}<mark className="search-highlight">{text.slice(start, end)}</mark>{text.slice(end)}</>;
 };
 
-// Valores tal como llegan en `anime.type`; solo 'Todos' es una etiqueta de UI.
+// Valores tal como llegan en `anime.type` (se filtra por ellos): lo que se
+// traduce es la etiqueta. 'Todos' no es un tipo, es "sin filtro".
 const TYPE_OPTIONS = ['Todos', 'TV', 'Película', 'OVA', 'ONA', 'Special', 'TV Short', 'Serie'];
-const typeLabel = (type) => (type === 'Todos' ? t('search.typeAll', 'Todos') : type);
+const typeOptionLabel = (type) => (type === 'Todos' ? t('search.typeAll', 'Todos') : typeLabel(type));
 const SCORE_OPTIONS = [
     { label: 'Cualquiera', min: 0 },
     { label: '7+', min: 7 },
@@ -102,7 +103,7 @@ const SearchModal = ({ setShowSearch, searchQuery, handleSearch, searchResults, 
                 <span className="search-filter-label" id="search-filter-type">{t('search.type', 'Tipo')}</span>
                 <div className="filter-chips" role="group" aria-labelledby="search-filter-type">
                   {TYPE_OPTIONS.map(type => (
-                    <button key={type} className={`filter-chip ${filterType === type ? 'active' : ''}`} onClick={() => setFilterType(type)} aria-pressed={filterType === type}>{typeLabel(type)}</button>
+                    <button key={type} className={`filter-chip ${filterType === type ? 'active' : ''}`} onClick={() => setFilterType(type)} aria-pressed={filterType === type}>{typeOptionLabel(type)}</button>
                   ))}
                 </div>
               </div>
@@ -167,12 +168,12 @@ const SearchModal = ({ setShowSearch, searchQuery, handleSearch, searchResults, 
                 <div className="search-result-title-row"><h4><Highlight text={anime.title} query={parsedSearch.searchTerm} /></h4><span className="source-badge">{anime.source}</span></div>
                 {anime.altTitles?.length > 0 && <p className="alt-titles">{t('search.altTitles', 'También:')} {anime.altTitles.slice(0, 3).map((alt, i) => <React.Fragment key={i}>{i > 0 && ' · '}<Highlight text={alt} query={parsedSearch.searchTerm} /></React.Fragment>)}</p>}
                 <div className="search-result-meta">
-                  {anime.type && <span className="meta-tag type">{anime.type}</span>}
+                  {anime.type && <span className="meta-tag type">{typeLabel(anime.type)}</span>}
                   {anime.year && <span className="meta-tag year">{anime.year}</span>}
                   {anime.episodes && <span className="meta-tag eps">{t('meta.episodesShort', '{count} eps', { count: anime.episodes })}</span>}
                   {anime.rating > 0 && <span className="meta-tag score">⭐ {Number(anime.rating).toFixed(1)}</span>}
                 </div>
-                <div className="search-result-genres">{(anime.genres || []).slice(0, 3).map((g, i) => <span key={i} className="genre-tag-sm">{g}</span>)}</div>
+                <div className="search-result-genres">{(anime.genres || []).slice(0, 3).map((g, i) => <span key={i} className="genre-tag-sm">{genreLabel(g)}</span>)}</div>
                 <div className="search-result-links">
                   {anime.malUrl && <a href={anime.malUrl} target="_blank" rel="noopener noreferrer" className="mal-link">{t('detail.watchOn', 'Ver en {platform}', { platform: anime.source })} ↗</a>}
                   {parsedSearch.isUrl && anime.watchLink && (

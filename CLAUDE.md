@@ -93,6 +93,10 @@ store global ni context; el estado vive en `App.jsx` y baja por props.
     acumulativo con "cargar más".
   - `useDragDrop`, `useBulkMode`, `useBulkActions`, `useDiscovery`,
     `useToast`, `useServiceWorkerUpdate`, `useHashRoute` (ver «Rutas»).
+  - `useEpisodeAlerts` y `useAnilistSync` — ver «Avisos de episodio» y
+    «Progreso a AniList» en Notas. Se montan desde `EpisodeAlertsBridge` y
+    `AnilistSyncBridge` (componentes lazy sin UI) para que su código no entre
+    en el chunk de entrada; se configuran en `SettingsModal` (menú → Ajustes).
 - **`services/`** — una API por archivo (`jikanService`, `kitsuService`,
   `anilistService`, `tvmazeService`, `itunesService`, `tmdbService`,
   `vikiService`, `wikipediaBridge`). `searchAnime.js` las orquesta en paralelo
@@ -121,8 +125,10 @@ store global ni context; el estado vive en `App.jsx` y baja por props.
 - **`errorReporter.ts`** — reporte de errores opt-in por `VITE_ERROR_REPORT_URL`
   (ver «Reporte de errores»).
 - **`i18n/`** — `index.ts` es el motor (`t(key, fallback, params)` con
-  interpolación `{name}`, plurales `{ one, other }` por `count` y registro de
-  locales); `es.ts` es el diccionario tipado.
+  interpolación `{name}`, plurales `{ one, other }` por `count`, registro de
+  locales, detección del idioma y las etiquetas de datos: `dayLabel`,
+  `typeLabel`, `genreLabel`…); `es.ts` es el diccionario base y `en.ts` el
+  inglés, que se baja a demanda (ver «Idiomas» en Notas).
 
 ### Datos persistidos (localStorage)
 
@@ -133,6 +139,11 @@ store global ni context; el estado vive en `App.jsx` y baja por props.
 | `watchLater` | array de pendientes |
 | `anitracker-custom-lists` | listas personalizadas |
 | `anitracker-theme-v2` | booleano de tema (dark = true) |
+| `anitracker-locale` | idioma elegido a mano (`'es'` / `'en'`); ausente = el del navegador |
+| `anitracker-episode-alerts` | booleano: avisos de episodio nuevo prendidos |
+| `anitracker-anilist-auth` | sesión de AniList (`{ token, expiresAt, viewer }`) para enviar el progreso |
+| `anitracker-anilist-pushed` | firma de lo último enviado a AniList por anime (`ESTADO\|progreso\|nota`) |
+| `anitracker-anilist-ids` | cache id de MAL → id de AniList (máx. 2000) |
 | `anitracker-directory-filters` | filtros elegidos en Directorio (sin el texto de búsqueda) |
 | `anitracker-directory-view` | modo de vista de Directorio (`'grid'` / `'list'`) |
 | `anitracker-season-cache` | copia de la temporada vigente (TTL 15 min, para abrir al instante) |
@@ -166,8 +177,10 @@ la de más progreso).
   `useAccessibleDialog(onClose)`. El hook maneja Escape (solo el modal de
   arriba si hay varios), foco atrapado, fondo `inert` y scroll bloqueado. Ver
   `DayPickerModal` o `BackupModal` como referencia.
-- **Strings de UI** en español, vía `i18n/es.js`. Logs/errores de consola
-  quedan inline en inglés.
+- **Strings de UI** vía `t()`: cada clave va en `i18n/es.ts` **y** en
+  `i18n/en.ts` (el typecheck falla si falta en uno). Nada de texto suelto en
+  JSX ni `t()` a nivel de módulo (se evaluaría antes de cargar el idioma).
+  Logs/errores de consola quedan inline en inglés.
 - **Undo**: las acciones destructivas toman un snapshot (vía refs) y lo pasan a
   `showToast(msg, undoFn)`. El snapshot cubre solo lo afectado
   (`captureEntry`/`restoreEntry` de `libraryEdits.ts`), nunca la biblioteca
@@ -255,15 +268,55 @@ Vitest + Testing Library (jsdom), setup en `src/test/setup.js`. Al tocar
   poder guardar. Todo es best-effort (sin IndexedDB es un no-op) y **no**
   reemplaza a descargar una copia, que es lo único que sobrevive a un borrado de
   datos del sitio.
+- **Avisos de episodio**: sin servidor de push. `buildEpisodeAlerts`
+  (`episodeAlerts.ts`) arma la lista de próximas emisiones de la semana (no
+  pausadas, de la temporada que se sigue, todavía no vistas) y `publishAlerts`
+  la guarda en Cache Storage (`anitracker-alerts`, que el `activate` del
+  service worker no borra). El service worker (`checkAlerts` en `sw.js`)
+  muestra lo que ya salió y anota lo avisado: lo disparan el mensaje
+  `CHECK_ALERTS` (timer del hook al llegar la hora, o al volver a la app) y
+  `periodicsync` (solo PWA instalada en Chrome/Android). En iOS y el resto solo
+  hay avisos con la app abierta. Al prender los avisos se publica con
+  `baseline`: lo ya emitido se da por avisado.
+- **Progreso a AniList**: apagado salvo que exista `VITE_ANILIST_CLIENT_ID`
+  (cliente creado en anilist.co/settings/developer con la URL de la app como
+  Redirect URL). Login por *implicit grant*: `beginAnilistLogin` deja una marca
+  y `captureAnilistToken` (llamado en `main.jsx` antes de renderizar) solo
+  acepta el token del hash si esa marca existe, y siempre lo saca de la URL.
+  `desiredEntries` traduce la biblioteca a estado/progreso/nota de AniList
+  (semana → CURRENT o PAUSED, Después → PLANNING, Vistas → COMPLETED o
+  DROPPED; estrellas ×20 = `scoreRaw`). Al conectar se toma lo actual como
+  base y **no se envía nada**; después solo van los cambios, de a uno cada
+  ~2 s (límite de AniList), y nunca se borra nada allá. Lo que no tiene id de
+  AniList o MAL se saltea.
 - **Reporte de errores**: apagado salvo que exista `VITE_ERROR_REPORT_URL`.
   Engancha `error`, `unhandledrejection` y el `ErrorBoundary` (un error de chunk
   viejo **no** se reporta: pasa en cada deploy y taparía los errores reales).
   Deduplica y corta a 10 reportes por sesión. Se implementó sin SDK para no
   sumar ~40 kB gzip por una función que puede estar apagada; si se quiere Sentry,
   el camino es cargar su SDK de forma diferida cuando haya DSN.
-- **Idiomas**: hoy solo `es`. Para agregar otro: crear el diccionario tipado y
-  registrarlo con `registerLocale(id, dict)`; las claves nuevas conviene
-  escribirlas ya con `{placeholders}` y `{ one, other }` en vez de concatenar.
+- **Idiomas**: `es` (base, siempre cargado) y `en` (chunk aparte: quien usa la
+  app en español no lo baja). El idioma sale de `anitracker-locale` o, si no
+  hay, del navegador (`detectLocale`); `main.jsx` espera `localeReady` antes
+  del primer render. `t()` **no es reactivo**: cambiar de idioma es
+  `setLocalePreference(id)` + recargar. Una clave que falta en el idioma activo
+  sale en español (nunca la clave cruda).
+  - **Lo guardado no se traduce**: los días (`daysOfWeek` son las claves del
+    horario), `anime.type` (`'Película'`), los géneros de TMDB/Viki, la
+    relación entre obras… siguen en español en localStorage y en la nube, y se
+    traducen **al mostrarlos** con `dayLabel`, `typeLabel`, `genreLabel`,
+    `relationLabel`, `linkLanguageLabel` (claves `<grupo>.<valor guardado>`).
+    Nunca compares contra un texto traducido ni guardes uno.
+  - Fechas con `localeTag()`, no con `'es-ES'` fijo. En inglés no se traduce la
+    sinopsis (`autoTranslatesSynopsis`), TMDB se consulta en `en-US` y Viki
+    prefiere título y sinopsis en inglés.
+  - Los tests corren en español (`src/test/setup.js` lo fija);
+    `src/test/i18n.test.js` compara claves, plurales y `{placeholders}` de
+    `en.ts` contra `es.ts`, y `englishUi.test.jsx` renderiza la app en inglés.
+  - Para sumar otro idioma: diccionario con el tipo de `en.ts`, una entrada en
+    `loaders`, `LABELS` y `DATE_TAGS` de `i18n/index.ts`; las claves nuevas
+    conviene escribirlas con `{placeholders}` y `{ one, other }` en vez de
+    concatenar.
 - Service worker hecho a mano en `public/sw.js`; la versión de cache se sube a
   mano (`CACHE_VERSION`). Las portadas van a `anitracker-images` (sin versión,
   sobrevive a los deploys, máx. 500): primero cache, pedidas con CORS para

@@ -1,7 +1,7 @@
 import React, { useCallback } from 'react';
 import { daysOfWeek } from '../../constants';
 import { useAccessibleDialog } from '../../hooks/useAccessibleDialog';
-import { t } from '../../i18n';
+import { dayLabel, dayLabelInline, t } from '../../i18n';
 
 const DayPickerModal = ({ showDayPicker, setShowDayPicker, watchLater, addToSchedule, moveFromWatchLaterToSchedule }) => {
     const close = useCallback(() => setShowDayPicker(null), [setShowDayPicker]);
@@ -13,13 +13,13 @@ const DayPickerModal = ({ showDayPicker, setShowDayPicker, watchLater, addToSche
             <div ref={dialogRef} className="day-picker-modal fade-in" role="dialog" aria-modal="true" aria-labelledby="day-picker-title" tabIndex={-1} onClick={e => e.stopPropagation()}>
                 <div className="bottom-sheet-handle" aria-hidden="true"></div>
                 <h3 id="day-picker-title">📅 {t('dayPicker.title', '¿Qué día querés ver "{title}"?', { title: showDayPicker.title })}</h3>
-                {airDay && <p className="day-picker-hint">{t('dayPicker.airHint', 'Nuevos episodios los {day} en {platform}', { day: airDay.toLowerCase(), platform: showDayPicker.source || t('dayPicker.anyPlatform', 'su plataforma') })}</p>}
+                {airDay && <p className="day-picker-hint">{t('dayPicker.airHint', 'Nuevos episodios los {day} en {platform}', { day: dayLabelInline(airDay), platform: showDayPicker.source || t('dayPicker.anyPlatform', 'su plataforma') })}</p>}
                 <div className="days-grid">{daysOfWeek.map(d => (
                     <button key={d} className={`day-btn ${d === airDay ? 'suggested' : ''}`} onClick={() => {
                         const fromWL = !showDayPicker._isWatched && watchLater.some(a => a.id === showDayPicker.id);
                         if (fromWL) moveFromWatchLaterToSchedule(showDayPicker, d);
                         else addToSchedule(showDayPicker, d);
-                    }}>{d}{d === airDay && <span className="day-btn-badge">{t('dayPicker.newEpisode', 'Nuevo ep.')}</span>}</button>
+                    }}>{dayLabel(d)}{d === airDay && <span className="day-btn-badge">{t('dayPicker.newEpisode', 'Nuevo ep.')}</span>}</button>
                 ))}</div>
             </div>
         </div>

@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import { daysOfWeek } from '../constants';
 import { clean } from '../utils';
 import { captureEntry, restoreEntry } from '../libraryEdits';
-import { t } from '../i18n';
+import { dayLabel, t } from '../i18n';
 
 // Capture every selected entry of a list (with its neighbours) for undo.
 const captureAll = (list, ids) => (list || [])
@@ -99,7 +99,7 @@ export function useBulkActions({
     setWatchLater((prev) => prev.filter((a) => !ids.has(a.id)));
     setSchedule((prev) => ({ ...prev, [day]: [...(prev[day] || []).filter((x) => !movedIds.has(x.id)), ...moved] }));
     exitBulkMode();
-    showToast(t('toast.bulkMoved', undefined, { count, day }), () => {
+    showToast(t('toast.bulkMoved', undefined, { count, day: dayLabel(day) }), () => {
       setSchedule((prev) => ({ ...prev, [day]: restoreAll((prev[day] || []).filter((x) => !movedIds.has(x.id)), replaced) }));
       setWatchLater((prev) => restoreAll(prev, captured));
     });

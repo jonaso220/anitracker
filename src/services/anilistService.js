@@ -3,7 +3,7 @@ import { buildAiringInfo } from '../utils';
 import { daysOfWeek } from '../constants';
 import { anilistInternalId, ANILIST_ID_BASE, ANILIST_LEGACY_BASE, ANILIST_LEGACY_LIMIT } from '../idMigration';
 
-const ANILIST_URL = 'https://graphql.anilist.co';
+export const ANILIST_URL = 'https://graphql.anilist.co';
 
 const FORMAT_MAP = { TV: 'TV', TV_SHORT: 'TV Short', MOVIE: 'Película', SPECIAL: 'Special', OVA: 'OVA', ONA: 'ONA', MUSIC: 'Music' };
 const STATUS_MAP = { FINISHED: 'Finished', RELEASING: 'En emisión', NOT_YET_RELEASED: 'No estrenado', CANCELLED: 'Cancelado', HIATUS: 'En pausa' };
@@ -344,7 +344,8 @@ export async function fetchAnilistUserAnimeLists(username, { signal } = {}) {
 
   const data = await anilistFetch(gql, { username: trimmed }, { signal });
   if (data?.errors?.length) {
-    const err = new Error(data.errors[0]?.message || 'Error al buscar');
+    // Sin mensaje de AniList, ImportModal muestra su propio texto traducido.
+    const err = new Error(data.errors[0]?.message || '');
     err.code = data.errors[0]?.message === 'User not found' ? 'ANILIST_USER_NOT_FOUND' : 'ANILIST_IMPORT_ERROR';
     throw err;
   }

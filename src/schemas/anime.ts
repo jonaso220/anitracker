@@ -5,6 +5,7 @@
  * the app. All API adapters should return data that passes through `normalizeAnime`
  * to guarantee consistent fields downstream.
  */
+import { NO_SYNOPSIS } from '../constants';
 import type { Anime, StreamingLink } from '../types/anime';
 
 /** Entrada cruda: solo se aceptan claves del dominio, con valores sin tipar. */
@@ -59,7 +60,7 @@ export function normalizeAnime(raw: RawAnimeInput | null | undefined): Anime | n
     image: toStr(raw.image),
     imageSm: toStr(raw.imageSm),
     genres: toArrayOfStrings(raw.genres),
-    synopsis: toStr(raw.synopsis) || 'Sin sinopsis disponible.',
+    synopsis: toStr(raw.synopsis) || NO_SYNOPSIS,
     rating: toNumber(raw.rating, 0),
     episodes: parseEpisodesNullable(raw.episodes),
     status: toStr(raw.status),

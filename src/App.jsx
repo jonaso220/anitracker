@@ -25,6 +25,12 @@ const MoveDayPickerModal = lazy(() => import('./components/modals/MoveDayPickerM
 const ImportModal = lazy(() => import('./components/modals/ImportModal'));
 const BulkDayPickerModal = lazy(() => import('./components/modals/BulkDayPickerModal'));
 const BackupModal = lazy(() => import('./components/modals/BackupModal'));
+const SettingsModal = lazy(() => import('./components/modals/SettingsModal'));
+// Los avisos y el envío a AniList van en chunks aparte: solo los baja quien
+// los usa (ver «Chunks» en CLAUDE.md y el presupuesto de `npm run size`).
+const EpisodeAlertsBridge = lazy(() => import('./components/EpisodeAlertsBridge'));
+const AnilistSyncBridge = lazy(() => import('./components/AnilistSyncBridge'));
+const ANILIST_AVAILABLE = Boolean(import.meta.env.VITE_ANILIST_CLIENT_ID);
 
 import { useFirebase } from './hooks/useFirebase';
 import { useHashRoute } from './hooks/useHashRoute';
@@ -59,6 +65,7 @@ export default function AnimeTracker() {
   const [showMoveDayPicker, setShowMoveDayPicker] = useState(null);
   const [showImport, setShowImport] = useState(false);
   const [showBackup, setShowBackup] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [showBulkDayPicker, setShowBulkDayPicker] = useState(false);
   const [watchedFilter, setWatchedFilter] = useState('all');
   const [watchedSort, setWatchedSort] = useState('date');
@@ -103,6 +110,22 @@ export default function AnimeTracker() {
     owner: user?.uid ?? null,
     authResolved,
   });
+
+  // Avisos de episodio nuevo (opt-in desde Ajustes): la lista de emisiones sale
+  // de `airingData` y el service worker muestra la notificación a su hora.
+  // `alertsBridge` recuerda si se prendieron en esta sesión ('activated') o si
+  // ya venían prendidos ('startup'); una vez montado, el puente queda para
+  // poder limpiar cuando se apagan.
+  const [alertsEnabled, setAlertsEnabled] = usePersistedState('anitracker-episode-alerts', false);
+  const [alertsBridge, setAlertsBridge] = useState(() => (alertsEnabled ? 'startup' : null));
+  const setAlerts = useCallback((next) => {
+    setAlertsEnabled(next);
+    if (next) setAlertsBridge((current) => current || 'activated');
+  }, [setAlertsEnabled]);
+
+  // Progreso de vuelta a AniList (solo con `VITE_ANILIST_CLIENT_ID` y la cuenta
+  // conectada desde Ajustes). El estado lo informa `AnilistSyncBridge`.
+  const [anilist, setAnilist] = useState(null);
 
   // Errores que React no ve (promesas rechazadas y errores fuera del árbol).
   // Sin `VITE_ERROR_REPORT_URL` configurada no hace nada.
@@ -168,6 +191,8 @@ export default function AnimeTracker() {
   const openSearch = useCallback(() => setShowSearch(true), []);
   const openImport = useCallback(() => setShowImport(true), []);
   const openBackup = useCallback(() => setShowBackup(true), []);
+  const openSettings = useCallback(() => setShowSettings(true), []);
+  const closeSettings = useCallback(() => setShowSettings(false), []);
   const openBulkDayPicker = useCallback(() => setShowBulkDayPicker(true), []);
   const openListDetail = useCallback((a) => setShowAnimeDetail(a), []);
   const openSeasonDetail = useCallback((a) => setShowAnimeDetail({ ...a, _isWatchLater: false, _isWatched: false, _isSeason: true }), []);
@@ -266,7 +291,7 @@ export default function AnimeTracker() {
         authError={authError} authReady={authReady} authBusy={authBusy} onRetrySync={retrySync}
         syncStatus={syncStatus} syncConflict={syncConflict} onResolveConflict={resolveConflict} onDownloadRecovery={downloadRecovery}
         onOpenSearch={openSearch} onOpenImport={openImport}
-        onOpenBackup={openBackup}
+        onOpenBackup={openBackup} onOpenSettings={openSettings}
       />
 
       <NavTabs
@@ -372,6 +397,23 @@ export default function AnimeTracker() {
         </Suspense>
       </main>
 
+      {/* Puentes sin UI, en su propio Suspense: cargar su chunk no debe
+          esconder un modal abierto. */}
+      <Suspense fallback={null}>
+        {(alertsBridge || alertsEnabled) && (
+          <EpisodeAlertsBridge schedule={schedule} airingData={airingData} enabled={alertsEnabled} activated={alertsBridge === 'activated'} />
+        )}
+        {/* `ready` espera a que baje la nube: sin eso, la biblioteca que llega
+            al iniciar sesión parecería cientos de cambios para mandar. */}
+        {ANILIST_AVAILABLE && (
+          <AnilistSyncBridge
+            schedule={schedule} watchLater={watchLater} watchedList={watchedList}
+            ready={authResolved && (!user || cloudLoaded)} scope={user?.uid || ''}
+            onChange={setAnilist}
+          />
+        )}
+      </Suspense>
+
       {/* Los banners van antes del toast: el CSS lo sube cuando hay uno visible
           (`.update-banner ~ .toast`), así nunca tapan el botón "Deshacer". */}
       <StorageErrorBanner />
@@ -441,6 +483,15 @@ export default function AnimeTracker() {
           onExport={exportData}
           onRestore={restoreBackup}
           synced={!!user}
+        />
+      )}
+
+      {showSettings && (
+        <SettingsModal
+          onClose={closeSettings}
+          alertsEnabled={alertsEnabled}
+          onSetAlerts={setAlerts}
+          anilist={anilist}
         />
       )}
 

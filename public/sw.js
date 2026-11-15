@@ -1,10 +1,19 @@
-const CACHE_VERSION = 'v34';
+const CACHE_VERSION = 'v35';
 const STATIC_CACHE = `anitracker-static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `anitracker-runtime-${CACHE_VERSION}`;
 // Sin versión: las portadas no cambian entre deploys, no hay por qué volver
 // a bajarlas cada vez que se publica la app.
 const IMAGE_CACHE = 'anitracker-images';
 const MAX_IMAGES = 500;
+// Sin versión: la lista de avisos de episodio nuevo que publica la página y el
+// registro de lo ya avisado (ver src/episodeAlerts.ts). Si se borrara en cada
+// deploy, se repetirían notificaciones.
+const ALERTS_CACHE = 'anitracker-alerts';
+const ALERTS_URL = '/__alerts.json';
+const ALERTS_NOTIFIED_URL = '/__alerts-notified.json';
+const ALERTS_SYNC_TAG = 'anitracker-alerts';
+const ALERT_WINDOW_MS = 24 * 60 * 60 * 1000;
+const ALERT_NOTIFIED_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 
 const PRECACHE_URLS = [
   '/',
@@ -87,7 +96,7 @@ self.addEventListener('activate', (event) => {
     caches.keys()
       .then((keys) => Promise.all(
         keys
-          .filter((k) => ![STATIC_CACHE, RUNTIME_CACHE, IMAGE_CACHE].includes(k))
+          .filter((k) => ![STATIC_CACHE, RUNTIME_CACHE, IMAGE_CACHE, ALERTS_CACHE].includes(k))
           .map((k) => caches.delete(k))
       ))
       .then(() => pruneStaleAssets().catch(() => {}))
@@ -201,31 +210,105 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(networkFirst(request, RUNTIME_CACHE));
 });
 
-// --- Push Notifications ---
+// --- Avisos de episodio nuevo ---
+// No hay servidor de push: la página deja en ALERTS_CACHE la lista de avisos
+// pendientes ({ key, airingAt (unix, segundos), title, body, image }) y acá se
+// muestran los que ya vencieron. Se revisa cuando la página lo pide
+// (CHECK_ALERTS) y, con la app cerrada, desde Periodic Background Sync (solo
+// PWA instalada en Chrome/Android).
+async function readCachedJson(cache, url, fallback) {
+  try {
+    const response = await cache.match(url);
+    return response ? await response.json() : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+// En un service worker no se puede pedir permiso: si no está dado, no se
+// muestra nada (showNotification además rechazaría).
+const canNotify = () => !!self.Notification && self.Notification.permission === 'granted';
+
+// `baseline`: da por avisado lo que ya venció SIN mostrarlo (al activar los
+// avisos, para que no salga una tanda de notificaciones viejas).
+async function runAlertsCheck({ baseline = false } = {}) {
+  const cache = await caches.open(ALERTS_CACHE);
+  const stored = await readCachedJson(cache, ALERTS_URL, []);
+  const alerts = Array.isArray(stored) ? stored : [];
+  const saved = await readCachedJson(cache, ALERTS_NOTIFIED_URL, {});
+  // { key: airingAt (segundos) } de lo ya avisado.
+  const notified = saved && typeof saved === 'object' && !Array.isArray(saved) ? saved : {};
+  const now = Date.now();
+  const allowed = canNotify();
+  let changed = false;
+
+  for (const alert of alerts) {
+    if (!alert || typeof alert.key !== 'string' || !Number.isFinite(alert.airingAt)) continue;
+    const at = alert.airingAt * 1000;
+    if (at > now || at <= now - ALERT_WINDOW_MS) continue;
+    if (Object.prototype.hasOwnProperty.call(notified, alert.key)) continue;
+    if (!baseline) {
+      // Sin permiso no se da por avisado: si después lo dan, todavía sale.
+      if (!allowed) continue;
+      try {
+        await self.registration.showNotification(String(alert.title || 'AniTracker'), {
+          body: String(alert.body || ''),
+          icon: alert.image || '/icon-192.png',
+          badge: '/icon-192.png',
+          tag: alert.key,
+          data: { url: '/#/semana' },
+        });
+      } catch {
+        continue; // se reintenta en la próxima revisión
+      }
+    }
+    notified[alert.key] = alert.airingAt;
+    changed = true;
+  }
+
+  for (const [key, airingAt] of Object.entries(notified)) {
+    if (!(airingAt * 1000 > now - ALERT_NOTIFIED_TTL_MS)) {
+      delete notified[key];
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    await cache.put(ALERTS_NOTIFIED_URL, new Response(JSON.stringify(notified), {
+      headers: { 'content-type': 'application/json' },
+    }));
+  }
+}
+
+// De a una: dos revisiones a la vez leerían el mismo registro y mostrarían el
+// mismo aviso dos veces.
+let alertsQueue = Promise.resolve();
+function checkAlerts(options) {
+  alertsQueue = alertsQueue.then(() => runAlertsCheck(options)).catch(() => {});
+  return alertsQueue;
+}
+
 self.addEventListener('message', (event) => {
-  if (event.data?.type === 'SHOW_NOTIFICATION') {
-    const { title, body, icon, tag, data } = event.data;
-    self.registration.showNotification(title, {
-      body,
-      icon: icon || '/icon-192.png',
-      badge: '/icon-192.png',
-      tag: tag || 'anitracker-airing',
-      data,
-      vibrate: [200, 100, 200],
-      actions: [{ action: 'open', title: 'Ver detalles' }],
-    });
+  if (event.data?.type === 'CHECK_ALERTS') {
+    event.waitUntil(checkAlerts({ baseline: event.data.baseline === true }));
   }
   if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
+self.addEventListener('periodicsync', (event) => {
+  if (event.tag === ALERTS_SYNC_TAG) event.waitUntil(checkAlerts());
+});
+
+// Con la app abierta se enfoca esa ventana y se le avisa a dónde ir (la página
+// cambia el hash: no hace falta recargar); si no, se abre una nueva.
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      for (const client of clientList) {
-        if (client.url.includes(self.location.origin) && 'focus' in client) return client.focus();
-      }
-      return self.clients.openWindow('/');
-    })
-  );
+  const url = event.notification.data?.url || '/';
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const client = windows.find((c) => c.url.startsWith(self.location.origin) && 'focus' in c);
+    if (!client) return self.clients.openWindow(url);
+    try { client.postMessage({ type: 'OPEN_URL', url }); } catch { /* best-effort */ }
+    return client.focus();
+  })());
 });

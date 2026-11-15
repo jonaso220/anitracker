@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { translateEnToEs } from '../services/translationService';
 import { pruneTranslationCache } from '../constants';
 import { looksSpanish } from '../utils';
+import { autoTranslatesSynopsis } from '../i18n';
 
 // Cola global con concurrencia limitada: la vista lista monta ~30 filas de
 // golpe y disparar 30 traducciones en paralelo hace que los providers
@@ -28,11 +29,12 @@ function enqueue(run) {
 
 // Sinopsis resuelta sin red: ya está en español, o hay traducción cacheada
 // (mismo cache `anitracker-tr-<id>` que usa el modal de detalle). `null`
-// significa "hay que traducir".
+// significa "hay que traducir". Con la app en otro idioma no se traduce: se
+// muestra el original (ni siquiera la traducción cacheada, que es español).
 function resolveInitial(anime) {
   const syn = anime?.synopsis || '';
   if (!syn || syn.length < 10) return syn;
-  if (looksSpanish(syn)) return syn;
+  if (!autoTranslatesSynopsis() || looksSpanish(syn)) return syn;
   try {
     const cached = localStorage.getItem(`anitracker-tr-${anime.id}`);
     if (cached) return cached;
@@ -41,7 +43,8 @@ function resolveInitial(anime) {
 }
 
 /**
- * Sinopsis en español para una card/fila. Mientras la traducción está en
+ * Sinopsis para una card/fila, traducida al español si la app está en
+ * español (si no, la original). Mientras la traducción está en
  * vuelo se muestra el texto original; al resolver se cachea en localStorage,
  * así el modal de detalle (y la próxima visita) abren ya traducidos.
  *

@@ -1,10 +1,12 @@
 import React from 'react';
 import { useTranslatedSynopsis } from '../hooks/useTranslatedSynopsis';
-import { t } from '../i18n';
+import { genreLabel, t, typeLabel } from '../i18n';
+import { displaySynopsis } from '../utils';
 
 /**
  * Fila del Directorio en modo lista: miniatura, título + metadatos, sinopsis
- * (traducida al español) y las mismas acciones que la card de descubrimiento.
+ * (traducida al español si la app está en español) y las mismas acciones que
+ * la card de descubrimiento.
  *
  * El título es un botón real (teclado y lector de pantalla); su `::after` se
  * estira sobre toda la fila para que un clic en cualquier parte abra la ficha,
@@ -46,12 +48,12 @@ const DirectoryListRow = ({
           {anime.rating > 0 && <span className="directory-row-score">⭐ {Number(anime.rating).toFixed(1)}</span>}
         </div>
         <div className="directory-row-meta">
-          {anime.type && <span>{anime.type}</span>}
+          {anime.type && <span>{typeLabel(anime.type)}</span>}
           {anime.year && <span>{anime.year}</span>}
           {anime.episodes && <span>{t('meta.episodesShort', '{count} eps', { count: anime.episodes })}</span>}
-          {(anime.genres || []).slice(0, 3).map((g) => <span key={g} className="genre">{g}</span>)}
+          {(anime.genres || []).slice(0, 3).map((g) => <span key={g} className="genre">{genreLabel(g)}</span>)}
         </div>
-        <p className="directory-row-synopsis">{synopsis}</p>
+        <p className="directory-row-synopsis">{displaySynopsis(synopsis)}</p>
       </div>
       <div className="directory-row-actions">
         {alreadyAdded ? (

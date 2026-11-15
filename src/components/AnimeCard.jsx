@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { trackingAiring } from '../tracking';
-import { t } from '../i18n';
+import { dayLabel, genreLabel, t } from '../i18n';
 import StarRating from './StarRating';
 import { sanitizeUrl } from '../constants';
 import { getPlatformInfo, pickAutoWatchLink, formatAiringWhen, airingEpisodeLabel } from '../utils';
@@ -87,6 +87,7 @@ const AnimeCard = ({
   };
 
   const showTracking = !!day || isWatchLater || isWatched || anime.currentEp != null;
+  const progressText = total > 0 ? `${ep}/${total}` : t('card.episodeCount', '{count} episodios', { count: ep });
   const quickActions = (
         <div className="anime-card-quick">
           {showQuickEp && (
@@ -188,7 +189,7 @@ const AnimeCard = ({
             : anime.title}</h3>
           <div className="anime-card-overlay-meta">
             <div className="anime-genres">
-              {(anime.genres || []).slice(0, 2).map((g, i) => <span key={i} className="genre-tag">{g}</span>)}
+              {(anime.genres || []).slice(0, 2).map((g, i) => <span key={i} className="genre-tag">{genreLabel(g)}</span>)}
             </div>
             {anime.userRating > 0 && <StarRating rating={anime.userRating} size={11} />}
           </div>
@@ -215,9 +216,11 @@ const AnimeCard = ({
       </div>
       {showTracking && <div className="card-tracking">
         <div className="card-progress-copy">
-          <strong>{anime.currentSeason ? `T${anime.currentSeason} · ` : ''}{total > 0 ? `${ep}/${total}` : t('card.episodeCount', '{count} episodios', { count: ep })}</strong>
+          <strong>{anime.currentSeason
+            ? t('card.seasonProgress', 'T{season} · {progress}', { season: anime.currentSeason, progress: progressText })
+            : progressText}</strong>
           <span>{anime.paused && !isWatched
-            ? (day ? t('card.pausedOn', 'En pausa · {day}', { day }) : t('card.paused', 'En pausa'))
+            ? (day ? t('card.pausedOn', 'En pausa · {day}', { day: dayLabel(day) }) : t('card.paused', 'En pausa'))
             : total > 0
               ? (isComplete ? t('card.caughtUp', 'Al día') : t('card.remaining', 'Faltan {count}', { count: Math.max(0, total - ep) }))
               : t('card.totalUnknown', 'Total por confirmar')}</span>

@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { t } from '../../i18n';
+import { autoTranslatesSynopsis, dayLabel, genreLabel, linkLanguageLabel, relationLabel, t, typeLabel } from '../../i18n';
 import SeasonControls from '../SeasonControls';
 import { seasonPatch, trackingAiring } from '../../tracking';
 import StarRating from '../StarRating';
 import { changeEpisode } from '../../libraryEdits';
 import { sanitizeUrl, pruneTranslationCache } from '../../constants';
 import { translateEnToEs } from '../../services/translationService';
-import { getPlatformInfo, formatAiringDate, airingEpisodeLabel, looksSpanish, getDisplayStreamingLinks, pickAutoWatchLink } from '../../utils';
+import { getPlatformInfo, formatAiringDate, airingEpisodeLabel, displaySynopsis, looksSpanish, getDisplayStreamingLinks, pickAutoWatchLink } from '../../utils';
 import { fetchTmdbExtras, parseTmdbKey, TMDB_ENABLED, TMDB_REGIONS, getPreferredRegion, setPreferredRegion } from '../../services/tmdbService';
 import { fetchAnilistRelations } from '../../services/anilistService';
 import { useAccessibleDialog } from '../../hooks/useAccessibleDialog';
@@ -31,11 +31,12 @@ const ProviderRow = ({ label, items, link }) => (
 const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, updateEpisode, setEpisodeNumber, setAnimeSeason, setAnimePaused, updateUserRating, updateAnimeLink, mergeAnimeExtras, markAsFinished, dropAnime, deleteAnime, addToWatchLater, markAsWatched, setShowMoveDayPicker, setShowDayPicker, resumeAnime, customLists = [], addToCustomList, removeFromCustomList, libraryIds }) => {
     const closeDetail = useCallback(() => setShowAnimeDetail(null), [setShowAnimeDetail]);
     const dialogRef = useAccessibleDialog(closeDetail);
-    // Compute initial synopsis synchronously (Spanish detection + cache check)
+    // Compute initial synopsis synchronously (Spanish detection + cache check).
+    // Only the Spanish UI translates; any other language shows the original.
     const getInitialSynopsis = () => {
         const syn = showAnimeDetail?.synopsis;
         if (!syn || syn.length < 10) return { text: null, needsFetch: false };
-        if (looksSpanish(syn)) return { text: syn, needsFetch: false };
+        if (!autoTranslatesSynopsis() || looksSpanish(syn)) return { text: syn, needsFetch: false };
         try { const cached = localStorage.getItem(`anitracker-tr-${showAnimeDetail.id}`); if (cached) return { text: cached, needsFetch: false }; } catch { /* empty */ }
         return { text: null, needsFetch: true };
     };
@@ -176,10 +177,10 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
         seenLinks.add(url);
         return true;
     });
-    const isWatchAlternative = (link) => watchPlatform?.name !== 'Ver' && watchPlatform?.name === getPlatformInfo(link.url)?.name;
+    const isWatchAlternative = (link) => !!watchPlatform && !watchPlatform.generic && watchPlatform.name === getPlatformInfo(link.url)?.name;
     const otherPlatforms = streamingLinks.filter((link) => !isWatchAlternative(link));
     const watchAlternatives = streamingLinks.filter(isWatchAlternative);
-    const synopsis = translatedSynopsis || a.synopsis || t('detail.noSynopsis');
+    const synopsis = displaySynopsis(translatedSynopsis || a.synopsis) || t('detail.noSynopsis');
     const longSynopsis = synopsis.length > 320;
     const synopsisPreview = longSynopsis ? synopsis.slice(0, 320).replace(/\s+\S*$/, '') + '…' : synopsis;
     const trailerUrl = a.trailerUrl || tmdbExtras?.trailerUrl || '';
@@ -241,12 +242,12 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                         {a.title?.length > 90 && <button className="detail-disclosure" aria-expanded={titleExpanded} aria-controls="anime-detail-title" onClick={() => setTitleExpanded(!titleExpanded)}>{t(titleExpanded ? 'detail.lessTitle' : 'detail.fullTitle')}</button>}
                         {a.titleJp && a.titleJp !== a.title && <details className="detail-original-title"><summary>{t('detail.originalTitle')}</summary><p className="title-jp">{a.titleJp}</p></details>}
                         <div className="detail-meta">
-                            {a.type && <span className="meta-tag type">{a.type}</span>}
+                            {a.type && <span className="meta-tag type">{typeLabel(a.type)}</span>}
                             {a.year && <span className="meta-tag year">{a.year}</span>}
                             {a.episodes > 0 && <span className="meta-tag eps">{t('card.episodeCount', '{count} episodios', { count: a.episodes })}</span>}
                         </div>
-                        {a.paused && isSchedule && <span className="detail-paused-label">{t('card.pausedOn', 'En pausa · {day}', { day: a._day })}</span>}
-                        <div className="detail-genres">{(a.genres || []).map((g, i) => <span key={i} className="genre-tag">{g}</span>)}</div>
+                        {a.paused && isSchedule && <span className="detail-paused-label">{t('card.pausedOn', 'En pausa · {day}', { day: dayLabel(a._day) })}</span>}
+                        <div className="detail-genres">{(a.genres || []).map((g, i) => <span key={i} className="genre-tag">{genreLabel(g)}</span>)}</div>
                         {a.rating > 0 && <div className="detail-score"><span className="score-label">{t('detail.score', 'Valoración:')}</span><span className="score-value">⭐ {Number(a.rating).toFixed(1)}</span></div>}
                     </div>
                 </div>
@@ -301,7 +302,7 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                     <h4>{t(effectiveWatchLink ? 'detail.watch' : 'detail.watchLink')}</h4>
                     {effectiveWatchLink && !showLinkInput ? (
                         <div className="detail-link-row">
-                            <a href={sanitizeUrl(effectiveWatchLink)} target="_blank" rel="noopener noreferrer" className="platform-btn watch" style={{ '--platform-color': watchPlatform.color }}>▶ {watchPlatform.name === 'Ver' ? t('detail.watchNow') : t('detail.watchOn', undefined, { platform: watchPlatform.name })}</a>
+                            <a href={sanitizeUrl(effectiveWatchLink)} target="_blank" rel="noopener noreferrer" className="platform-btn watch" style={{ '--platform-color': watchPlatform.color }}>▶ {watchPlatform.generic ? t('detail.watchNow') : t('detail.watchOn', undefined, { platform: watchPlatform.name })}</a>
                             <button className="detail-action-sm" onClick={() => setShowLinkInput(true)}>{t('detail.editLink', '✏️ Editar')}</button>
                         </div>
                     ) : (
@@ -320,7 +321,7 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                 {a._isWatched && !a.finished && <button className="tracking-pause-button resume" onClick={() => closeAndDo(() => resumeAnime(a))}>{t('detail.resume', '▶ Retomar')}</button>}
                 {isSchedule && setAnimePaused && <button className={`tracking-pause-button ${a.paused ? 'resume' : ''}`}
                     onClick={() => closeAndDo(() => setAnimePaused(a.id, !a.paused))}>
-                    {a.paused ? t('detail.resumeOn', '▶ Retomar en {day}', { day: a._day }) : t('detail.pause', '⏸ Poner en pausa')}
+                    {a.paused ? t('detail.resumeOn', '▶ Retomar en {day}', { day: dayLabel(a._day) }) : t('detail.pause', '⏸ Poner en pausa')}
                 </button>}
 
                     {isSchedule && <>
@@ -374,7 +375,7 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                                     onChange={(e) => changeRegion(e.target.value)}
                                     aria-label={t('detail.region', 'País para ver disponibilidad')}
                                 >
-                                    {TMDB_REGIONS.map((r) => <option key={r.code} value={r.code}>{r.label}</option>)}
+                                    {TMDB_REGIONS.map((r) => <option key={r.code} value={r.code}>{t(`region.${r.code}`, r.label)}</option>)}
                                 </select>
                             )}
                         </div>
@@ -385,7 +386,7 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                                     return (
                                         <a key={i} href={sanitizeUrl(l.url)} target="_blank" rel="noopener noreferrer"
                                             className="streaming-chip" style={{ '--platform-color': info.color }}>
-                                            ▶ {l.site}{l.language ? ` · ${l.language}` : ''}
+                                            ▶ {l.site}{l.language ? ` · ${linkLanguageLabel(l.language)}` : ''}
                                         </a>
                                     );
                                 })}
@@ -393,7 +394,7 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                         )}
                         {watchAlternatives.length > 0 && <details className="detail-watch-alternatives">
                             <summary>{t('detail.otherLinks', undefined, { platform: watchPlatform.name })}</summary>
-                            <div className="streaming-links">{watchAlternatives.map((link) => <a key={link.url} className="streaming-chip" href={sanitizeUrl(link.url)} target="_blank" rel="noopener noreferrer">{link.site}{link.language ? ` · ${link.language}` : ''}</a>)}</div>
+                            <div className="streaming-links">{watchAlternatives.map((link) => <a key={link.url} className="streaming-chip" href={sanitizeUrl(link.url)} target="_blank" rel="noopener noreferrer">{link.site}{link.language ? ` · ${linkLanguageLabel(link.language)}` : ''}</a>)}</div>
                         </details>}
                         {isTmdbItem && (
                             tmdbLoading ? <p className="streaming-status">{t('detail.providersLoading', 'Buscando plataformas…')}</p>
@@ -479,13 +480,13 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                                         {(rel.imageSm || rel.image)
                                             ? <img src={rel.imageSm || rel.image || undefined} alt="" loading="lazy" decoding="async" />
                                             : <span className="related-cover-fallback" aria-hidden="true">🎬</span>}
-                                        <span className="related-relation">{rel._relation}</span>
+                                        <span className="related-relation">{relationLabel(rel._relation)}</span>
                                         {libraryIds?.has(rel.id) && (
                                             <span className="related-owned" title={t('detail.inLibrary', 'Ya está en tu biblioteca')} aria-label={t('detail.inLibrary', 'Ya está en tu biblioteca')}>✓</span>
                                         )}
                                     </div>
                                     <span className="related-title">{rel.title}</span>
-                                    <span className="related-meta">{[rel.type, rel.year].filter(Boolean).join(' · ')}</span>
+                                    <span className="related-meta">{[typeLabel(rel.type), rel.year].filter(Boolean).join(' · ')}</span>
                                 </button>
                             ))}
                         </div>

@@ -3,7 +3,7 @@ import { useAccessibleDialog } from '../../hooks/useAccessibleDialog';
 import { parseBackup } from '../../utils';
 import { daysOfWeek } from '../../constants';
 import { MAX_SNAPSHOTS, listAutoBackups, readAutoBackup } from '../../autoBackup';
-import { t } from '../../i18n';
+import { localeTag, t } from '../../i18n';
 
 function countSchedule(schedule) {
   return daysOfWeek.reduce((sum, d) => sum + (Array.isArray(schedule?.[d]) ? schedule[d].length : 0), 0);
@@ -24,7 +24,7 @@ const formatWhen = (iso) => {
   const date = new Date(iso);
   return Number.isNaN(date.getTime())
     ? ''
-    : date.toLocaleString('es-ES', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    : date.toLocaleString(localeTag(), { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 };
 
 // `owner`: uid de la cuenta activa (null = invitado). Solo se listan sus copias

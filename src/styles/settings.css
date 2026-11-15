@@ -1,0 +1,52 @@
+/* ============ AJUSTES ============ */
+/* El panel reusa las clases del modal de copia de seguridad (.backup-*). */
+.settings-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 44px;
+  cursor: pointer;
+  color: var(--text-primary);
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+.settings-toggle input {
+  width: 1.25rem;
+  height: 1.25rem;
+  flex-shrink: 0;
+  accent-color: var(--color-brand-primary);
+  cursor: pointer;
+}
+.settings-toggle input:disabled,
+.settings-toggle input:disabled + span { cursor: not-allowed; opacity: 0.55; }
+
+.settings-note {
+  margin: var(--space-2) 0 var(--space-3);
+  color: var(--text-muted);
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+.settings-note.warn { color: var(--color-brand-gold); }
+
+.settings-select { display: block; }
+.settings-select select {
+  width: 100%;
+  min-height: 44px;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.92rem;
+}
+.settings-select select:focus-visible {
+  outline: 2px solid var(--color-brand-primary);
+  outline-offset: 2px;
+}
+
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}

@@ -8,6 +8,7 @@ import { searchViki } from './vikiService';
 import { searchViaSpanishWikipedia, searchViaEnglishWikipedia } from './wikipediaBridge';
 import { normalize, wordMatchRatio } from './searchText';
 import { isSameWork } from './sameWork';
+import { getLocale } from '../i18n';
 
 
 const URL_SITE_NAMES = [
@@ -280,7 +281,11 @@ export async function searchAnime(query, { signal, onProgress } = {}) {
   const collection = build();
 
   // Rounds 2 and 3: Wikipedia bridges (Spanish, then English) if no good hit.
-  for (const bridge of [searchViaSpanishWikipedia, searchViaEnglishWikipedia]) {
+  // En inglés se prueba primero la Wikipedia en inglés.
+  const bridges = getLocale() === 'en'
+    ? [searchViaEnglishWikipedia, searchViaSpanishWikipedia]
+    : [searchViaSpanishWikipedia, searchViaEnglishWikipedia];
+  for (const bridge of bridges) {
     if (hasGoodMatch(collection, qNorm) || searchTerm.length < 4) break;
     try {
       const { hits, titles } = await withTimeout((sig) => bridge(searchTerm, { signal: sig }), signal);

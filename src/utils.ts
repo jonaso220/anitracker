@@ -1,5 +1,5 @@
-import { daysOfWeek } from './constants';
-import { t } from './i18n';
+import { NO_SYNOPSIS, daysOfWeek } from './constants';
+import { dayLabel, genreLabel, getLocale, localeTag, t } from './i18n';
 import { migrateLibrary } from './idMigration';
 import type {
   AiringInfo,
@@ -18,6 +18,8 @@ export interface PlatformInfo {
   label: string;
   name: string;
   color: string;
+  /** Enlace de un sitio sin marca conocida: `name` es solo el texto "Ver". */
+  generic?: boolean;
 }
 
 /**
@@ -58,7 +60,7 @@ export const getPlatformInfo = (url: string | null | undefined): PlatformInfo | 
   if (u.includes('animeflv'))         return { label: 'FLV',name: 'AnimeFLV',    color: '#4ecdc4' };
   if (u.includes('viki.com'))        return { label: 'V',  name: 'Viki',        color: '#1dabe3' };
   if (u.includes('youtube.com') || u.includes('youtu.be')) return { label: 'YT', name: 'YouTube', color: '#ff0000' };
-  return { label: '▶', name: 'Ver', color: '#22c55e' };
+  return { label: '▶', name: t('platform.generic', 'Ver'), color: '#22c55e', generic: true };
 };
 
 // Plataformas que el usuario realmente usa, de más a menos preferida. Manda
@@ -152,8 +154,9 @@ export const getDisplayStreamingLinks = (anime: AnimeLike | null | undefined): S
 /**
  * Pick a default watch link for an anime. A manual `watchLink` wins unless it
  * points to a dead platform; otherwise the best-ranked streaming link
- * (including generated fan-platform links), with Spanish-language ones
- * breaking ties within the same platform. Never returns a dead-platform URL —
+ * (including generated fan-platform links), with the ones in the UI language
+ * (Spanish, or English when the app is in English) breaking ties within the
+ * same platform. Never returns a dead-platform URL —
  * '' when there's nothing usable to pick.
  */
 export const pickAutoWatchLink = (anime: AnimeLike | null | undefined): string => {
@@ -161,8 +164,10 @@ export const pickAutoWatchLink = (anime: AnimeLike | null | undefined): string =
   const links = getDisplayStreamingLinks(anime).filter((l) => !isDeadPlatformUrl(l.url));
   if (links.length === 0) return '';
   const bestRank = streamingRank(links[0].url);
-  const spanish = links.find((l) => streamingRank(l.url) === bestRank && /spanish|español/i.test(l.language || ''));
-  return (spanish || links[0]).url;
+  // Desempate dentro de la misma plataforma: el enlace en el idioma de la app.
+  const ownLanguage = getLocale() === 'en' ? /english|inglés/i : /spanish|español/i;
+  const preferred = links.find((l) => streamingRank(l.url) === bestRank && ownLanguage.test(l.language || ''));
+  return (preferred || links[0]).url;
 };
 
 export interface BuildAiringInfoInput {
@@ -238,11 +243,12 @@ export const isAiringStale = (info: AiringInfo | null | undefined, now: Date = n
 };
 
 /** 'Ep. 5' o, con temporada, 'T38 · Ep. 2'. */
-export const airingEpisodeLabel =(airing: AiringInfo): string =>
-  `${airing.season ? `T${airing.season} · ` : ''}Ep. ${airing.episode}`;
+export const airingEpisodeLabel = (airing: AiringInfo): string => (airing.season
+  ? t('airing.seasonEpisode', 'T{season} · Ep. {episode}', { season: airing.season, episode: airing.episode })
+  : t('airing.episode', 'Ep. {episode}', { episode: airing.episode }));
 
 /**
- * Human-friendly "when does the next episode air" label, in Spanish:
+ * Human-friendly "when does the next episode air" label, in the UI language:
  * '¡Ya disponible!', 'En 2h 15m', 'Mañana', or the weekday name ('Sábado').
  */
 export const formatAiringWhen = (airing: AiringInfo | null | undefined): string => {
@@ -255,25 +261,26 @@ export const formatAiringWhen = (airing: AiringInfo | null | undefined): string 
     return hours > 0 ? t('airing.inHoursMinutes', undefined, { hours, mins }) : t('airing.inMinutes', undefined, { mins });
   }
   if (airing.isTomorrow) return t('airing.tomorrow');
-  const dayNames = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-  return dayNames[new Date(airing.airingAt * 1000).getDay()];
+  return dayLabel(daysOfWeek[(new Date(airing.airingAt * 1000).getDay() + 6) % 7]);
 };
 
 /**
- * Full air date of the next episode ('Sábado, 12 de julio, 14:30').
+ * Full air date of the next episode ('Sábado, 12 de julio, 14:30'), written
+ * the way the UI language does ('Saturday, July 12, 02:30 PM').
  * `airingAt` is a unix timestamp in seconds (AniList format).
  */
 export const formatAiringDate = (airingAt: number, { dateOnly = false }: { dateOnly?: boolean } = {}): string => {
   const d = new Date(airingAt * 1000);
-  const date = d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+  const tag = localeTag();
+  const date = d.toLocaleDateString(tag, { weekday: 'long', day: 'numeric', month: 'long' });
   const capitalized = `${date.charAt(0).toUpperCase()}${date.slice(1)}`;
   if (dateOnly) return capitalized;
-  const time = d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+  const time = d.toLocaleTimeString(tag, { hour: '2-digit', minute: '2-digit' });
   return `${capitalized}, ${time}`;
 };
 
 /**
- * Relative "time ago" label in Spanish for a unix timestamp in seconds:
+ * Relative "time ago" label (UI language) for a unix timestamp in seconds:
  * 'hace un momento', 'hace 5 minutos', 'hace 3 horas', 'hace 2 días',
  * 'hace 3 semanas', 'hace 2 meses'. `nowMs` is injectable for tests.
  */
@@ -293,7 +300,7 @@ export const formatTimeAgo = (unixSeconds: number, nowMs: number = Date.now()): 
 };
 
 /**
- * Relative "time until" label in Spanish for a unix timestamp in seconds:
+ * Relative "time until" label (UI language) for a unix timestamp in seconds:
  * 'en 45 minutos', 'en 3 horas', 'en 2 días', 'en 3 semanas'.
  */
 export const formatTimeUntil = (unixSeconds: number, nowMs: number = Date.now()): string => {
@@ -346,6 +353,13 @@ export const looksSpanish = (text: string | null | undefined): boolean => {
   const wordCount = text.split(/\s+/).length;
   return esMatches > enMatches && esMatches / wordCount > 0.06;
 };
+
+/**
+ * Sinopsis a mostrar: el texto guardado, salvo el marcador de "sin sinopsis"
+ * (un dato en español), que sale en el idioma de la UI.
+ */
+export const displaySynopsis = (synopsis: string | null | undefined): string =>
+  (synopsis === NO_SYNOPSIS ? t('detail.noSynopsisAvailable', NO_SYNOPSIS) : synopsis || '');
 
 /**
  * Whether a unix timestamp (seconds) is still in the future.
@@ -420,6 +434,13 @@ export interface RecommendationFields {
   _recommendationReason: string;
 }
 
+// "Porque te gusta Acción y Drama", o el motivo genérico si no hay coincidencias.
+const recommendationReason = (genres: string[]): string => {
+  if (genres.length === 0) return t('discovery.reasonPopular', 'Popular entre la comunidad');
+  const list = genres.length === 1 ? genres[0] : t('common.and', '{a} y {b}', { a: genres[0], b: genres[1] });
+  return t('discovery.reasonGenres', 'Porque te gusta {genres}', { genres: list });
+};
+
 /** Rank discovery results from the user's genres, ratings and completion history. */
 export const personalizeDiscovery = <T extends AnimeLike>(
   items: T[] = [],
@@ -440,7 +461,7 @@ export const personalizeDiscovery = <T extends AnimeLike>(
     return {
       ...anime,
       _recommendationScore: matches.reduce((sum, [, weight]) => sum + weight, 0) + (anime.rating ? anime.rating / 4 : 0),
-      _recommendationReason: matches.length ? `Porque te gusta ${matches.slice(0, 2).map(([genre]) => genre).join(' y ')}` : 'Popular entre la comunidad',
+      _recommendationReason: recommendationReason(matches.slice(0, 2).map(([genre]) => genreLabel(genre))),
     };
   }).sort((a, b) => b._recommendationScore - a._recommendationScore || (b.rating || 0) - (a.rating || 0));
 };

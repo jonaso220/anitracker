@@ -2,7 +2,7 @@ import React, { useCallback, useMemo } from 'react';
 import AnimeCard from '../AnimeCard';
 import ApiErrorState from '../ApiErrorState';
 import { daysOfWeek, dayEmojis } from '../../constants';
-import { t } from '../../i18n';
+import { dayLabel, t } from '../../i18n';
 
 // Maps JS Date.getDay() (0=Sun…6=Sat) to our daysOfWeek index (0=Mon…6=Sun)
 const todayDayName = () => {
@@ -48,7 +48,7 @@ const ScheduleView = ({
           >
             <header className="day-label" id={`day-${day}`}>
               <span className="day-emoji" aria-hidden="true">{dayEmojis[i]}</span>
-              <span className="day-name">{day}</span>
+              <span className="day-name">{dayLabel(day)}</span>
               {isToday && <span className="day-today-pill" aria-label={t('schedule.today', 'Hoy')}>{t('season.today', 'HOY')}</span>}
               <span className="day-count" aria-label={t('schedule.dayCount', '{count} animes', { count: items.length })}>{items.length}</span>
             </header>

@@ -1,6 +1,7 @@
 import { normalizeAnime } from '../schemas/anime';
 import { buildAiringInfo } from '../utils';
 import { pruneLocalCache } from './cachePrune';
+import { getLocale } from '../i18n';
 
 // TMDB (The Movie Database) — free API for movies & TV series with Spanish
 // metadata and per-country streaming availability (data provided by JustWatch,
@@ -21,6 +22,12 @@ const IS_BEARER_TOKEN = API_KEY.startsWith('eyJ');
 // AniList +300000 / +800000000, TVMaze +400000, iTunes +10000000000).
 export const TMDB_MOVIE_ID_BASE = 600000000;
 export const TMDB_TV_ID_BASE = 900000000;
+
+// Idioma de títulos, sinopsis y trailers: el de la app. Los géneros y el tipo
+// se guardan siempre con el nombre en español (son datos: de ellos salen los
+// filtros y las recomendaciones) y se traducen al mostrarlos (`genreLabel`).
+const tmdbLanguage = () => (getLocale() === 'en' ? 'en-US' : 'es-ES');
+const tmdbVideoLanguages = () => (getLocale() === 'en' ? 'en,null' : 'es,en,null');
 
 // TMDB genre ids are stable and documented; a static map avoids an extra
 // request per search.
@@ -79,7 +86,7 @@ export async function searchTmdb(query, { signal, limit = 10 } = {}) {
   if (!TMDB_ENABLED) return [];
   const json = await tmdbFetch('/search/multi', {
     query,
-    language: 'es-ES',
+    language: tmdbLanguage(),
     include_adult: 'false',
     page: '1',
   }, { signal });
@@ -173,7 +180,10 @@ export async function fetchTmdbExtras(sourceKey, { region = getPreferredRegion()
   const parsed = parseTmdbKey(sourceKey);
   if (!TMDB_ENABLED || !parsed) return null;
 
-  const cacheKey = `${EXTRAS_CACHE_PREFIX}${parsed.type}:${parsed.id}:${region}`;
+  // El trailer depende del idioma: en español la clave queda como siempre y los
+  // demás idiomas llevan sufijo, así no se sirve un trailer cacheado en otro.
+  const language = tmdbLanguage();
+  const cacheKey = `${EXTRAS_CACHE_PREFIX}${parsed.type}:${parsed.id}:${region}${language === 'es-ES' ? '' : `:${language}`}`;
   try {
     const raw = localStorage.getItem(cacheKey);
     if (raw) {
@@ -183,9 +193,9 @@ export async function fetchTmdbExtras(sourceKey, { region = getPreferredRegion()
   } catch { /* empty */ }
 
   const json = await tmdbFetch(`/${parsed.type}/${parsed.id}`, {
-    language: 'es-ES',
+    language,
     append_to_response: 'videos,watch/providers',
-    include_video_language: 'es,en,null',
+    include_video_language: tmdbVideoLanguages(),
   }, { signal });
   const data = extractExtras(json, region);
 
@@ -239,7 +249,7 @@ export function tmdbAiringFrom(detail, now = new Date()) {
  */
 export async function fetchTmdbAiringInfo({ tmdbIds = [], signal, now = new Date(), onPartialFailure } = {}) {
   if (!TMDB_ENABLED || tmdbIds.length === 0) return {};
-  const settled = await Promise.allSettled(tmdbIds.map((id) => tmdbFetch(`/tv/${id}`, { language: 'es-ES' }, { signal }).then((d) => [id, d])));
+  const settled = await Promise.allSettled(tmdbIds.map((id) => tmdbFetch(`/tv/${id}`, { language: tmdbLanguage() }, { signal }).then((d) => [id, d])));
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
   const failed = settled.filter((r) => r.status === 'rejected' && !/HTTP 404\b/.test(String(r.reason?.message)));
   if (failed.length === settled.length) throw failed[0].reason;

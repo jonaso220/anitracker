@@ -5,7 +5,7 @@ import RatingFilterBar from './RatingFilterBar';
 import DiscoveryControls from './DiscoveryControls';
 import ApiErrorState from './ApiErrorState';
 import { applyRatingFilter, filterDiscovery, groupSeasonByDay, personalizeDiscovery } from '../utils';
-import { t } from '../i18n';
+import { dayLabel, t } from '../i18n';
 
 const SEASONS = ['WINTER', 'SPRING', 'SUMMER', 'FALL'];
 const SEASON_FALLBACK = { WINTER: 'Invierno', SPRING: 'Primavera', SUMMER: 'Verano', FALL: 'Otoño' };
@@ -137,7 +137,7 @@ const SeasonSection = ({ seasonAnime, seasonLoading, error, onRetry, schedule, w
                             className={`season-day-tab ${activeDay === i ? 'active' : ''}`}
                             onClick={() => setSelectedDay(i)}
                         >
-                            {day}
+                            {dayLabel(day)}
                             {i === todayIdx && <span className="day-tab-today">{t('season.today', 'HOY')}</span>}
                         </button>
                     ))}
@@ -176,7 +176,7 @@ const SeasonSection = ({ seasonAnime, seasonLoading, error, onRetry, schedule, w
             ) : error ? null : visible.length > 0 ? (
                 <>
                     {activeDay !== 'all' && (
-                        <h3 className="season-day-heading">📆 {daysOfWeek[activeDay]}</h3>
+                        <h3 className="season-day-heading">📆 {dayLabel(daysOfWeek[activeDay])}</h3>
                     )}
                     <div className="season-grid stagger-in">
                         {visible.map(anime => (

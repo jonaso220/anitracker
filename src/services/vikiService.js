@@ -2,6 +2,7 @@ import { normalizeAnime } from '../schemas/anime';
 import { daysOfWeek } from '../constants';
 import { buildAiringInfo } from '../utils';
 import { normalize, wordMatchRatio } from './searchText';
+import { getLocale } from '../i18n';
 
 // Rakuten Viki — K-dramas, C-dramas y películas asiáticas. La API pública v4
 // responde con CORS abierto y solo pide el `app` id del cliente web. La
@@ -32,7 +33,11 @@ const isRelevantHit = (h, query) => {
 };
 
 // Ids de género estables de /v4/genres.json; el mapa estático evita un request
-// extra por búsqueda.
+// extra por búsqueda. Los nombres se guardan en español (son datos) y se
+// traducen al mostrarlos (`genreLabel` en i18n).
+
+// Título y sinopsis: en español salvo que la app esté en inglés.
+const prefersEnglish = () => getLocale() === 'en';
 const GENRES = {
   '1g': 'Acción', '2g': 'Animación', '6g': 'Comedia', '7g': 'Crimen y misterio',
   '8g': 'Documental', '9g': 'Drama', '10g': 'Entretenimiento', '12g': 'Sobrenatural',
@@ -125,7 +130,7 @@ export async function fetchVikiAiringInfo({ vikiIds = [], signal, onPartialFailu
       episode: next.episode,
       airingAt: next.viki_air_time,
       totalEpisodes: detail.planned_episodes || detail.episodes?.count || null,
-      title: detail.titles?.es || detail.titles?.en || '',
+      title: (prefersEnglish() ? detail.titles?.en || detail.titles?.es : detail.titles?.es || detail.titles?.en) || '',
     }, now);
     // Como AniList: solo lo que viene o salió en las últimas 24 h.
     if (info.timeUntilAiring > -24 * 3600) result[VIKI_ID_BASE + num] = info;
@@ -148,7 +153,8 @@ export function toAnime(hit, detail = null) {
   const originLang = detail?.origin?.language;
   const titleEn = titles.en || hit?.tt || '';
   const titleOriginal = (originLang && titles[originLang]) || hit?.ko || hit?.tzh || hit?.tj || '';
-  const title = titles.es || hit?.te || titleEn || titleOriginal;
+  const titleEs = titles.es || hit?.te || '';
+  const title = (prefersEnglish() ? titleEn || titleEs : titleEs || titleEn) || titleOriginal;
   if (!title) return null;
 
   const isFilm = (detail?.type || hit?.t) === 'film';
@@ -176,11 +182,14 @@ export function toAnime(hit, detail = null) {
     // chinos es el del idioma de origen, no la traducción japonesa.
     titleJp: titleOriginal,
     titleEn,
-    altTitles: [...new Set([titleEn, titleOriginal, ...aka].filter((t) => t && t !== title))],
+    // El título en español queda como alternativo cuando el principal es el inglés.
+    altTitles: [...new Set([titleEn, titleEs, titleOriginal, ...aka].filter((t) => t && t !== title))],
     image,
     imageSm: image,
     genres: (detail?.genres || []).map((g) => GENRES[g]).filter(Boolean),
-    synopsis: detail?.descriptions?.es || detail?.descriptions?.en || '',
+    synopsis: (prefersEnglish()
+      ? detail?.descriptions?.en || detail?.descriptions?.es
+      : detail?.descriptions?.es || detail?.descriptions?.en) || '',
     rating: detail?.review_stats?.average_rating ? Math.round(detail.review_stats.average_rating * 10) / 10 : 0,
     episodes: isFilm ? null : (detail?.planned_episodes || detail?.episodes?.count || hit?.e || null),
     status: flags ? (flags.on_air ? 'En emisión' : 'Finalizado') : '',

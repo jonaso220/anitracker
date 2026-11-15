@@ -1,7 +1,16 @@
 import { pruneLocalCache } from './services/cachePrune';
 
+// Claves del horario guardado (localStorage, nube, copias): NO se traducen ni
+// se cambian. Para mostrar un día, `dayLabel(day)` de i18n.
 export const daysOfWeek: string[] = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 export const dayEmojis: string[] = ['📅', '🎯', '⚡', '🔥', '🎉', '🌟', '💫'];
+
+/**
+ * Lo que `normalizeAnime` guarda cuando la fuente no trae sinopsis. Es un dato
+ * (queda en la biblioteca y en la nube), así que no cambia con el idioma: al
+ * mostrarlo se traduce con `displaySynopsis` (utils.ts).
+ */
+export const NO_SYNOPSIS = 'Sin sinopsis disponible.';
 
 /** Devuelve la URL si es http(s), '' en cualquier otro caso. */
 export const sanitizeUrl = (url: string | null | undefined): string => {

@@ -5,7 +5,7 @@ import { daysOfWeek, sanitizeUrl } from '../constants';
 import { clean, pickAutoWatchLink } from '../utils';
 import { planImport } from '../libraryImport';
 import { isSameWork } from '../services/sameWork';
-import { t } from '../i18n';
+import { dayLabel, t } from '../i18n';
 
 const updateInList = (list, animeId, updater) =>
   list.map((a) => (a.id === animeId ? { ...a, ...updater(a) } : a));
@@ -144,7 +144,7 @@ export function useAnimeActions({
     // Algo nuevo se agrega desde el selector de día (elección explícita); el
     // aviso es para cuando mueve algo que ya estaba en otro lugar.
     if (from && from !== day) {
-      showToast(t('toast.movedToDay', undefined, { title: a.title, day }), () => restoreLocations(a.id, snapshot));
+      showToast(t('toast.movedToDay', undefined, { title: a.title, day: dayLabel(day) }), () => restoreLocations(a.id, snapshot));
     }
   }, [setSchedule, setWatchedList, setWatchLater, locate, captureLocations, resolveIncoming, restoreLocations, setShowDayPicker, closeSearch, showToast]);
 

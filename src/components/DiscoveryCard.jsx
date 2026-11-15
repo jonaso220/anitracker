@@ -1,5 +1,5 @@
 import React from 'react';
-import { t } from '../i18n';
+import { genreLabel, t, typeLabel } from '../i18n';
 import { formatTimeAgo, formatTimeUntil, isFutureTimestamp } from '../utils';
 
 /**
@@ -69,10 +69,10 @@ const DiscoveryCard = ({
             <div className="season-card-overlay-meta">
               {recommendationReason && <p className="recommendation-reason">✨ {recommendationReason}</p>}
               <div className="anime-genres">
-                {(anime.genres || []).slice(0, 2).map((g) => <span key={g} className="genre-tag">{g}</span>)}
+                {(anime.genres || []).slice(0, 2).map((g) => <span key={g} className="genre-tag">{genreLabel(g)}</span>)}
               </div>
               <div className="season-card-tags">
-                {anime.type && <span className="meta-tag type">{anime.type}</span>}
+                {anime.type && <span className="meta-tag type">{typeLabel(anime.type)}</span>}
                 {anime.episodes && <span className="meta-tag eps">{t('meta.episodesShort', '{count} eps', { count: anime.episodes })}</span>}
                 {anime._continuing && <span className="meta-tag continuing">{t('season.continuing', 'Continúa')}</span>}
               </div>

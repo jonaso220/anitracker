@@ -19,7 +19,7 @@ const Header = ({
   darkMode, setDarkMode,
   user, syncing, syncError, syncTooLarge = false, loginWithGoogle, logout, firebaseEnabled,
   authError, authReady = true, authBusy = false, onRetrySync,
-  onOpenSearch, onOpenImport, onOpenBackup,
+  onOpenSearch, onOpenImport, onOpenBackup, onOpenSettings,
   syncStatus, syncConflict, onResolveConflict, onDownloadRecovery,
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -206,6 +206,14 @@ const Header = ({
                 >
                   <span aria-hidden="true">💾</span>
                   <span>{t('header.backup', 'Copia de seguridad')}</span>
+                </button>
+                <button
+                  type="button"
+                  className="user-menu-item"
+                  onClick={() => { setMenuOpen(false); onOpenSettings?.(); }}
+                >
+                  <span aria-hidden="true">⚙️</span>
+                  <span>{t('header.settings', 'Ajustes')}</span>
                 </button>
                 <div className="user-menu-divider" aria-hidden="true" />
                 <button
