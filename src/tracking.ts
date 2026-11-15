@@ -26,6 +26,17 @@ export function episodePatch(anime: Anime, value: number): ProgressPatch {
   };
 }
 
+/**
+ * Una serie finalizada vio todos sus episodios: lleva el avance al total (de
+ * la temporada que se sigue, si es por temporadas). Sin total conocido, o si
+ * ya estaba al día, no cambia nada.
+ */
+export function completedPatch(anime: Anime): Partial<ProgressPatch> {
+  const total = Number(anime.episodes) || 0;
+  if (total <= 0 || (anime.currentEp || 0) >= total) return {};
+  return episodePatch(anime, total);
+}
+
 export function seasonPatch(anime: Anime, season: number, total?: number): ProgressPatch {
   const current = seasonNumber(anime);
   const seasonProgress: Record<number, SeasonProgress> = {

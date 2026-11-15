@@ -3,6 +3,7 @@ import { daysOfWeek } from '../constants';
 import { clean } from '../utils';
 import { captureEntry, restoreEntry } from '../libraryEdits';
 import { dayLabel, t } from '../i18n';
+import { completedPatch } from '../tracking';
 
 // Capture every selected entry of a list (with its neighbours) for undo.
 const captureAll = (list, ids) => (list || [])
@@ -71,6 +72,7 @@ export function useBulkActions({
       .map((a) => ({
         ...clean(a), finished: true, finishedDate,
         currentEp: a.currentEp || 0, userRating: a.userRating || 0,
+        ...completedPatch(a),
       }));
     const addedIds = new Set(added.map((a) => a.id));
 

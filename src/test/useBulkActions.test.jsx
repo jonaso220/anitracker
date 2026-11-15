@@ -72,6 +72,16 @@ describe('useBulkActions: deshacer solo lo afectado', () => {
     expect(result.current.watchedList).toEqual([{ ...a(10), userRating: 8 }]);
   });
 
+  it('marcar como vistos lleva el avance al total', () => {
+    const { result } = renderHook(() => useHarness({
+      activeTab: 'watchLater',
+      initial: { watchLater: [{ ...a(1), currentEp: 2, episodes: 24 }], watchedList: [] },
+      selected: new Set([1]),
+    }));
+    act(() => result.current.bulkMarkWatched());
+    expect(result.current.watchedList[0]).toMatchObject({ id: 1, finished: true, currentEp: 24 });
+  });
+
   it('mover a un día y deshacer devuelve el anime que había sido reemplazado', () => {
     const { result } = renderHook(() => useHarness({
       activeTab: 'watchLater',

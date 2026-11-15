@@ -64,8 +64,10 @@ const AnimeCard = ({
     setImgLoaded(true);
   };
 
-  const ep = anime.currentEp || 0;
   const total = anime.episodes || 0;
+  // Una serie finalizada se vio entera: las guardadas antes de que "Finalizar"
+  // llevara el avance al total se muestran completas igual (no "0/12 · Faltan 12").
+  const ep = anime.finished && total > 0 ? Math.max(anime.currentEp || 0, total) : (anime.currentEp || 0);
   const hasProgress = ep > 0 && total > 0;
   const pct = total > 0 ? Math.min((ep / total) * 100, 100) : 0;
   const isComplete = total > 0 && ep >= total;

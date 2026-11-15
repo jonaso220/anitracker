@@ -64,12 +64,13 @@ describe('adding something already in the library', () => {
     expect(result.current.schedule.Jueves).toHaveLength(0);
   });
 
-  it('"Ya la vi" moves a scheduled anime to Vistas with its progress', () => {
+  it('"Ya la vi" moves a scheduled anime to Vistas, complete, and undo restores its progress', () => {
     const schedule = { ...emptySchedule(), Lunes: [saved] };
     const { result } = renderHook(() => useHarness({ schedule }));
     act(() => result.current.markAsWatched(fromSearch));
     expect(result.current.schedule.Lunes).toHaveLength(0);
-    expect(result.current.watchedList[0]).toMatchObject({ id: 1, finished: true, currentEp: 7, userRating: 9 });
+    // Vista entera: el avance va al total que trae la búsqueda, no queda en 7/28.
+    expect(result.current.watchedList[0]).toMatchObject({ id: 1, finished: true, currentEp: 28, userRating: 9 });
     expect(result.current.toast.message).toMatch(/visto/i);
     act(() => result.current.toast.undo());
     expect(result.current.schedule.Lunes[0]).toMatchObject({ id: 1, currentEp: 7 });
@@ -160,7 +161,7 @@ describe('the same work coming from another source', () => {
     expect(result.current.watchedList.map((a) => a.id)).toEqual([52991]);
     act(() => result.current.addToWatchLater(kitsu));
     expect(result.current.watchedList).toHaveLength(0);
-    expect(result.current.watchLater[0]).toMatchObject({ id: 52991, currentEp: 7 });
+    expect(result.current.watchLater[0]).toMatchObject({ id: 52991, currentEp: 28 });
   });
 
   it.each([
@@ -175,5 +176,43 @@ describe('the same work coming from another source', () => {
     act(() => result.current.addToSchedule(other, 'Jueves'));
     expect(result.current.schedule.Lunes.map((a) => a.id)).toEqual([52991]);
     expect(result.current.schedule.Jueves.map((a) => a.id)).toEqual([other.id]);
+  });
+});
+
+describe('finishing sets the progress to the total', () => {
+  const half = { id: 5, title: 'Dandadan', currentEp: 3, episodes: 12, userRating: 4 };
+
+  it('Finalizar completes the episode count, and undo brings back the old progress', () => {
+    const schedule = { ...emptySchedule(), Lunes: [half] };
+    const { result } = renderHook(() => useHarness({ schedule }));
+    act(() => result.current.markAsFinished({ ...half, _day: 'Lunes' }, 'Lunes'));
+    expect(result.current.watchedList[0]).toMatchObject({ id: 5, finished: true, currentEp: 12, episodes: 12 });
+    act(() => result.current.toast.undo());
+    expect(result.current.schedule.Lunes[0]).toMatchObject({ id: 5, currentEp: 3 });
+    expect(result.current.watchedList).toHaveLength(0);
+  });
+
+  it('keeps the count when the total is unknown', () => {
+    const ongoing = { id: 6, title: 'One Piece', currentEp: 1100, episodes: 0 };
+    const schedule = { ...emptySchedule(), Lunes: [ongoing] };
+    const { result } = renderHook(() => useHarness({ schedule }));
+    act(() => result.current.markAsFinished({ ...ongoing, _day: 'Lunes' }, 'Lunes'));
+    expect(result.current.watchedList[0]).toMatchObject({ finished: true, currentEp: 1100 });
+  });
+
+  it('with season tracking it completes the season being followed', () => {
+    const seasons = { id: 7, title: 'Bleach', currentEp: 2, episodes: 13, currentSeason: 2, seasonProgress: { 1: { currentEp: 12, episodes: 12 }, 2: { currentEp: 2, episodes: 13 } } };
+    const schedule = { ...emptySchedule(), Lunes: [seasons] };
+    const { result } = renderHook(() => useHarness({ schedule }));
+    act(() => result.current.markAsFinished({ ...seasons, _day: 'Lunes' }, 'Lunes'));
+    expect(result.current.watchedList[0]).toMatchObject({ currentEp: 13, currentSeason: 2 });
+    expect(result.current.watchedList[0].seasonProgress).toEqual({ 1: { currentEp: 12, episodes: 12 }, 2: { currentEp: 13, episodes: 13 } });
+  });
+
+  it('dropping keeps the progress where it was', () => {
+    const schedule = { ...emptySchedule(), Lunes: [half] };
+    const { result } = renderHook(() => useHarness({ schedule }));
+    act(() => result.current.dropAnime({ ...half, _day: 'Lunes' }, 'Lunes'));
+    expect(result.current.watchedList[0]).toMatchObject({ finished: false, currentEp: 3 });
   });
 });

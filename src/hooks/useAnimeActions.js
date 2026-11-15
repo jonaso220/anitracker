@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { episodePatch, seasonPatch } from '../tracking';
+import { completedPatch, episodePatch, seasonPatch } from '../tracking';
 import { captureEntry, restoreEntry, changeEpisode } from '../libraryEdits';
 import { daysOfWeek, sanitizeUrl } from '../constants';
 import { clean, pickAutoWatchLink } from '../utils';
@@ -164,7 +164,7 @@ export function useAnimeActions({
     const previousWatched = captureEntry(watchedListRef.current, anime.id);
     setSchedule((prev) => ({ ...prev, [day]: prev[day].filter((a) => a.id !== anime.id) }));
     const current = clean(latestAnime(anime));
-    setWatchedList((prev) => [...prev.filter((a) => a.id !== anime.id), { ...current, finished: true, finishedDate: new Date().toISOString() }]);
+    setWatchedList((prev) => [...prev.filter((a) => a.id !== anime.id), { ...current, ...completedPatch(current), finished: true, finishedDate: new Date().toISOString() }]);
     showToast(t('toast.markedFinished', undefined, { title: anime.title }), () => {
       setSchedule((prev) => ({ ...prev, [day]: restoreEntry(prev[day] || [], removed) }));
       setWatchedList((prev) => restoreEntry(prev.filter((a) => a.id !== anime.id), previousWatched));
@@ -214,6 +214,8 @@ export function useAnimeActions({
     const entry = {
       ...clean(current), finished: true, finishedDate: new Date().toISOString(),
       currentEp: current.currentEp || 0, userRating: current.userRating || 0,
+      // "Ya la vi": el avance va al total, no queda "0/12 · Faltan 12".
+      ...completedPatch(current),
     };
     delete entry.droppedDate;
     setSchedule((prev) => withoutInSchedule(prev, entry.id, null));

@@ -90,6 +90,19 @@ describe('AnimeCard', () => {
     expect(progressFill.style.width).toBe('24%');
   });
 
+  it('shows a finished series as complete even if it was saved with old progress', () => {
+    const { container } = render(<AnimeCard anime={{ ...mockAnime, currentEp: 0, finished: true }} isWatched airingData={{}} onClick={() => {}} />);
+    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '500');
+    expect(container.querySelector('.card-progress-track > span').style.width).toBe('100%');
+    expect(screen.getByText('500/500')).toBeInTheDocument();
+    expect(screen.queryByText(/Faltan/)).toBeNull();
+  });
+
+  it('a dropped series keeps showing where it was left', () => {
+    render(<AnimeCard anime={{ ...mockAnime, currentEp: 120, finished: false }} isWatched airingData={{}} onClick={() => {}} />);
+    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '120');
+  });
+
   it('renders genres', () => {
     render(<AnimeCard anime={mockAnime} airingData={{}} onClick={() => {}} />);
     expect(screen.getByText('Action')).toBeInTheDocument();
