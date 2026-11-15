@@ -1,4 +1,5 @@
 import React from 'react';
+import { t } from '../i18n';
 
 /**
  * Filter bar to narrow a list by minimum community rating and toggle sorting
@@ -6,15 +7,15 @@ import React from 'react';
  * and Top Anime views.
  */
 const MIN_OPTIONS = [
-  { value: 0, label: 'Todos' },
+  { value: 0, label: null }, // «Todos»: se traduce al renderizar
   { value: 7, label: '7+' },
   { value: 8, label: '8+' },
   { value: 9, label: '9+' },
 ];
 
 const RatingFilterBar = ({ minRating, setMinRating, sortByRating, setSortByRating, className = '' }) => (
-  <div className={`filter-bar ${className}`} role="toolbar" aria-label="Filtrar por valoración">
-    <span className="filter-bar-label" aria-hidden="true">⭐ Valoración:</span>
+  <div className={`filter-bar ${className}`} role="toolbar" aria-label={t('rating.filterLabel', 'Filtrar por valoración')}>
+    <span className="filter-bar-label" aria-hidden="true">{t('rating.label', '⭐ Valoración:')}</span>
     {MIN_OPTIONS.map((opt) => (
       <button
         key={opt.value}
@@ -23,7 +24,7 @@ const RatingFilterBar = ({ minRating, setMinRating, sortByRating, setSortByRatin
         onClick={() => setMinRating(opt.value)}
         aria-pressed={minRating === opt.value}
       >
-        {opt.label}
+        {opt.label ?? t('directory.allMasc', 'Todos')}
       </button>
     ))}
     {setSortByRating && (
@@ -32,9 +33,9 @@ const RatingFilterBar = ({ minRating, setMinRating, sortByRating, setSortByRatin
         className={`sort-btn ${sortByRating ? 'active' : ''}`}
         onClick={() => setSortByRating((v) => !v)}
         aria-pressed={!!sortByRating}
-        title={sortByRating ? 'Ordenado por valoración' : 'Ordenar por valoración descendente'}
+        title={sortByRating ? t('rating.sorted', 'Ordenado por valoración') : t('rating.sortHint', 'Ordenar por valoración descendente')}
       >
-        {sortByRating ? '↓ Mejor primero' : '↕ Por valoración'}
+        {sortByRating ? t('rating.bestFirst', '↓ Mejor primero') : t('rating.byRating', '↕ Por valoración')}
       </button>
     )}
   </div>

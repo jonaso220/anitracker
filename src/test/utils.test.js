@@ -422,6 +422,37 @@ describe('parseBackup', () => {
     expect(parsed.skipped).toBe(7);
   });
 
+  it('coerces hand-edited fields to safe types and keeps unknown fields', () => {
+    const json = JSON.stringify({ watchedList: [{
+      id: 1, title: 123, titleEn: { en: 'x' }, genres: 'Acción', altTitles: ['A', 2, '', null],
+      streamingLinks: [{ site: 'Crunchyroll', url: 'https://x', language: 3 }, { site: 'Sin url' }, 'basura'],
+      currentEp: '7', userRating: 'muy bueno', rating: null, episodes: 'NaN', malId: '42', currentSeason: 'dos',
+      finished: 'true', paused: 'a veces', seasonProgress: { 1: { currentEp: '12', episodes: 12 }, x: 1, 2: 'nope' },
+      airing: 'mañana', season: 'Invierno', notes: 'mi nota', customFlag: { keep: true },
+    }] });
+    const [anime] = parseBackup(json).watchedList;
+    expect(anime).toEqual({
+      id: 1, title: '123', genres: ['Acción'], altTitles: ['A'],
+      streamingLinks: [{ site: 'Crunchyroll', url: 'https://x', language: '3' }],
+      currentEp: 7, userRating: 0, rating: 0, episodes: null, malId: 42,
+      finished: true, seasonProgress: { 1: { currentEp: 12, episodes: 12 } },
+      season: 'Invierno', notes: 'mi nota', customFlag: { keep: true },
+    });
+    // What used to crash local search and cards on every synced device.
+    expect(filterByLocalSearch([anime], '12')).toEqual([anime]);
+    expect(anime.genres.map((g) => g.toLowerCase())).toEqual(['acción']);
+  });
+
+  it('sanitizes entries inside schedule days and custom lists too', () => {
+    const json = JSON.stringify({
+      schedule: { Lunes: [{ id: 1, genres: 5, title: null }] },
+      customLists: [{ id: 'l', name: 'L', items: [{ id: 2, currentEp: '3x' }] }],
+    });
+    const parsed = parseBackup(json);
+    expect(parsed.schedule.Lunes).toEqual([{ id: 1, genres: [], title: '' }]);
+    expect(parsed.customLists[0].items).toEqual([{ id: 2, currentEp: 0 }]);
+  });
+
   it('throws on malformed JSON', () => {
     expect(() => parseBackup('{not json')).toThrow(/JSON/);
   });

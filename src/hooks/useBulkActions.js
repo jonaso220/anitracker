@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { daysOfWeek } from '../constants';
 import { clean } from '../utils';
 import { captureEntry, restoreEntry } from '../libraryEdits';
+import { t } from '../i18n';
 
 // Capture every selected entry of a list (with its neighbours) for undo.
 const captureAll = (list, ids) => (list || [])
@@ -11,8 +12,6 @@ const captureAll = (list, ids) => (list || [])
 // Put captured entries back where they were, touching nothing else: edits made
 // (or synced from another device) while the undo toast was up survive.
 const restoreAll = (list, captured) => captured.reduce(restoreEntry, list || []);
-
-const plural = (count, singular, pluralForm) => (count > 1 ? pluralForm : singular);
 
 /**
  * Bulk action handlers (delete, mark watched, move to schedule) that operate on
@@ -56,7 +55,7 @@ export function useBulkActions({
       });
     }
     exitBulkMode();
-    showToast(`${count} ${plural(count, 'anime eliminado', 'animes eliminados')}`, undo);
+    showToast(t('toast.bulkDeleted', undefined, { count }), undo);
   }, [activeTab, bulkSelected, exitBulkMode, scheduleRef, watchedListRef, watchLaterRef, setSchedule, setWatchedList, setWatchLater, showToast]);
 
   const bulkMarkWatched = useCallback(() => {
@@ -81,7 +80,7 @@ export function useBulkActions({
       return [...prev, ...added.filter((a) => !existing.has(a.id))];
     });
     exitBulkMode();
-    showToast(`${count} ${plural(count, 'anime marcado como visto', 'animes marcados como vistos')}`, () => {
+    showToast(t('toast.bulkMarkedWatched', undefined, { count }), () => {
       setWatchedList((prev) => prev.filter((a) => !addedIds.has(a.id)));
       setWatchLater((prev) => restoreAll(prev, captured));
     });
@@ -100,7 +99,7 @@ export function useBulkActions({
     setWatchLater((prev) => prev.filter((a) => !ids.has(a.id)));
     setSchedule((prev) => ({ ...prev, [day]: [...(prev[day] || []).filter((x) => !movedIds.has(x.id)), ...moved] }));
     exitBulkMode();
-    showToast(`${count} ${plural(count, 'anime movido', 'animes movidos')} a ${day}`, () => {
+    showToast(t('toast.bulkMoved', undefined, { count, day }), () => {
       setSchedule((prev) => ({ ...prev, [day]: restoreAll((prev[day] || []).filter((x) => !movedIds.has(x.id)), replaced) }));
       setWatchLater((prev) => restoreAll(prev, captured));
     });

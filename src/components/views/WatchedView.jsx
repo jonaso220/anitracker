@@ -2,18 +2,20 @@ import React, { useCallback, useMemo, useState } from 'react';
 import AnimeCard from '../AnimeCard';
 import BulkToolbar from './BulkToolbar';
 import { getFilteredWatched } from '../../utils';
+import { usePruneBulkSelection } from '../../hooks/useBulkMode';
+import { t } from '../../i18n';
 
 const PAGE_SIZE = 30;
 
 const FILTERS = [
-  { key: 'all',      label: 'Todas' },
-  { key: 'finished', label: '✓ Completadas' },
-  { key: 'dropped',  label: '⏸ Dropeadas' },
+  { key: 'all',      label: () => t('watched.filterAll', 'Todas') },
+  { key: 'finished', label: () => t('watched.filterFinished', '✓ Completadas') },
+  { key: 'dropped',  label: () => t('watched.filterDropped', '✗ Dropeadas') },
 ];
 const SORTS = [
-  { key: 'date',   label: 'Fecha' },
-  { key: 'rating', label: 'Valoración' },
-  { key: 'title',  label: 'A-Z' },
+  { key: 'date',   label: () => t('watched.sortDate', 'Fecha') },
+  { key: 'rating', label: () => t('watched.sortRating', 'Valoración') },
+  { key: 'title',  label: () => t('watched.sortTitle', 'A-Z') },
 ];
 
 const WatchedView = ({
@@ -31,13 +33,20 @@ const WatchedView = ({
     () => getFilteredWatched(watchedList, watchedFilter, watchedSort, localSearch),
     [watchedList, watchedFilter, watchedSort, localSearch]
   );
+  // Lo seleccionado que un filtro oculta sale de la selección: las acciones en
+  // lote solo tocan lo que se ve.
+  usePruneBulkSelection({ bulkMode, bulkSelected, items: filtered, bulkSelectAll });
+  const bulkActions = useMemo(
+    () => [{ label: t('bulk.delete', '🗑 Eliminar'), variant: 'delete', onClick: onBulkDelete }],
+    [onBulkDelete],
+  );
   const visibleItems = filtered.slice(0, visible);
   const remaining = filtered.length - visible;
 
   return (
     <section aria-labelledby="watched-heading">
       <div className="section-header">
-        <h2 id="watched-heading">✓ Series vistas</h2>
+        <h2 id="watched-heading">{t('watched.title', '✓ Series vistas')}</h2>
         <span className="count">{watchedList.length}</span>
         {watchedList.length > 0 && (
           <button
@@ -45,7 +54,7 @@ const WatchedView = ({
             onClick={() => (bulkMode ? exitBulkMode() : enterBulkMode())}
             aria-pressed={bulkMode}
           >
-            {bulkMode ? '✕ Cancelar' : '☑ Seleccionar'}
+            {bulkMode ? t('bulk.cancel', '✕ Cancelar') : t('bulk.start', '☑ Seleccionar')}
           </button>
         )}
       </div>
@@ -55,10 +64,10 @@ const WatchedView = ({
           filteredList={filtered}
           bulkSelectAll={bulkSelectAll}
           bulkDeselectAll={bulkDeselectAll}
-          actions={[{ label: '🗑 Eliminar', variant: 'delete', onClick: onBulkDelete }]}
+          actions={bulkActions}
         />
       )}
-      <div className="filter-bar" role="group" aria-label="Filtros de series vistas">
+      <div className="filter-bar" role="group" aria-label={t('watched.filtersLabel', 'Filtros de series vistas')}>
         {FILTERS.map((f) => (
           <button
             key={f.key}
@@ -66,7 +75,7 @@ const WatchedView = ({
             onClick={() => { setWatchedFilter(f.key); setVisible(PAGE_SIZE); }}
             aria-pressed={watchedFilter === f.key}
           >
-            {f.label}
+            {f.label()}
           </button>
         ))}
         <span style={{ opacity: 0.3 }} aria-hidden="true">|</span>
@@ -77,7 +86,7 @@ const WatchedView = ({
             onClick={() => { setWatchedSort(s.key); setVisible(PAGE_SIZE); }}
             aria-pressed={watchedSort === s.key}
           >
-            {s.label}
+            {s.label()}
           </button>
         ))}
       </div>
@@ -85,10 +94,10 @@ const WatchedView = ({
         <div className="local-search">
           <input
             type="text"
-            placeholder="🔍 Filtrar por nombre..."
+            placeholder={t('search.filterByName', '🔍 Filtrar por nombre...')}
             value={localSearch}
             onChange={(e) => { setLocalSearch(e.target.value); setVisible(PAGE_SIZE); }}
-            aria-label="Filtrar lista por nombre"
+            aria-label={t('list.filterByNameLabel', 'Filtrar lista por nombre')}
           />
         </div>
       )}
@@ -103,7 +112,7 @@ const WatchedView = ({
                 role={bulkMode ? 'checkbox' : undefined}
                 tabIndex={bulkMode ? 0 : undefined}
                 aria-checked={bulkMode ? bulkSelected.has(a.id) : undefined}
-                aria-label={bulkMode ? `Seleccionar ${a.title}` : undefined}
+                aria-label={bulkMode ? t('bulk.selectItem', 'Seleccionar {title}', { title: a.title }) : undefined}
                 onKeyDown={bulkMode ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleBulkSelect(a.id); } } : undefined}
               >
                 {bulkMode && (
@@ -120,7 +129,7 @@ const WatchedView = ({
           </div>
           {remaining > 0 && (
             <button className="load-more-btn" onClick={() => setVisible((v) => v + PAGE_SIZE)}>
-              Mostrar más ({remaining} restantes)
+              {t('list.showMore', 'Mostrar más ({count} restantes)', { count: remaining })}
             </button>
           )}
         </>
@@ -128,7 +137,7 @@ const WatchedView = ({
         <div className="anime-grid">
           <div className="empty-state">
             <span aria-hidden="true">🎬</span>
-            <p>No hay resultados</p>
+            <p>{watchedList.length === 0 ? t('watched.empty', 'Todavía no marcaste ninguna serie como vista') : t('empty.noWatched', 'No hay resultados')}</p>
           </div>
         </div>
       )}

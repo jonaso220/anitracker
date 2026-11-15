@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import { seasonPatch, episodePatch, totalTrackedEpisodes, trackingAiring } from '../tracking';
-import { buildAgenda } from '../agenda';
 import { buildBackup, parseBackup } from '../utils';
 
 const legacy = { id: 1, title: 'Example', episodes: 12, currentEp: 8, watchLink: 'https://example.com/episode?share=1' };
@@ -27,10 +26,5 @@ describe('season tracking compatibility', () => {
   it('does not use earlier season broadcast info for a later season', () => {
     expect(trackingAiring({currentSeason:2},{episode:12})).toBeUndefined();
     expect(trackingAiring({currentSeason:1},{episode:12})).toEqual({episode:12});
-  });
-  it('excludes paused items from the agenda but preserves the underlying day', () => {
-    const schedule = { Lunes: [{ ...legacy, paused:true }] };
-    expect(buildAgenda(schedule, {}).active).toBeNull();
-    expect(schedule.Lunes[0].currentEp).toBe(8);
   });
 });

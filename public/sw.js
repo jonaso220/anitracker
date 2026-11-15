@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v31';
+const CACHE_VERSION = 'v32';
 const STATIC_CACHE = `anitracker-static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `anitracker-runtime-${CACHE_VERSION}`;
 // Sin versión: las portadas no cambian entre deploys, no hay por qué volver
@@ -15,6 +15,13 @@ const PRECACHE_URLS = [
   '/icon-512.png',
   '/apple-touch-icon.png',
 ];
+
+// JS/CSS del build (con hash). El plugin `swPrecache` de vite.config.js
+// reemplaza esta línea en dist/sw.js por la lista real; en dev queda vacía.
+// Sin esto, sin conexión fallaba abrir una pestaña o un modal lazy que nunca
+// se había abierto (su chunk no estaba en la cache).
+self.__PRECACHE_ASSETS = [];
+const PRECACHE_ASSETS = Array.isArray(self.__PRECACHE_ASSETS) ? self.__PRECACHE_ASSETS : [];
 
 // External hosts we purposely do NOT cache (always go to network)
 const NO_CACHE_HOSTS = [
@@ -52,11 +59,28 @@ const IMAGE_HOSTS = [
 
 // Don't skipWaiting() automatically — let the page surface a banner so the
 // user controls when to swap. The page will postMessage SKIP_WAITING below.
+// addAll es todo o nada y solo acepta respuestas ok del mismo origen (nunca
+// opacas): si falta un chunk, la instalación falla y queda el SW anterior.
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(STATIC_CACHE).then((cache) => cache.addAll(PRECACHE_URLS))
+    caches.open(STATIC_CACHE).then((cache) => cache.addAll([...PRECACHE_URLS, ...PRECACHE_ASSETS]))
   );
 });
+
+// Los chunks de deploys anteriores (hash viejo) que quedaron en la cache
+// estática: sin esto crecía con cada deploy.
+async function pruneStaleAssets() {
+  if (PRECACHE_ASSETS.length === 0) return; // dev: no hay lista contra qué comparar
+  const current = new Set(PRECACHE_ASSETS);
+  const cache = await caches.open(STATIC_CACHE);
+  const keys = await cache.keys();
+  await Promise.all(keys
+    .filter((req) => {
+      const { pathname } = new URL(req.url, self.location.origin);
+      return pathname.startsWith('/assets/') && !current.has(pathname);
+    })
+    .map((req) => cache.delete(req)));
+}
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
@@ -66,6 +90,7 @@ self.addEventListener('activate', (event) => {
           .filter((k) => ![STATIC_CACHE, RUNTIME_CACHE, IMAGE_CACHE].includes(k))
           .map((k) => caches.delete(k))
       ))
+      .then(() => pruneStaleAssets().catch(() => {}))
       .then(() => self.clients.claim())
   );
 });

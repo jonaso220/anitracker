@@ -1,8 +1,11 @@
 import React from 'react';
+import { t } from '../../i18n';
 
 /**
  * Shared bulk-selection toolbar. The `actions` prop lets each caller (watchLater,
- * watched) decide which bulk operations to expose.
+ * watched) decide which bulk operations to expose. `filteredList` is what the
+ * view shows right now: "select all" covers only that, and the views prune the
+ * selection to it when a filter changes.
  */
 const BulkToolbar = ({
   bulkSelected,
@@ -13,16 +16,16 @@ const BulkToolbar = ({
 }) => {
   const allSelected = bulkSelected.size === filteredList.length && filteredList.length > 0;
   return (
-    <div className="bulk-toolbar fade-in" role="toolbar" aria-label="Acciones en lote">
+    <div className="bulk-toolbar fade-in" role="toolbar" aria-label={t('bulk.toolbar', 'Acciones en lote')}>
       <div className="bulk-toolbar-left">
         <button
           className="bulk-select-all"
           onClick={() => (allSelected ? bulkDeselectAll() : bulkSelectAll(filteredList))}
         >
-          {allSelected ? '☐ Deseleccionar' : '☑ Seleccionar todo'}
+          {allSelected ? t('bulk.deselectAll', '☐ Deseleccionar') : t('bulk.selectAll', '☑ Seleccionar todo')}
         </button>
         <span className="bulk-count" aria-live="polite">
-          {bulkSelected.size} seleccionado{bulkSelected.size !== 1 ? 's' : ''}
+          {t('bulk.selectedCount', '{count} seleccionados', { count: bulkSelected.size })}
         </span>
       </div>
       <div className="bulk-toolbar-actions">

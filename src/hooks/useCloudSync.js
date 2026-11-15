@@ -5,13 +5,13 @@
 // Todo el estado de sync vive acá. Lo que depende del ciclo de vida de la auth
 // (cuándo suscribirse, qué hacer al cerrar sesión) lo dispara el compositor
 // `useFirebase` a través de los callbacks que este hook expone.
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LOCAL_REV_KEY, persistAccountLibrary, readSyncBase, selectLibraryAccount, writeSyncBase } from '../accountStorage';
 import { hashLibrary, inspectCloudSnapshot, chooseSyncConflicts } from '../syncMerge';
 import { checkpointSync, exportSyncRecovery } from '../syncRecovery';
 import { migrateLibrary } from '../idMigration';
 import { isCompressedDoc, decodeLibrary, LibraryTooLargeError } from '../cloudCodec';
-import { saveMergedLibrary, readCloudLibrary, SyncConflictError } from '../cloudSync';
+import { saveMergedLibrary, readCloudLibrary, requiresNewerClient, SyncConflictError, SyncProtocolError, SYNC_PROTOCOL } from '../cloudSync';
 import {
   EMPTY_SYNC_JSON,
   LOGOUT_FLUSH_TIMEOUT_MS,
@@ -50,6 +50,11 @@ export function useCloudSync({
   // La biblioteca no entra en el documento de Firestore ni comprimida: no se
   // reintenta en loop, se avisa.
   const [syncTooLarge, setSyncTooLarge] = useState(false);
+  // La nube tiene un documento de un protocolo más nuevo (otro dispositivo con
+  // una versión más nueva de la app): no se aplica ni se sube nada hasta
+  // actualizar. El ref lo leen los guardados, que no se re-crean por render.
+  const [updateRequired, setUpdateRequired] = useState(false);
+  const updateRequiredRef = useRef(false);
 
   const ownerRef = useRef(initialAccount?.owner || null);
   const [initialRevision] = useState(() => {
@@ -63,6 +68,8 @@ export function useCloudSync({
   const hasLoadedUser = useRef(null);
   const syncTimer = useRef(null);
   const cloudUnsub = useRef(null);
+  // El listener de Firestore falló (es terminal): hay que recrearlo.
+  const listenerFailedRef = useRef(false);
   // JSON of the last data we know is in sync with the cloud (from a load or a
   // completed save). `null` means we haven't seen the cloud state yet, so we
   // must not push local data up (it could clobber newer cloud data).
@@ -101,6 +108,16 @@ export function useCloudSync({
     conflictRef.current = input;
     if (syncTimer.current) { clearTimeout(syncTimer.current); syncTimer.current = null; }
     setSyncConflict({ conflicts: decision.conflicts, storageError: false });
+    setSyncing(false);
+  }, []);
+
+  // Pausa todo hasta actualizar la app; un snapshot aceptable lo levanta.
+  const markUpdateRequired = useCallback((required) => {
+    updateRequiredRef.current = required;
+    setUpdateRequired(required);
+    if (!required) return;
+    if (syncTimer.current) { clearTimeout(syncTimer.current); syncTimer.current = null; }
+    setSyncError(true);
     setSyncing(false);
   }, []);
 
@@ -184,16 +201,20 @@ export function useCloudSync({
     } catch (e) {
       if (session !== sessionRef.current) return 'error';
       if (e instanceof SyncConflictError) { blockConflict(e.cloud); return 'conflict'; }
+      if (e instanceof SyncProtocolError && requiresNewerClient({ syncProtocol: e.protocol })) {
+        markUpdateRequired(true);
+        return 'update-required';
+      }
       console.error('Save error:', e);
       setSyncing(false);
       return e instanceof LibraryTooLargeError ? 'too-large' : 'error';
     } finally {
       if (session === sessionRef.current) setSavePending(false);
     }
-  }, [markSynced, blockConflict, setSchedule, setWatchedList, setWatchLater, setCustomLists]);
+  }, [markSynced, blockConflict, markUpdateRequired, setSchedule, setWatchedList, setWatchLater, setCustomLists]);
 
   const scheduleSave = useCallback((delay) => {
-    if (conflictRef.current) return;
+    if (conflictRef.current || updateRequiredRef.current) return;
     if (syncTimer.current) clearTimeout(syncTimer.current);
     setSyncing(true);
     syncTimer.current = setTimeout(() => {
@@ -207,7 +228,7 @@ export function useCloudSync({
   // failed save used to be marked as synced and never retried, so the cloud
   // doc went stale and clobbered local data on the next app open.
   const flushSave = useCallback(async () => {
-    if (conflictRef.current) return false;
+    if (conflictRef.current || updateRequiredRef.current) return false;
     const uid = hasLoadedUser.current;
     if (!uid || lastSyncedRef.current === null) return false;
     const json = serializeData(dataRef.current);
@@ -235,7 +256,8 @@ export function useCloudSync({
       if (flight.pending && (!committed || pendingRevision >= cloudRevisionRef.current)) {
         applyCloudRef.current?.(uid, flight.pending);
       }
-      if (result === 'conflict' || result === 'committed-conflict' || conflictRef.current) return false;
+      if (result === 'conflict' || result === 'committed-conflict' || result === 'update-required'
+        || conflictRef.current || updateRequiredRef.current) return false;
       if (result === 'ok') {
         saveAttempts.current = 0;
         setSyncError(false);
@@ -325,6 +347,8 @@ export function useCloudSync({
     if (readRetryTimer.current) clearTimeout(readRetryTimer.current);
     if (syncTimer.current) { clearTimeout(syncTimer.current); syncTimer.current = null; }
     const session = ++sessionRef.current;
+    listenerFailedRef.current = false;
+    markUpdateRequired(false);
     setSavePending(false);
     cloudRevisionRef.current = -1;
     lastSyncedRef.current = null;
@@ -377,9 +401,18 @@ export function useCloudSync({
         // for an authoritative snapshot before advancing the persisted base.
         if (snap.metadata.fromCache) { setCloudLoaded(true); return; }
         const seq = ++snapshotSeq.current;
-        setSyncError(false);
         if (snap.exists()) {
           const data = snap.data();
+          if (requiresNewerClient(data)) {
+            // Ni se decodifica ni se fusiona: la base y lo local quedan como
+            // estaban hasta que esta app se actualice.
+            console.warn(`Cloud document uses sync protocol ${String(data.syncProtocol)}; this app supports ${SYNC_PROTOCOL}`);
+            markUpdateRequired(true);
+            setCloudLoaded(true);
+            return;
+          }
+          setSyncError(false);
+          if (updateRequiredRef.current) markUpdateRequired(false);
           if (isCompressedDoc(data)) {
             // Large libraries travel gzipped (cloudCodec.ts). Decoding is async:
             // drop the result if a newer snapshot or another session got in.
@@ -399,6 +432,8 @@ export function useCloudSync({
           }
           applyCloudData(uid, data);
         } else {
+          setSyncError(false);
+          if (updateRequiredRef.current) markUpdateRequired(false);
           // A deleted document is an empty remote library, even after login.
           applyCloudData(uid, { ...JSON.parse(EMPTY_SYNC_JSON), syncRevision: Math.max(0, cloudRevisionRef.current), _documentDeleted: true });
         }
@@ -408,6 +443,7 @@ export function useCloudSync({
       (e) => {
         if (session !== sessionRef.current) return;
         console.error('Snapshot error:', e);
+        listenerFailedRef.current = true;
         setSyncing(false);
         setCloudLoaded(true);
         setSyncError(true);
@@ -415,7 +451,7 @@ export function useCloudSync({
         readRetryTimer.current = setTimeout(() => retrySyncRef.current?.(), RETRY_MAX_MS);
       }
     );
-  }, [applyCloudData, initialAccount, setSchedule, setWatchedList, setWatchLater, setCustomLists]);
+  }, [applyCloudData, initialAccount, markUpdateRequired, setSchedule, setWatchedList, setWatchLater, setCustomLists]);
 
   const retrySync = useCallback(() => {
     if (hasLoadedUser.current) subscribeToCloud(hasLoadedUser.current);
@@ -437,6 +473,9 @@ export function useCloudSync({
     saveAttempts.current = 0;
     setSyncError(false);
     setSyncTooLarge(false);
+    listenerFailedRef.current = false;
+    updateRequiredRef.current = false;
+    setUpdateRequired(false);
     setSyncing(false);
     setCloudLoaded(false);
   }, []);
@@ -493,9 +532,15 @@ export function useCloudSync({
     if (syncTimer.current) { clearTimeout(syncTimer.current); syncTimer.current = null; }
   }, []);
 
+  // App se re-renderiza con cada tecla del buscador: serializar la biblioteca
+  // entera solo cuando cambian sus datos, no en cada render.
+  const currentJson = useMemo(
+    () => serializeData({ schedule, watchedList, watchLater, customLists }),
+    [schedule, watchedList, watchLater, customLists],
+  );
+
   // Auto-sync: save local edits to the cloud, debounced.
   useEffect(() => {
-    const currentJson = serializeData({ schedule, watchedList, watchLater, customLists });
     // Record when the user last actually edited the data. Mounts and
     // login-state changes keep the same JSON, and cloud applies pre-set
     // `lastSyncedRef` to the exact data they load, so neither counts as an
@@ -515,6 +560,7 @@ export function useCloudSync({
 
     if (!isSignedIn) return;
     if (conflictRef.current) { blockConflict(conflictRef.current.cloud); return; }
+    if (updateRequiredRef.current) return;
     // Don't push anything until we've seen the cloud state at least once —
     // otherwise we could overwrite newer cloud data we haven't loaded yet.
     if (lastSyncedRef.current === null) return;
@@ -528,7 +574,7 @@ export function useCloudSync({
     }
 
     scheduleSave(SAVE_DEBOUNCE_MS);
-  }, [schedule, watchedList, watchLater, customLists, isSignedIn, scheduleSave, blockConflict]);
+  }, [currentJson, schedule, watchedList, watchLater, customLists, isSignedIn, scheduleSave, blockConflict]);
 
   // Flush a pending save when the tab is hidden or unloaded. The 2s debounce
   // above can be lost on mobile (iOS suspends timers when the app is
@@ -544,7 +590,15 @@ export function useCloudSync({
       flushSaveRef.current?.(); // no-op if already in sync
     };
     const onVisibility = () => { if (document.visibilityState === 'hidden') flush(); };
-    const onOnline = () => { setOnline(true); retrySyncRef.current?.(); };
+    const onOnline = () => {
+      setOnline(true);
+      // Recrear el listener solo si falló (o no hay): hacerlo con uno sano
+      // invalidaba la sesión y descartaba el resultado de un guardado en curso.
+      // Con el listener sano, Firestore se reconecta solo; basta con adelantar
+      // lo pendiente.
+      if (!cloudUnsub.current || listenerFailedRef.current) retrySyncRef.current?.();
+      else flush();
+    };
     const onOffline = () => setOnline(false);
     window.addEventListener('online', onOnline);
     window.addEventListener('offline', onOffline);
@@ -558,8 +612,7 @@ export function useCloudSync({
     };
   }, [isSignedIn]);
 
-  const currentJson = serializeData({ schedule, watchedList, watchLater, customLists });
-  const syncStatus = !online ? 'offline' : syncConflict ? 'conflict'
+  const syncStatus = !online ? 'offline' : updateRequired ? 'update-required' : syncConflict ? 'conflict'
     : syncError || savePending || !cloudLoaded || currentJson !== syncedJson ? 'pending' : 'synced';
 
   return {

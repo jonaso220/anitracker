@@ -464,15 +464,21 @@ describe('jikanService retry', () => {
 });
 
 describe('adapter: itunesService.toAnime', () => {
-  it('offsets iTunes ids by 500000 and expands artwork', () => {
+  it('puts iTunes ids in their own range (1e10 + trackId) and expands artwork', () => {
     const a = itunesToAnime({ trackId: 1, trackName: 'Film', kind: 'feature-movie', artworkUrl100: 'https://x/100x100.jpg', releaseDate: '2020-01-01T00:00:00Z' });
-    expect(a.id).toBe(500001);
+    expect(a.id).toBe(10000000001);
+    expect(a.sourceKey).toBe('itunes:1');
     expect(a.source).toBe('iTunes');
     expect(a.type).toBe('Película');
     expect(a.image).toBe('https://x/600x600.jpg');
   });
   it('returns null for items with no title', () => {
     expect(itunesToAnime({ trackId: 1 })).toBeNull();
+  });
+  it('real trackIds (~1.8e9) no longer land in the TMDB / Viki / AniList ranges', () => {
+    const a = itunesToAnime({ trackId: 1800000000, trackName: 'Película grande' });
+    expect(a.id).toBeGreaterThan(9000000000);
+    expect(Number.isSafeInteger(a.id)).toBe(true);
   });
 });
 

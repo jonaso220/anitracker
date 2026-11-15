@@ -1,6 +1,7 @@
 import React from 'react';
 import { isChunkLoadError, reloadForNewDeploy } from '../chunkReload';
 import { reportError } from '../errorReporter';
+import { t } from '../i18n';
 
 export class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -31,10 +32,10 @@ export class ErrorBoundary extends React.Component {
         }}>
           <span style={{ fontSize: '4rem', marginBottom: '1rem' }}>😵</span>
           <h1 style={{ fontSize: '1.5rem', marginBottom: '0.5rem', background: 'linear-gradient(135deg, #a855f7, #4ecdc4)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-            Algo salió mal
+            {t('errorBoundary.title', 'Algo salió mal')}
           </h1>
           <p style={{ opacity: 0.6, marginBottom: '1.5rem', maxWidth: '400px' }}>
-            Ocurrió un error inesperado. Tus datos están guardados en el navegador.
+            {t('errorBoundary.message', 'Ocurrió un error inesperado. Tus datos están guardados en el navegador.')}
           </p>
           <button
             onClick={() => { this.setState({ hasError: false, error: null }); window.location.reload(); }}
@@ -44,11 +45,11 @@ export class ErrorBoundary extends React.Component {
               color: '#fff', fontSize: '1rem', fontWeight: 600, cursor: 'pointer'
             }}
           >
-            Recargar app
+            {t('errorBoundary.reload', 'Recargar app')}
           </button>
           {this.state.error && (
             <details style={{ marginTop: '2rem', opacity: 0.4, fontSize: '0.75rem', maxWidth: '90vw', textAlign: 'left' }}>
-              <summary>Detalles del error</summary>
+              <summary>{t('errorBoundary.details', 'Detalles del error')}</summary>
               <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', marginTop: '0.5rem' }}>
                 {this.state.error.toString()}
               </pre>

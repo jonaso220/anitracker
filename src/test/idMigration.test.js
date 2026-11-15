@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
-  anilistInternalId, migrateAnime, migrateLibrary, migrateList, migrateDiscoveryIds, ANILIST_ID_BASE,
+  anilistInternalId, migrateAnime, migrateLibrary, migrateList, migrateDiscoveryIds, ANILIST_ID_BASE, ITUNES_ID_BASE,
 } from '../idMigration';
 import { toAnime, anilistIdsOf } from '../services/anilistService';
 import { toAnime as tvmazeToAnime } from '../services/tvmazeService';
@@ -101,5 +101,42 @@ describe('entradas de datos viejos', () => {
       data: { schedule: week({ Martes: [oldDonghua] }), watchedList: [], watchLater: [], customLists: [] },
     }));
     expect(readActiveLibrary().data.schedule.Martes[0].id).toBe(ANILIST_ID_BASE + 150000);
+  });
+});
+
+describe('ids de iTunes', () => {
+  // trackId + 500000 caía en el rango de Viki (700000000 + id).
+  const oldItunes = { id: 699541650, source: 'iTunes', sourceKey: 'itunes:699041650', title: 'Película de iTunes', currentEp: 1 };
+
+  it('pasa al rango propio solo lo que su sourceKey prueba de iTunes, y es idempotente', () => {
+    const migrated = migrateAnime(oldItunes);
+    expect(migrated.id).toBe(ITUNES_ID_BASE + 699041650);
+    expect(migrateAnime(migrated)).toBe(migrated);
+    // Mismo id pero de Viki: no se toca.
+    const viki = { id: 699541650, source: 'Viki', sourceKey: 'viki:41650c' };
+    expect(migrateAnime(viki)).toBe(viki);
+    // Sin sourceKey no hay prueba de que sea de iTunes.
+    const unknown = { id: 699541650 };
+    expect(migrateAnime(unknown)).toBe(unknown);
+    // Un id que no es el viejo exacto (p. ej. ya migrado en otro dispositivo) queda igual.
+    const other = { ...oldItunes, id: 12345 };
+    expect(migrateAnime(other)).toBe(other);
+  });
+
+  it('también los de id por hash del título (sin trackId)', () => {
+    expect(migrateAnime({ id: 512345, source: 'iTunes', sourceKey: 'itunes:12345' }).id).toBe(ITUNES_ID_BASE + 12345);
+  });
+
+  it('migra la biblioteca entera y deja una sola copia si quedó dos veces', () => {
+    const fresh = { ...oldItunes, id: ITUNES_ID_BASE + 699041650, currentEp: 3 };
+    const { data, changed } = migrateLibrary({
+      schedule: week(), watchedList: [oldItunes, fresh], watchLater: [oldItunes], customLists: [{ id: 'l', name: 'L', items: [oldItunes] }],
+    });
+    expect(changed).toBe(true);
+    expect(data.watchedList).toHaveLength(1);
+    expect(data.watchedList[0]).toMatchObject({ id: ITUNES_ID_BASE + 699041650, currentEp: 3 });
+    expect(data.watchLater[0].id).toBe(ITUNES_ID_BASE + 699041650);
+    expect(data.customLists[0].items[0].id).toBe(ITUNES_ID_BASE + 699041650);
+    expect(migrateLibrary(data).changed).toBe(false);
   });
 });

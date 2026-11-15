@@ -41,7 +41,7 @@ const DiscoveryCard = ({
       return (
         <div className="season-card-airing upcoming">
           <span className="season-airing-ep">
-            {airing.nextEpisode > 1 ? `${t('season.episode', 'Episodio')} ${airing.nextEpisode}` : t('season.premiere', 'Estreno')}
+            {airing.nextEpisode > 1 ? t('season.episodeN', 'Episodio {episode}', { episode: airing.nextEpisode }) : t('season.premiere', 'Estreno')}
           </span>
           <span className="season-airing-when">{formatTimeUntil(airing.nextAiringAt)}</span>
         </div>
@@ -61,8 +61,8 @@ const DiscoveryCard = ({
 
           {anime.rating > 0 && <div className="anime-card-score">⭐ {Number(anime.rating).toFixed(1)}</div>}
 
-          {alreadyAdded && <div className="season-added-pill" title="Ya está en tu lista">✓ En tu lista</div>}
-          {onIgnore && <button className="season-ignore" onClick={(e) => { e.stopPropagation(); onIgnore(anime); }} aria-label={`No me interesa ${anime.title}`} title="No me interesa">×</button>}
+          {alreadyAdded && <div className="season-added-pill" title={t('discovery.inLibraryTitle', 'Ya está en tu lista')}>{t('discovery.inLibrary', '✓ En tu lista')}</div>}
+          {onIgnore && <button type="button" className="season-ignore" onClick={(e) => { e.stopPropagation(); onIgnore(anime); }} aria-label={t('discovery.ignoreItem', 'No me interesa {title}', { title: anime.title })} title={t('discovery.ignore', 'No me interesa')}><span aria-hidden="true">×</span></button>}
 
           <div className="season-card-overlay">
             <h3 className="season-card-title">{anime.title}</h3>
@@ -73,19 +73,19 @@ const DiscoveryCard = ({
               </div>
               <div className="season-card-tags">
                 {anime.type && <span className="meta-tag type">{anime.type}</span>}
-                {anime.episodes && <span className="meta-tag eps">{anime.episodes} eps</span>}
+                {anime.episodes && <span className="meta-tag eps">{t('meta.episodesShort', '{count} eps', { count: anime.episodes })}</span>}
                 {anime._continuing && <span className="meta-tag continuing">{t('season.continuing', 'Continúa')}</span>}
               </div>
               {!alreadyAdded && (
                 <div className="season-card-actions">
-                  <button className="add-btn schedule-btn" onClick={(e) => { e.stopPropagation(); onAddToSchedule(anime); }} title="Añadir a semana" aria-label="Añadir a semana">📅</button>
-                  <button className="add-btn later-btn" onClick={(e) => { e.stopPropagation(); onAddToWatchLater(anime); }} title="Ver después" aria-label="Ver después">🕐</button>
-                  <button className="add-btn watched-btn" onClick={(e) => { e.stopPropagation(); onMarkWatched(anime); }} title="Marcar como visto" aria-label="Marcar como visto">✓</button>
+                  <button className="add-btn schedule-btn" onClick={(e) => { e.stopPropagation(); onAddToSchedule(anime); }} title={t('discovery.addToWeek', 'Añadir a semana')} aria-label={t('discovery.addToWeek', 'Añadir a semana')}>📅</button>
+                  <button className="add-btn later-btn" onClick={(e) => { e.stopPropagation(); onAddToWatchLater(anime); }} title={t('discovery.watchLater', 'Ver después')} aria-label={t('discovery.watchLater', 'Ver después')}>🕐</button>
+                  <button className="add-btn watched-btn" onClick={(e) => { e.stopPropagation(); onMarkWatched(anime); }} title={t('discovery.markWatched', 'Marcar como visto')} aria-label={t('discovery.markWatched', 'Marcar como visto')}>✓</button>
                 </div>
               )}
             </div>
           </div>
-          <button className="season-card-open" onClick={() => onDetail(anime)} aria-label={`Abrir detalles de ${anime.title}`} />
+          <button className="season-card-open" onClick={() => onDetail(anime)} aria-label={t('detail.openDetails', 'Abrir detalles de {title}', { title: anime.title })} />
         </div>
       </div>
       {renderAiringFooter()}

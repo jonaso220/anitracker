@@ -2,6 +2,7 @@ import React, { useCallback, useMemo } from 'react';
 import AnimeCard from '../AnimeCard';
 import ApiErrorState from '../ApiErrorState';
 import { daysOfWeek, dayEmojis } from '../../constants';
+import { t } from '../../i18n';
 
 // Maps JS Date.getDay() (0=Sun…6=Sat) to our daysOfWeek index (0=Mon…6=Sun)
 const todayDayName = () => {
@@ -29,7 +30,7 @@ const ScheduleView = ({
   }, [setShowAnimeDetail]);
 
   return (
-    <div className="schedule-rows" role="region" aria-label="Horario semanal">
+    <div className="schedule-rows" role="region" aria-label={t('schedule.region', 'Horario semanal')}>
       {airingError && <ApiErrorState error={airingError} onRetry={retryAiring} />}
       {daysOfWeek.map((day, i) => {
         const dayItems = schedule[day] || [];
@@ -48,8 +49,8 @@ const ScheduleView = ({
             <header className="day-label" id={`day-${day}`}>
               <span className="day-emoji" aria-hidden="true">{dayEmojis[i]}</span>
               <span className="day-name">{day}</span>
-              {isToday && <span className="day-today-pill" aria-label="Hoy">HOY</span>}
-              <span className="day-count" aria-label={`${items.length} animes`}>{items.length}</span>
+              {isToday && <span className="day-today-pill" aria-label={t('schedule.today', 'Hoy')}>{t('season.today', 'HOY')}</span>}
+              <span className="day-count" aria-label={t('schedule.dayCount', '{count} animes', { count: items.length })}>{items.length}</span>
             </header>
             {!isEmpty && (
               <div className="day-animes">
@@ -75,7 +76,7 @@ const ScheduleView = ({
             )}
             {isEmpty && (
               <div className="day-empty" role="status">
-                {dropTarget === day ? '⬇️ Soltar aquí' : 'Sin animes este día'}
+                {dropTarget === day ? t('schedule.dropHere', '⬇️ Soltá acá') : t('schedule.emptyDay', 'Sin animes este día')}
               </div>
             )}
           </section>
@@ -83,7 +84,7 @@ const ScheduleView = ({
       })}
       {paused.length > 0 && (
         <section className="paused-section" aria-labelledby="paused-title">
-          <div className="paused-heading"><h2 id="paused-title">En pausa <span>{paused.length}</span></h2><p>Retomá cuando quieras. Tu progreso y tu día quedan guardados.</p></div>
+          <div className="paused-heading"><h2 id="paused-title">{t('card.paused', 'En pausa')} <span>{paused.length}</span></h2><p>{t('schedule.pausedHint', 'Retomá cuando quieras. Tu progreso y tu día quedan guardados.')}</p></div>
           <div className="paused-grid">
             {paused.map((anime) => <AnimeCard key={`${anime._day}:${anime.id}`} anime={anime} day={anime._day}
               onClick={openPaused} />)}

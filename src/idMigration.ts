@@ -10,6 +10,13 @@ export const ANILIST_LEGACY_BASE = 300000;
 export const ANILIST_LEGACY_LIMIT = 100000;
 export const ANILIST_ID_BASE = 800000000;
 
+// iTunes: antes era trackId + 500000, pero los trackId llegan a ~1.8e9 y
+// caían encima de TMDB película (6e8+), Viki (7e8+), AniList (8e8+) y TMDB
+// serie (9e8+). Ahora van a un rango propio, muy por encima de todos y
+// todavía entero seguro (1e10 + 1.8e9 ≪ 2^53).
+export const ITUNES_LEGACY_BASE = 500000;
+export const ITUNES_ID_BASE = 10000000000;
+
 export const anilistInternalId = (anilistId: number, malId?: number | null): number => {
   if (malId) return malId;
   return anilistId < ANILIST_LEGACY_LIMIT ? ANILIST_LEGACY_BASE + anilistId : ANILIST_ID_BASE + anilistId;
@@ -18,10 +25,19 @@ export const anilistInternalId = (anilistId: number, malId?: number | null): num
 /**
  * Pasa al rango nuevo un anime guardado con el id viejo (identificado por su
  * sourceKey, nunca por el rango: un id 4xxxxx sin sourceKey de AniList es de
- * TVMaze). Devuelve el mismo objeto si no hay nada que cambiar. Determinista:
+ * TVMaze). Cubre AniList sin MAL y iTunes. Devuelve el mismo objeto si no hay nada que cambiar. Determinista:
  * todos los dispositivos llegan al mismo id.
  */
 export function migrateAnime<T extends { id?: number | string; sourceKey?: string }>(anime: T): T {
+  const itunes = /^itunes:(\d+)$/.exec(anime?.sourceKey || '');
+  if (itunes) {
+    // Solo el id viejo exacto (sourceId + 500000) de una obra que su sourceKey
+    // prueba de iTunes: idempotente, el id nuevo nunca vuelve a coincidir.
+    const sourceId = Number(itunes[1]);
+    if (Number(anime.id) !== ITUNES_LEGACY_BASE + sourceId) return anime;
+    // El id migrado es siempre numérico para una obra real de iTunes.
+    return { ...anime, id: ITUNES_ID_BASE + sourceId } as T;
+  }
   const m = /^anilist:(\d+)$/.exec(anime?.sourceKey || '');
   if (!m) return anime;
   const anilistId = Number(m[1]);

@@ -52,6 +52,19 @@ describe('autoBackup (IndexedDB)', () => {
     expect(list.map((b) => b.counts.watched)).toEqual([5, 4, 3]);
   });
 
+  it(`poda por dueño: las copias de una cuenta no desplazan a las de otra`, async () => {
+    await saveAutoBackup(lib([{ id: 1 }]), 'u2', new Date('2026-08-01T10:00:00Z'));
+    await saveAutoBackup(lib([{ id: 1 }]), null, new Date('2026-08-01T11:00:00Z'));
+    for (let i = 1; i <= MAX_SNAPSHOTS + 2; i++) {
+      const entries = Array.from({ length: i }, (_, k) => ({ id: k }));
+      await saveAutoBackup(lib(entries), 'u1', new Date(`2026-08-0${i}T12:00:00Z`));
+    }
+    expect((await listAutoBackups(undefined, { owner: 'u1' })).map((b) => b.counts.watched)).toEqual([5, 4, 3]);
+    expect(await listAutoBackups(undefined, { owner: 'u2' })).toHaveLength(1);
+    expect(await listAutoBackups(undefined, { owner: null })).toHaveLength(1);
+    expect(await listAutoBackups()).toHaveLength(MAX_SNAPSHOTS + 2);
+  });
+
   it('no rompe nada si IndexedDB no está disponible', async () => {
     expect(await saveAutoBackup(lib([{ id: 1 }]), null, new Date(), brokenFactory)).toBeNull();
     expect(await listAutoBackups(brokenFactory)).toEqual([]);
@@ -73,7 +86,7 @@ describe('useAutoBackup', () => {
   beforeEach(async () => { cleanup(); await clearAutoBackups(); localStorage.clear(); });
 
   const props = (over = {}) => ({
-    schedule: { Lunes: [{ id: 1 }] }, watchedList: [], watchLater: [], customLists: [], owner: 'u1', ...over,
+    schedule: { Lunes: [{ id: 1 }] }, watchedList: [], watchLater: [], customLists: [], owner: 'u1', authResolved: true, ...over,
   });
 
   it('guarda una copia cuando hay datos', async () => {
@@ -89,8 +102,24 @@ describe('useAutoBackup', () => {
     expect(await listAutoBackups()).toHaveLength(1);
   });
 
+  it('no guarda mientras la sesión se resuelve, ni a nombre de invitado', async () => {
+    // Al montar, `owner` todavía es null aunque haya un usuario con sesión.
+    const { rerender } = renderHook((p) => useAutoBackup(p), { initialProps: props({ owner: null, authResolved: false }) });
+    await new Promise((resolve) => { setTimeout(resolve, 30); });
+    expect(await listAutoBackups()).toHaveLength(0);
+    rerender(props({ owner: 'u1', authResolved: true }));
+    expect(await waitForCount(1)).toBe(true);
+    expect((await listAutoBackups())[0].owner).toBe('u1');
+  });
+
+  it('sin `authResolved` no hace copias (comportamiento seguro por defecto)', async () => {
+    renderHook(() => useAutoBackup({ schedule: { Lunes: [{ id: 1 }] }, watchedList: [], watchLater: [], customLists: [], owner: null }));
+    await new Promise((resolve) => { setTimeout(resolve, 30); });
+    expect(await listAutoBackups()).toHaveLength(0);
+  });
+
   it('no guarda nada si la biblioteca está vacía', async () => {
-    renderHook(() => useAutoBackup({ schedule: {}, watchedList: [], watchLater: [], customLists: [], owner: null }));
+    renderHook(() => useAutoBackup({ schedule: {}, watchedList: [], watchLater: [], customLists: [], owner: null, authResolved: true }));
     await new Promise((resolve) => { setTimeout(resolve, 30); });
     expect(await listAutoBackups()).toHaveLength(0);
   });
@@ -102,7 +131,7 @@ describe('BackupModal con copias automáticas', () => {
   it('las lista y las restaura desde el modal', async () => {
     await saveAutoBackup(lib([{ id: 42, title: 'Recuperado' }]), 'u1', new Date('2026-08-01T10:00:00Z'));
     const onRestore = vi.fn();
-    render(<BackupModal onClose={() => {}} onExport={() => {}} onRestore={onRestore} />);
+    render(<BackupModal onClose={() => {}} onExport={() => {}} onRestore={onRestore} owner="u1" />);
 
     expect(await screen.findByText(/Copias automáticas/)).toBeInTheDocument();
     fireEvent.click((await screen.findAllByRole('button', { name: 'Restaurar' }))[0]);
@@ -111,5 +140,22 @@ describe('BackupModal con copias automáticas', () => {
     expect(onRestore).toHaveBeenCalledWith(expect.objectContaining({
       watchedList: [{ id: 42, title: 'Recuperado' }],
     }));
+  });
+
+  it('lista solo las copias de la cuenta activa', async () => {
+    await saveAutoBackup(lib([{ id: 1 }]), 'u1', new Date('2026-08-01T10:00:00Z'));
+    await saveAutoBackup(lib([{ id: 1 }, { id: 2 }]), 'u2', new Date('2026-08-02T10:00:00Z'));
+    await saveAutoBackup(lib([{ id: 1 }, { id: 2 }, { id: 3 }]), null, new Date('2026-08-03T10:00:00Z'));
+    render(<BackupModal onClose={() => {}} onExport={() => {}} onRestore={() => {}} owner="u2" />);
+    expect(await screen.findByText(/Copias automáticas/)).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Restaurar' })).toHaveLength(1);
+    expect(screen.getByText(/2 anime/)).toBeInTheDocument();
+  });
+
+  it('sin cuenta lista solo las copias de invitado', async () => {
+    await saveAutoBackup(lib([{ id: 1 }]), 'u1', new Date('2026-08-01T10:00:00Z'));
+    render(<BackupModal onClose={() => {}} onExport={() => {}} onRestore={() => {}} />);
+    await new Promise((resolve) => { setTimeout(resolve, 30); });
+    expect(screen.queryByText(/Copias automáticas/)).toBeNull();
   });
 });

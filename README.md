@@ -31,8 +31,6 @@ opcional en la nube.
   AniList/Kitsu, y con TMDB configurado, disponibilidad por país de películas
   y series (datos de JustWatch) + trailers de YouTube.
 - **🌸 Descubrimiento** — animes de la temporada actual y top histórico.
-- **📊 Estadísticas** — composición de tu biblioteca, distribución de tus
-  puntuaciones y géneros favoritos.
 - **💾 Copia de seguridad** — exportá/importá todos tus datos en un `.json`, más
   una copia automática diaria en el navegador para salir de un cambio accidental.
 - **📥 Importar desde AniList** — traé tu lista por nombre de usuario.
@@ -185,7 +183,7 @@ instalada y en el hosting estático, sin configuración extra del servidor.
 
 El núcleo de lógica pura está migrado a TypeScript y se chequea en modo
 `strict` (`npm run typecheck`): `constants`, `schemas/anime`, `libraryEdits`,
-`tracking`, `agenda`, `services/searchText`, `idMigration`, `syncMerge`,
+`tracking`, `services/searchText`, `idMigration`, `syncMerge`,
 `cloudCodec`, `router`, `autoBackup`, `errorReporter`, `i18n` y `utils`. El resto
 de la app sigue en JavaScript y se migra **de a poco**.
 

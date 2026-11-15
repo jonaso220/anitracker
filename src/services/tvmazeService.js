@@ -74,8 +74,13 @@ function pickEpisode({ previousepisode: prev, nextepisode: next } = {}, now) {
  * Próximo episodio (o el que acaba de salir) de series de TVMaze, con fecha y
  * hora exactas y el número dentro de su temporada. Devuelve
  * { [tvmazeId]: airingInfo }; quien llama lo asocia a sus ids internos.
+ *
+ * Una serie que falla (429, red, 5xx) no frena a las demás, pero el resultado
+ * queda incompleto: se avisa por `onPartialFailure(error)` para que quien
+ * llama no lo guarde como completo. Si fallan todas, lanza. Un 404 (la serie
+ * ya no existe en TVMaze) no es una falla: simplemente no tiene emisión.
  */
-export async function fetchTvmazeAiringInfo({ tvmazeIds = [], signal, now = new Date() } = {}) {
+export async function fetchTvmazeAiringInfo({ tvmazeIds = [], signal, now = new Date(), onPartialFailure } = {}) {
   if (tvmazeIds.length === 0) return {};
   const settled = [];
   for (let i = 0; i < tvmazeIds.length; i += TVMAZE_BATCH) {
@@ -83,6 +88,7 @@ export async function fetchTvmazeAiringInfo({ tvmazeIds = [], signal, now = new 
     const batch = tvmazeIds.slice(i, i + TVMAZE_BATCH);
     settled.push(...await Promise.allSettled(batch.map(async (id) => {
       const res = await fetch(`${TVMAZE_BASE}/shows/${id}?embed[]=nextepisode&embed[]=previousepisode`, { signal });
+      if (res.status === 404) return [id, null];
       if (!res.ok) throw new Error(`TVMaze HTTP ${res.status}`);
       return [id, await res.json()];
     })));
@@ -90,6 +96,7 @@ export async function fetchTvmazeAiringInfo({ tvmazeIds = [], signal, now = new 
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
   const failed = settled.filter((r) => r.status === 'rejected');
   if (failed.length === settled.length) throw failed[0].reason;
+  if (failed.length > 0) onPartialFailure?.(failed[0].reason);
 
   const result = {};
   for (const r of settled) {

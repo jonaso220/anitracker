@@ -12,7 +12,7 @@ import type { Anime, CustomList, Library, LibraryInput, Schedule } from './types
 export type LibraryHashes = Record<string, string | undefined>;
 
 /** Qué clase de diferencia detectó `inspectCloudSnapshot`. */
-export type SyncConflictKind = 'missing-base' | 'list-deletion' | 'deletion' | 'field' | 'legacy-or-entry';
+export type SyncConflictKind = 'missing-base' | 'list-deletion' | 'deletion' | 'field' | 'legacy-or-entry' | 'placement';
 
 /** Una diferencia entre dispositivos que necesita decisión del usuario. */
 export interface SyncConflict {
@@ -100,6 +100,31 @@ const textOf = (value: unknown, field: 'title' | 'name'): string | undefined => 
 };
 const conflictLabel = (l: unknown, c: unknown, key: string): string =>
   textOf(l, 'title') || textOf(c, 'title') || textOf(l, 'name') || textOf(c, 'name') || key;
+
+// Una obra vive en UN solo lugar: un día de la semana, Después o Vistas (las
+// listas personalizadas van aparte, ver `locate` en useAnimeActions). La fusión
+// trabaja por clave `contenedor|id`, así que dos movimientos distintos de la
+// misma obra parecen dos altas independientes y la dejarían en dos lugares.
+const isPlacementContainer = (container: string): boolean =>
+  container === 'w' || container === 'l' || container.startsWith('s:');
+
+/** id → contenedores principales donde está (en orden de aparición). */
+function placementsOf(entries: Map<string, unknown>): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  for (const key of entries.keys()) {
+    const sep = key.indexOf('|');
+    const container = key.slice(0, sep);
+    if (sep < 0 || !isPlacementContainer(container)) continue;
+    const id = key.slice(sep + 1);
+    out.set(id, [...(out.get(id) ?? []), container]);
+  }
+  return out;
+}
+
+const placementName = (container: string | undefined): string | undefined =>
+  container === undefined ? undefined
+    : container.startsWith('s:') ? `Semana · ${container.slice(2)}`
+      : container === 'w' ? 'Vistas' : 'Después';
 
 // Contenedores de anime: 's:<día>', 'w' (vistos), 'l' (pendientes), 'c:<lista>'.
 function containersOf(lib: LibraryInput | null | undefined): [string, Anime[]][] {
@@ -319,6 +344,25 @@ export function resolveCloudSnapshot({ base = {}, local, cloud, localRev, cloudR
   return { action: 'merge', data: mergeLibraries({ base: effectiveBase, local, cloud }) };
 }
 
+/**
+ * Deja en un solo lugar cada obra que la elección dejó en varios (y que ningún
+ * lado tenía duplicada): donde la tiene el lado elegido, o si no la tiene, el
+ * otro. Cubre el conflicto de ubicación y también un movimiento contra una
+ * edición en el lugar original (borrado vs. edición) resuelto a favor de la
+ * edición, que si no conservaría además el alta del movimiento.
+ */
+function keepSinglePlacement(entries: Map<string, unknown>, input: InspectCloudSnapshotInput, choice: 'local' | 'cloud'): void {
+  const localPlaces = placementsOf(libraryEntries(input.local));
+  const cloudPlaces = placementsOf(libraryEntries(input.cloud));
+  const [chosen, other] = choice === 'local' ? [localPlaces, cloudPlaces] : [cloudPlaces, localPlaces];
+  for (const [id, places] of placementsOf(entries)) {
+    if (places.length < 2) continue;
+    if ((localPlaces.get(id)?.length ?? 0) > 1 || (cloudPlaces.get(id)?.length ?? 0) > 1) continue;
+    const keep = [...(chosen.get(id) ?? []), ...(other.get(id) ?? [])].find((place) => places.includes(place)) ?? places[0];
+    for (const place of places) if (place !== keep) entries.delete(`${place}|${id}`);
+  }
+}
+
 // The automatic merge above is also used for rebasing edits made during a
 // save. Cloud boundaries use this stricter inspection: uncertainty is shown
 // to the owner instead of silently choosing one device's value.
@@ -372,8 +416,40 @@ export function inspectCloudSnapshot({ base = null, local, cloud, requireReview 
       }
     } else conflicts.push({ key, kind: 'legacy-or-entry', label, local: l, cloud: c });
   }
+  conflicts.push(...placementConflicts(base, local, cloud, L, C));
   if (conflicts.length) return { action: 'conflict', data: local, conflicts };
   return { ...resolveCloudSnapshot({ base, local, cloud }), conflicts };
+}
+
+// Cada lado movió la misma obra a un lugar distinto (p. ej. Lunes→Martes en
+// un dispositivo y Lunes→Miércoles en otro): la fusión la dejaría en los dos.
+// Se muestra como diferencia de "Ubicación"; `local`/`cloud` son el nombre del
+// lugar, para mostrar.
+function placementConflicts(
+  base: LibraryHashes,
+  local: LibraryInput,
+  cloud: LibraryInput,
+  L: Map<string, unknown>,
+  C: Map<string, unknown>,
+): SyncConflict[] {
+  const localPlaces = placementsOf(L);
+  const cloudPlaces = placementsOf(C);
+  // Solo puede quedar duplicada si cada lado la tiene en un lugar distinto.
+  const candidates = [...localPlaces].filter(([id, places]) => {
+    const other = cloudPlaces.get(id);
+    return places.length === 1 && other?.length === 1 && other[0] !== places[0];
+  });
+  if (!candidates.length) return [];
+  const merged = placementsOf(libraryEntries(mergeLibraries({ base, local, cloud })));
+  return candidates.flatMap(([id, [localPlace]]): SyncConflict[] => {
+    if ((merged.get(id)?.length ?? 0) < 2) return [];
+    const cloudPlace = cloudPlaces.get(id)?.[0];
+    const l = L.get(`${localPlace}|${id}`), c = C.get(`${cloudPlace}|${id}`);
+    return [{
+      key: `p|${id}`, kind: 'placement', label: `${conflictLabel(l, c, id)} · Ubicación`,
+      local: placementName(localPlace), cloud: placementName(cloudPlace),
+    }];
+  });
 }
 
 // Resolve only the conflicts displayed for these exact snapshots. All other
@@ -386,6 +462,8 @@ export function chooseSyncConflicts(input: InspectCloudSnapshotInput, choice: 'l
   const entries = libraryEntries(mergeLibraries({ base: input.base ?? {}, local: input.local, cloud: input.cloud }));
   for (const conflict of conflicts) {
     const value = conflict[choice];
+    // Se resuelve abajo, junto con cualquier otra obra que haya quedado en dos lugares.
+    if (conflict.kind === 'placement') continue;
     if (conflict.kind === 'list-deletion') {
       const id = conflict.key.slice(5);
       for (const key of entries.keys()) {
@@ -404,5 +482,6 @@ export function chooseSyncConflicts(input: InspectCloudSnapshotInput, choice: 'l
     } else if (value === undefined) entries.delete(conflict.key);
     else entries.set(conflict.key, value);
   }
+  keepSinglePlacement(entries, input, choice);
   return rebuildLibrary(entries, [libraryEntries(input.cloud), libraryEntries(input.local)]);
 }

@@ -5,6 +5,7 @@ import { fetchAiringByIds, anilistIdsOf } from '../services/anilistService';
 import { fetchVikiAiringInfo, vikiIdOf } from '../services/vikiService';
 import { fetchTvmazeAiringInfo, tvmazeIdOf } from '../services/tvmazeService';
 import { fetchTmdbAiringInfo, tmdbTvIdOf, TMDB_ENABLED } from '../services/tmdbService';
+import { refreshAiringInfo, isAiringStale } from '../utils';
 
 const AIRING_CACHE_KEY = 'anitracker-airing-cache';
 const AIRING_TIME_KEY = 'anitracker-airing-time';
@@ -78,95 +79,202 @@ function airingRequest(schedule) {
 
 const NO_AIRING = {};
 
+// Cada cuánto se recalcula "En 2h 15m" / "¡Ya disponible!" con la app abierta.
+const AIRING_TICK_MS = 60 * 1000;
+
+const hasTimedAiring = (data) => Object.values(data).some((info) => Number.isFinite(info?.airingAt));
+
+// Lo que bajó de la red guarda la foto del momento del fetch: los campos que
+// dependen de la hora se recalculan contra `now` (misma forma, mismos ids).
+function deriveAiring(data, now) {
+  if (data === NO_AIRING || !hasTimedAiring(data)) return data;
+  const at = new Date(now);
+  const out = {};
+  for (const [id, info] of Object.entries(data)) out[id] = refreshAiringInfo(info, at);
+  return out;
+}
+
+// Un episodio que ya pasó y dejó de contar como "disponible" es info vieja:
+// hace falta bajar el siguiente.
+const hasStaleAiring = (data) => Object.values(data).some((info) => isAiringStale(info));
+
 export function useAnimeData(schedule) {
   const [searchQuery, setQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchPartial, setSearchPartial] = useState([]);
   // Solo lo que devuelve la red; el resto (semana vacía, cache fresca) se deriva.
-  const [fetchedAiring, setFetchedAiring] = useState({ key: null, data: NO_AIRING, error: null });
+  // `at`: cuándo llegó, para no recalcular contra un reloj más viejo que el dato.
+  const [fetchedAiring, setFetchedAiring] = useState({ key: null, data: NO_AIRING, error: null, at: 0 });
   const [airingRetry, setAiringRetry] = useState(0);
+  // Pedido de revisar la cache (vuelta a primer plano, episodio vencido): el
+  // efecto solo consulta si la cache de esta semana ya no está fresca.
+  const [airingRefresh, setAiringRefresh] = useState(0);
+  // Reloj de la info de emisión: avanza de a minuto mientras la app se ve.
+  const [now, setNow] = useState(() => Date.now());
 
   const searchDebounceRef = useRef(null);
   const searchIdRef = useRef(0);
   const searchAbortRef = useRef(null);
   const airingDebounceRef = useRef(null);
-  const airingAbortRef = useRef(null);
+  // { key, controller } del pedido de emisión en curso (o en el debounce).
+  const airingInFlightRef = useRef(null);
   const airingForceRef = useRef(false);
+  // Último intento de consulta (ok o no): limita los reintentos automáticos.
+  const airingAttemptRef = useRef(0);
 
   // --- Airing info ---
   const request = useMemo(() => airingRequest(schedule), [schedule]);
+  // El efecto depende solo de `request.key`: cada edición de la biblioteca
+  // (+1, nota, arrastrar) crea otro `request` con los mismos ids y no debe
+  // abortar ni reiniciar las consultas. El pedido vigente se lee por ref.
+  const requestRef = useRef(request);
+  useEffect(() => { requestRef.current = request; }, [request]);
   const cachedAiring = useMemo(() => (request.key ? readAiringCache() : null), [request.key]);
 
   // Lo que se muestra: la respuesta de la red para esta semana; si no hay,
   // la cache fresca de esta misma semana; y mientras se consulta, lo último
   // que haya (los datos van por id, así que siguen valiendo para lo que quedó).
-  let airingData = fetchedAiring.data;
+  let rawAiring = fetchedAiring.data;
   let airingError = fetchedAiring.error;
   if (!request.key) {
-    airingData = NO_AIRING;
+    rawAiring = NO_AIRING;
     airingError = null;
   } else if (fetchedAiring.key !== request.key && cachedAiring) {
     if (cachedAiring.fresh && cachedAiring.ids === request.key) {
-      airingData = cachedAiring.data;
+      rawAiring = cachedAiring.data;
       airingError = null;
     } else if (fetchedAiring.key === null) {
-      airingData = cachedAiring.data;
+      rawAiring = cachedAiring.data;
     }
   }
+  // Misma identidad mientras no cambien los datos ni pase el minuto: las
+  // tarjetas están en React.memo y reciben `airingData` entero.
+  // Al minuto, como un reloj de pared: a las 10:01 un estreno de las 12:00 es
+  // "En 1h 59m" durante todo ese minuto.
+  const latest = Math.max(now, rawAiring === fetchedAiring.data ? fetchedAiring.at : 0);
+  const clock = latest - (latest % AIRING_TICK_MS);
+  const airingData = useMemo(() => deriveAiring(rawAiring, clock), [rawAiring, clock]);
+  const ticking = rawAiring !== NO_AIRING && hasTimedAiring(rawAiring);
+
+  // ¿Conviene volver a consultar? Solo si la cache de esta semana venció y el
+  // último intento fue hace más que el TTL (un error no reintenta en bucle).
+  const rawAiringRef = useRef(rawAiring);
+  useEffect(() => { rawAiringRef.current = rawAiring; }, [rawAiring]);
+  const maybeRefreshAiring = useCallback(({ onlyIfStale }) => {
+    const { key } = requestRef.current;
+    if (!key) return;
+    if (onlyIfStale && !hasStaleAiring(rawAiringRef.current)) return;
+    const cached = readAiringCache();
+    if (cached?.fresh && cached.ids === key) return;
+    if (Date.now() - airingAttemptRef.current < AIRING_TTL_MS) return;
+    setAiringRefresh((value) => value + 1);
+  }, []);
+
+  // Tic de minuto (alineado al cambio de minuto) mientras hay algo con hora y
+  // el documento está visible. Al volver a primer plano se actualiza al
+  // instante y, si la cache venció, se vuelve a consultar.
+  useEffect(() => {
+    let timer = null;
+    const scheduleTick = () => {
+      clearTimeout(timer);
+      if (!ticking || document.visibilityState === 'hidden') return;
+      timer = setTimeout(() => {
+        setNow(Date.now());
+        maybeRefreshAiring({ onlyIfStale: true });
+        scheduleTick();
+      }, AIRING_TICK_MS - (Date.now() % AIRING_TICK_MS) + 50);
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        if (ticking) setNow(Date.now());
+        maybeRefreshAiring({ onlyIfStale: false });
+      }
+      scheduleTick();
+    };
+    scheduleTick();
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [ticking, maybeRefreshAiring]);
 
   useEffect(() => {
-    const { refs, malIds, anilistIds, vikiIds, tvmazeRefs, tmdbRefs, key } = request;
-    if (!key) return;
-    const cached = readAiringCache();
-    if (cached?.fresh && cached.ids === key && !airingForceRef.current) return;
+    const { key } = requestRef.current;
+    const inFlight = airingInFlightRef.current;
+    const forced = airingForceRef.current;
     airingForceRef.current = false;
+    if (!key) {
+      if (airingDebounceRef.current) clearTimeout(airingDebounceRef.current);
+      inFlight?.controller.abort();
+      airingInFlightRef.current = null;
+      return;
+    }
+    // Ya se está consultando esta misma semana: que termine.
+    if (!forced && inFlight?.key === key) return;
+    const cached = readAiringCache();
+    if (!forced && cached?.fresh && cached.ids === key) return;
 
     if (airingDebounceRef.current) clearTimeout(airingDebounceRef.current);
-    if (airingAbortRef.current) airingAbortRef.current.abort();
+    inFlight?.controller.abort();
     const controller = new AbortController();
-    airingAbortRef.current = controller;
+    const current = { key, controller };
+    airingInFlightRef.current = current;
+    const done = () => { if (airingInFlightRef.current === current) airingInFlightRef.current = null; };
 
     airingDebounceRef.current = setTimeout(async () => {
+      airingAttemptRef.current = Date.now();
+      // Los ids de la semana no cambiaron (misma key): vale el pedido más reciente.
+      const { refs, malIds, anilistIds, vikiIds, tvmazeRefs, tmdbRefs } = requestRef.current;
       const toError = (err) => ({ kind: !navigator.onLine ? 'offline' : String(err?.message).includes('429') ? 'rate-limit' : 'service' });
       try {
         // Todas las fuentes en paralelo: si una falla se muestra lo de las
-        // otras, con el aviso de reintento y sin cachear.
+        // otras, con el aviso de reintento y sin cachear. Lo mismo si una
+        // fuente respondió solo por algunas series (p. ej. un 429 de TVMaze).
         const signal = controller.signal;
+        const partial = [];
+        const onPartialFailure = (err) => { partial.push(err); };
         const tvmazeIds = [...new Set(tvmazeRefs.map((r) => r.sourceId))];
         const tmdbIds = [...new Set(tmdbRefs.map((r) => r.sourceId))];
         const settled = await Promise.allSettled([
           ...(refs.length ? [fetchAiringByIds({ malIds, anilistIds, signal }).then((res) => airingByAppId(refs, res))] : []),
-          ...(vikiIds.length ? [fetchVikiAiringInfo({ vikiIds, signal })] : []),
-          ...(tvmazeIds.length ? [fetchTvmazeAiringInfo({ tvmazeIds, signal }).then((res) => bySourceId(tvmazeRefs, res))] : []),
-          ...(tmdbIds.length ? [fetchTmdbAiringInfo({ tmdbIds, signal }).then((res) => bySourceId(tmdbRefs, res))] : []),
+          ...(vikiIds.length ? [fetchVikiAiringInfo({ vikiIds, signal, onPartialFailure })] : []),
+          ...(tvmazeIds.length ? [fetchTvmazeAiringInfo({ tvmazeIds, signal, onPartialFailure }).then((res) => bySourceId(tvmazeRefs, res))] : []),
+          ...(tmdbIds.length ? [fetchTmdbAiringInfo({ tmdbIds, signal, onPartialFailure }).then((res) => bySourceId(tmdbRefs, res))] : []),
         ]);
         const failed = settled.filter((s) => s.status === 'rejected');
         if (failed.length === settled.length) throw failed[0].reason;
         if (!controller.signal.aborted) {
           const data = Object.assign({}, ...settled.map((s) => (s.status === 'fulfilled' ? s.value : {})));
-          if (failed.length === 0) {
-            setFetchedAiring({ key, data, error: null });
+          const problems = [...failed.map((s) => s.reason), ...partial];
+          if (problems.length === 0) {
+            setFetchedAiring({ key, data, error: null, at: Date.now() });
             writeAiringCache(data, key);
           } else {
-            console.error('[AniTracker] Partial airing check failed:', failed[0].reason);
-            setFetchedAiring({ key, data, error: toError(failed[0].reason) });
+            console.error('[AniTracker] Partial airing check failed:', problems[0]);
+            setFetchedAiring({ key, data, error: toError(problems[0]), at: Date.now() });
           }
         }
       } catch (err) {
         if (err.name !== 'AbortError') {
           console.error('[AniTracker] Airing check failed:', err);
           // Se conserva lo que ya se mostraba, con el aviso de reintento.
-          setFetchedAiring((prev) => ({ key, data: prev.key === null ? (cached?.data || NO_AIRING) : prev.data, error: toError(err) }));
+          setFetchedAiring((prev) => ({ key, data: prev.key === null ? (cached?.data || NO_AIRING) : prev.data, error: toError(err), at: Date.now() }));
         }
+      } finally {
+        done();
       }
     }, 1000);
+  }, [request.key, airingRetry, airingRefresh]);
 
-    return () => {
-      if (airingDebounceRef.current) clearTimeout(airingDebounceRef.current);
-      controller.abort();
-    };
-  }, [request, airingRetry]);
+  // Al desmontar se corta lo que esté en curso (y se olvida, así el montaje
+  // doble de StrictMode vuelve a pedir en vez de esperar un pedido abortado).
+  useEffect(() => () => {
+    if (airingDebounceRef.current) clearTimeout(airingDebounceRef.current);
+    airingInFlightRef.current?.controller.abort();
+    airingInFlightRef.current = null;
+  }, []);
 
   // --- Search ---
   const setSearchQuery = useCallback((query) => {

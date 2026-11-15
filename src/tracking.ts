@@ -52,7 +52,3 @@ export const trackingAiring = (anime: Anime, airing: AiringInfo | undefined): Ai
   if (airing.season) return !anime.currentSeason || anime.currentSeason === airing.season ? airing : undefined;
   return seasonNumber(anime) > 1 ? undefined : airing;
 };
-
-// Si los números de episodio de la emisión se pueden comparar con currentEp.
-export const airingMatchesProgress = (anime: Anime, airing: AiringInfo | undefined): boolean =>
-  !airing || !airing.season || airing.season === seasonNumber(anime);

@@ -40,13 +40,20 @@ store global ni context; el estado vive en `App.jsx` y baja por props.
     los snapshots de *undo*).
   - `useAnimeActions` — TODAS las mutaciones (agregar/mover/marcar/borrar,
     listas personalizadas, import). Recibe setters y refs por parámetro.
+    Una obra vive en **un solo lugar** (un día, Después o Vistas; las listas
+    personalizadas van aparte): agregar algo que ya está guardado lo mueve con
+    su progreso (`locate`/`resolveIncoming`), nunca lo duplica en ep. 0.
   - `useAnimeData` — búsqueda (debounce + `AbortController`) e info de emisión
     (cache en localStorage con TTL). La emisión sale de AniList/MAL, Viki,
     TVMaze (fecha y hora exactas, de a tandas de 18 por su límite) y TMDB
     (solo fecha: `dateOnly`), cada una por su id de fuente vía `sourceKey`.
     TVMaze y TMDB numeran por temporada (`season` en la info): la tarjeta
-    muestra "T38 · Ep. 2" y la agenda solo cuenta pendientes si coincide con
-    la temporada que se sigue (`airingMatchesProgress` en `tracking.ts`).
+    muestra "T38 · Ep. 2" (`trackingAiring` en `tracking.ts`). Los campos que
+    dependen de la hora ("En 2h", "hoy", "¡Ya disponible!") se recalculan cada
+    minuto con `refreshAiringInfo`; el fetch depende solo de `request.key`, así
+    que editar la biblioteca no vuelve a consultar las fuentes. TVMaze, Viki y
+    TMDB avisan fallas parciales con `onPartialFailure` y ese resultado no se
+    cachea.
   - `useFirebase` — compositor de la auth y el sync; mantiene la API pública
     que consume `App.jsx`. La lógica está partida en dos hooks, cada uno con una
     responsabilidad:
@@ -58,7 +65,11 @@ store global ni context; el estado vive en `App.jsx` y baja por props.
       (`f|clave|campo`), así que dos dispositivos que tocaron campos distintos
       se fusionan solos; si tocaron el mismo campo, o hay un borrado contra una
       edición, la sincronización **se pausa** y el usuario elige (`SyncStatus` →
-      `chooseSyncConflicts`, con checkpoint y export en `syncRecovery.js`).
+      `chooseSyncConflicts`, con checkpoint y export en `syncRecovery.js`; se
+      guardan solo los 3 últimos checkpoints por cuenta para no llenar la
+      cuota). Mover la misma obra a lugares distintos en dos dispositivos es un
+      conflicto de tipo `placement`. Un documento con `syncProtocol` más nuevo
+      tampoco se lee: la sync queda en `'update-required'`.
       El guardado pasa por `cloudSync.js`, que lee y fusiona **dentro de una
       transacción** y sella `syncProtocol`/`syncRevision` en cada escritura. Sin
       base (cuenta que nunca sincronizó acá, p. ej. datos de invitado) se
@@ -130,10 +141,12 @@ store global ni context; el estado vive en `App.jsx` y baja por props.
 
 Los IDs de anime codifican la fuente: MAL `< 100000`, Kitsu `+100000`, AniList
 sin MAL `300000 + id` si el id de AniList es `< 100000` y `800000000 + id` desde
-ahí (antes caía en el rango de TVMaze), TVMaze `+400000`, iTunes `+500000`, TMDB
+ahí (antes caía en el rango de TVMaze), TVMaze `+400000`, iTunes
+`10000000000 + id` (antes `+500000`, que chocaba con TMDB/Viki/AniList), TMDB
 película `+600000000` / serie `+900000000`, Viki `+700000000`. La identidad real
 va por `sourceKey` (`anilist:N`, `tvmaze:N`…), nunca por el rango.
-`idMigration.ts` pasa al rango nuevo los AniList guardados con el id viejo al
+`idMigration.ts` pasa al rango nuevo los AniList y los iTunes (por `sourceKey`
+`itunes:N`) guardados con el id viejo al
 leer localStorage, cuentas guardadas, snapshots de la nube y copias de
 seguridad (determinista, idempotente; si queda la misma obra dos veces, gana
 la de más progreso).
@@ -173,7 +186,7 @@ con `strict`; los `.js`/`.jsx` siguen sin chequear (`allowJs: true`,
 `checkJs: false` en `tsconfig.json`).
 
 Ya migrados: `constants`, `types/anime`, `schemas/anime`, `libraryEdits`,
-`tracking`, `agenda`, `services/searchText`, `idMigration`, `syncMerge`,
+`tracking`, `services/searchText`, `idMigration`, `syncMerge`,
 `cloudCodec`, `router`, `autoBackup`, `errorReporter`, `i18n` y `utils`.
 
 **Para convertir un archivo**: cambiale la extensión a `.ts` (o `.tsx`) y
@@ -254,6 +267,10 @@ Vitest + Testing Library (jsdom), setup en `src/test/setup.js`. Al tocar
   poder guardarlas. Nunca guardar respuestas opacas (~7 MB de cuota cada una
   en Chrome: el navegador podría borrar todos los datos del sitio). Tests en
   `src/test/serviceWorker.test.js` (ejecutan el archivo real con fakes).
+  El build (`swPrecache` en `vite.config.js`) escribe en `dist/sw.js` la lista
+  de chunks (`self.__PRECACHE_ASSETS`): se precachean al instalar para que las
+  pestañas y modales lazy abran sin conexión, y al activar se borran los
+  `/assets/*` viejos. En dev la lista queda vacía.
 - Firebase config admite override por env (`VITE_FIREBASE_*`, ver
   `.env.example`) con *fallback* al proyecto público compartido.
 - TMDB es opcional: sin `VITE_TMDB_API_KEY` la fuente no aparece en la

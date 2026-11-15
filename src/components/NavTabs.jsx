@@ -1,12 +1,13 @@
 import React, { useRef } from 'react';
+import { t } from '../i18n';
 
 const TABS = [
-  { id: 'schedule',   icon: '📅', labelKey: 'Semana' },
-  { id: 'watchLater', icon: '🕐', labelKey: 'Después' },
-  { id: 'watched',    icon: '✓',  labelKey: 'Vistas' },
-  { id: 'lists',      icon: '📋', labelKey: 'Listas' },
-  { id: 'season',     icon: '🌸', labelKey: 'Temporada' },
-  { id: 'directory',  icon: '📚', labelKey: 'Directorio' },
+  { id: 'schedule',   icon: '📅', labelKey: 'nav.schedule', fallback: 'Semana' },
+  { id: 'watchLater', icon: '🕐', labelKey: 'nav.watchLater', fallback: 'Después' },
+  { id: 'watched',    icon: '✓',  labelKey: 'nav.watched', fallback: 'Vistas' },
+  { id: 'lists',      icon: '📋', labelKey: 'nav.lists', fallback: 'Listas' },
+  { id: 'season',     icon: '🌸', labelKey: 'nav.season', fallback: 'Temporada' },
+  { id: 'directory',  icon: '📚', labelKey: 'nav.directory', fallback: 'Directorio' },
 ];
 
 const NavTabs = ({ activeTab, counts, onChange }) => {
@@ -20,24 +21,25 @@ const NavTabs = ({ activeTab, counts, onChange }) => {
     else return;
     event.preventDefault(); refs.current[next]?.focus(); onChange(TABS[next].id);
   };
-  return <nav className="nav-tabs" role="tablist" aria-label="Secciones">
-    {TABS.map((t) => {
-      const count = counts[t.id];
-      const isActive = activeTab === t.id;
+  return <nav className="nav-tabs" role="tablist" aria-label={t('nav.sections', 'Secciones')}>
+    {TABS.map((tab) => {
+      const count = counts[tab.id];
+      const isActive = activeTab === tab.id;
+      const label = t(tab.labelKey, tab.fallback);
       return (
         <button
-          key={t.id}
+          key={tab.id}
           role="tab"
-          aria-label={count ? `${t.labelKey} (${count})` : t.labelKey}
+          aria-label={count ? t('nav.tabWithCount', '{label} ({count})', { label, count }) : label}
           aria-selected={isActive}
           tabIndex={isActive ? 0 : -1}
-          ref={(node) => { refs.current[TABS.indexOf(t)] = node; }}
-          onKeyDown={(event) => onKeyDown(event, TABS.indexOf(t))}
+          ref={(node) => { refs.current[TABS.indexOf(tab)] = node; }}
+          onKeyDown={(event) => onKeyDown(event, TABS.indexOf(tab))}
           className={`nav-tab ${isActive ? 'active' : ''}`}
-          onClick={() => onChange(t.id)}
+          onClick={() => onChange(tab.id)}
         >
-          <span aria-hidden="true">{t.icon}</span>
-          <span className="tab-label"> {t.labelKey}</span>
+          <span aria-hidden="true">{tab.icon}</span>
+          <span className="tab-label"> {label}</span>
           {count ? <span className="nav-tab-count" aria-hidden="true">{count}</span> : null}
         </button>
       );

@@ -586,7 +586,8 @@ describe('protected sync choices and visible status', () => {
     await act(async () => window.dispatchEvent(new Event('offline')));
     expect(result.current.syncStatus).toBe('offline');
     await act(async () => window.dispatchEvent(new Event('online')));
-    expect(result.current.syncStatus).toBe('pending');
+    // A healthy listener is kept (no resubscription), so nothing is pending.
+    expect(result.current.syncStatus).toBe('synced');
   });
   it('does not claim synchronized when a save is still in flight after undo', async () => {
     const { result } = await loginAndSubscribe();

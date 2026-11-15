@@ -10,7 +10,7 @@ const WeekOnboarding = ({
   const actions = [
     watchLaterCount > 0 && {
       key: 'watchLater', icon: '🕐', label: t('onboarding.watchLater'), onClick: onWatchLater,
-      hint: watchLaterCount === 1 ? 'Tenés 1 anime guardado para ver' : `Tenés ${watchLaterCount} animes guardados para ver`,
+      hint: t('onboarding.watchLaterHint', undefined, { count: watchLaterCount }),
     },
     { key: 'search', icon: '🔍', label: t('onboarding.search'), hint: t('onboarding.searchHint'), onClick: onSearch },
     { key: 'season', icon: '📺', label: t('onboarding.season'), hint: t('onboarding.seasonHint'), onClick: onSeason },

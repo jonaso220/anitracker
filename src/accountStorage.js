@@ -1,5 +1,6 @@
 import { daysOfWeek } from './constants';
 import { migrateLibrary } from './idMigration';
+import { t } from './i18n';
 
 const ACTIVE_KEY = 'anitracker-account-state';
 const accountKey = (uid) => `anitracker-account:${uid}`;
@@ -17,7 +18,7 @@ function readState(key) {
   const value = JSON.parse(raw);
   if (!value?.data || !value.data.schedule || !Array.isArray(value.data.watchedList)
     || !Array.isArray(value.data.watchLater) || !Array.isArray(value.data.customLists)) {
-    throw new Error('La copia local de la cuenta no es válida.');
+    throw new Error(t('sync.accountCopyInvalid'));
   }
   return { ...value, data: migrateLibrary(value.data).data };
 }
@@ -33,6 +34,10 @@ export function persistAccountLibrary(owner, data, rev) {
 
 export function selectLibraryAccount(uid, owner, data, rev) {
   let next = { owner: uid, data, rev };
+  // Misma cuenta (reintento, reconexión, volver a entrar): la ranura activa ya
+  // es suya y el auto-sync la reescribe en cada edición. No se vuelve a escribir
+  // la biblioteca entera: con la cuota llena eso impedía arrancar el listener.
+  if (owner === uid) return next;
   if (owner && owner !== uid) {
     // Save the outgoing library before replacing anything. Storage failures
     // abort the switch, so unsynced edits cannot be silently discarded.

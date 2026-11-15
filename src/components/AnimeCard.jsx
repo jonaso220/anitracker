@@ -47,8 +47,8 @@ const AnimeCard = ({
   const epLabel = airing ? airingEpisodeLabel(airing) : '';
   const airingText = airing ? (
     airing.hasAired ? `🆕 ${epLabel}` :
-    airing.isToday ? `🔴 ${epLabel} hoy` :
-    airing.isTomorrow ? `📢 ${epLabel} mañana` : null
+    airing.isToday ? `🔴 ${t('card.airingToday', '{episode} hoy', { episode: epLabel })}` :
+    airing.isTomorrow ? `📢 ${t('card.airingTomorrow', '{episode} mañana', { episode: epLabel })}` : null
   ) : null;
 
   // Episodes further out than tomorrow get a hover-only strip with the airing
@@ -94,8 +94,8 @@ const AnimeCard = ({
               type="button"
               className="quick-btn quick-ep"
               onClick={handleQuickEp}
-              title={`Marcar episodio ${ep + 1} como visto`}
-              aria-label="Sumar un episodio"
+              title={t('card.markEpisode', 'Marcar episodio {episode} como visto', { episode: ep + 1 })}
+              aria-label={t('card.addEpisode', 'Sumar un episodio')}
             >
               <span
                 key={`value-${episodeFeedback}`}
@@ -122,8 +122,8 @@ const AnimeCard = ({
               rel="noopener noreferrer"
               className="quick-btn quick-watch"
               onClick={(e) => e.stopPropagation()}
-              title={`Ver en ${platform.name}`}
-              aria-label={`Ver en ${platform.name}`}
+              title={t('detail.watchOn', 'Ver en {platform}', { platform: platform.name })}
+              aria-label={t('detail.watchOn', 'Ver en {platform}', { platform: platform.name })}
               style={{ '--platform-color': platform.color }}
             >
               <span className="quick-watch-label">{platform.label}</span>
@@ -162,7 +162,7 @@ const AnimeCard = ({
         <div className="img-fallback" style={{ display: coverSrc ? 'none' : 'flex' }}>{anime.title?.charAt(0) || '?'}</div>
 
         {/* Top-left affordances */}
-        {anime.paused && !isWatched && <span className="card-paused-badge">En pausa</span>}
+        {anime.paused && !isWatched && <span className="card-paused-badge">{t('card.paused', 'En pausa')}</span>}
         {isDraggable && <span className="anime-card-grip" aria-hidden="true">⋮⋮</span>}
 
         {/* Top-right: rating */}
@@ -196,25 +196,34 @@ const AnimeCard = ({
 
         {/* Slim progress bar at the very bottom of the cover */}
         {!showTracking && (hasProgress || isComplete) && (
-          <div className="anime-card-progress" aria-label={`${ep} de ${total} episodios`}>
+          <div className="anime-card-progress" aria-label={t('card.progressOf', '{episode} de {total} episodios', { episode: ep, total })}>
             <div className={`anime-card-progress-fill ${isComplete ? 'complete' : ''}`} style={{ width: `${pct}%` }} />
           </div>
         )}
 
         {/* Status badge for watched view */}
         {isWatched && (
-          <div className={`anime-card-status-pill ${anime.finished ? 'finished' : 'dropped'}`}>
-            {anime.finished ? '✓' : '⏸'}
+          <div
+            className={`anime-card-status-pill ${anime.finished ? 'finished' : 'dropped'}`}
+            role="img"
+            aria-label={anime.finished ? t('card.statusFinished', 'Completada') : t('card.statusDropped', 'Dropeada')}
+            title={anime.finished ? t('card.statusFinished', 'Completada') : t('card.statusDropped', 'Dropeada')}
+          >
+            <span aria-hidden="true">{anime.finished ? '✓' : '✗'}</span>
           </div>
         )}
       </div>
       {showTracking && <div className="card-tracking">
         <div className="card-progress-copy">
-          <strong>{anime.currentSeason ? `T${anime.currentSeason} · ` : ''}{ep}{total > 0 ? `/${total}` : ep === 1 ? ' episodio' : ' episodios'}</strong>
-          <span>{anime.paused && !isWatched ? `En pausa${day ? ` · ${day}` : ''}` : total > 0 ? (isComplete ? 'Al día' : `Faltan ${Math.max(0, total - ep)}`) : 'Total por confirmar'}</span>
+          <strong>{anime.currentSeason ? `T${anime.currentSeason} · ` : ''}{total > 0 ? `${ep}/${total}` : t('card.episodeCount', '{count} episodios', { count: ep })}</strong>
+          <span>{anime.paused && !isWatched
+            ? (day ? t('card.pausedOn', 'En pausa · {day}', { day }) : t('card.paused', 'En pausa'))
+            : total > 0
+              ? (isComplete ? t('card.caughtUp', 'Al día') : t('card.remaining', 'Faltan {count}', { count: Math.max(0, total - ep) }))
+              : t('card.totalUnknown', 'Total por confirmar')}</span>
         </div>
         {quickActions}
-        {total > 0 && <div className="card-progress-track" role="progressbar" aria-label="Progreso de episodios" aria-valuemin={0} aria-valuemax={total} aria-valuenow={Math.min(ep, total)}><span style={{ width: `${pct}%` }} /></div>}
+        {total > 0 && <div className="card-progress-track" role="progressbar" aria-label={t('card.progress', 'Progreso de episodios')} aria-valuemin={0} aria-valuemax={total} aria-valuenow={Math.min(ep, total)}><span style={{ width: `${pct}%` }} /></div>}
       </div>}
     </div>
   );

@@ -226,6 +226,56 @@ describe('useDiscovery (cache y precarga de temporada)', () => {
   });
 });
 
+describe('useDiscovery: la precarga no pisa la temporada elegida', () => {
+  const page = (title) => ({ ok: true, json: () => Promise.resolve({ data: { Page: { pageInfo: { hasNextPage: false }, media: [{ id: title.length, idMal: title.length, title: { romaji: title }, coverImage: {} }] } } }) });
+
+  beforeEach(() => { localStorage.clear(); vi.spyOn(globalThis, 'fetch'); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it('si el usuario ya eligió otra temporada, la precarga ni la aborta ni cambia lo que se ve', async () => {
+    let releaseChosen;
+    const chosenGate = new Promise((res) => { releaseChosen = res; });
+    globalThis.fetch.mockImplementation(async (url, init) => {
+      const { variables } = JSON.parse(init.body);
+      if (variables?.year === 2020) {
+        await chosenGate;
+        return page('Invierno 2020');
+      }
+      return page('Vigente');
+    });
+    const { result } = renderHook(() => useDiscovery());
+    act(() => { result.current.changeSeason('WINTER', 2020); });
+    const chosenSignal = globalThis.fetch.mock.calls[0][1].signal;
+
+    // La precarga corre (y termina) con la otra temporada ya elegida.
+    await act(async () => { result.current.prefetchCurrentSeason(); });
+    await waitFor(() => expect(localStorage.getItem('anitracker-season-cache')).not.toBeNull());
+    expect(chosenSignal.aborted).toBe(false);
+    expect(result.current.selectedSeason).toEqual({ season: 'WINTER', year: 2020 });
+    expect(result.current.seasonAnime).toEqual([]);
+    expect(result.current.seasonLoading).toBe(true);
+
+    await act(async () => { releaseChosen(); });
+    await waitFor(() => expect(result.current.seasonAnime.map((a) => a.title)).toEqual(['Invierno 2020']));
+    expect(result.current.seasonLoading).toBe(false);
+  });
+
+  it('cambiar de temporada aborta el pedido visible anterior pero no la precarga', async () => {
+    globalThis.fetch.mockImplementation((url, init) => new Promise((resolve, reject) => {
+      init.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+    }));
+    const { result } = renderHook(() => useDiscovery());
+    act(() => { result.current.prefetchCurrentSeason(); });
+    const prefetchSignal = globalThis.fetch.mock.calls[0][1].signal;
+    act(() => { result.current.loadSeasonCurrent(); });
+    act(() => { result.current.changeSeason('WINTER', 2020); });
+    const winterSignal = globalThis.fetch.mock.calls.at(-1)[1].signal;
+    act(() => { result.current.changeSeason('SPRING', 2019); });
+    expect(prefetchSignal.aborted).toBe(false);
+    expect(winterSignal.aborted).toBe(true);
+  });
+});
+
 describe('useTranslatedSynopsis', () => {
   const EN_SYNOPSIS = 'A story about a boy who wants to become the greatest hero of them all, but he has no powers.';
   beforeEach(() => { localStorage.clear(); translateEnToEs.mockReset(); });

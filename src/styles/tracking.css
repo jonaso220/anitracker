@@ -59,7 +59,6 @@
 .tracking-detail .detail-action-btn.delete { color: #f87171; }
 .tracking-detail .detail-action-btn:hover { background: rgba(139,92,246,0.12); transform: none; filter: none; }
 .tracking-detail .star-rating button { min-width: 44px; width: 44px; min-height: 44px; padding: 0; border: none; background: none; font: inherit; cursor: pointer; }
-.today-quick { min-width: 44px; height: 44px; }
 .light .detail-primary { background: #f8f6ff; }
 .light .tracking-detail .ep-input, .light .season-controls select, .light .season-controls input { background: white; }
 .light .tracking-error, .light .detail-action-btn.delete { color: #b91c1c; }

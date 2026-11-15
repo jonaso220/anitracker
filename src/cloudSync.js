@@ -15,6 +15,24 @@ export class SyncConflictError extends Error {
   }
 }
 
+export class SyncProtocolError extends Error {
+  constructor(protocol) {
+    super('Unsupported cloud sync protocol; update required');
+    this.name = 'SyncProtocolError';
+    this.protocol = protocol;
+  }
+}
+
+// Un documento escrito por una versión más nueva de la app (o con una marca de
+// protocolo que no entendemos) no se lee ni se fusiona: `readCloudLibrary`
+// convertiría los campos que no conoce en vacíos y se aplicaría como "se borró
+// todo". Los protocolos viejos siguen leyéndose.
+export function requiresNewerClient(document) {
+  if (!document || !Object.hasOwn(document, 'syncProtocol')) return false;
+  const protocol = document.syncProtocol;
+  return typeof protocol === 'number' ? protocol > SYNC_PROTOCOL : protocol != null;
+}
+
 export const serializeLibrary = (data) => JSON.stringify({
   schedule: data.schedule, watchedList: data.watchedList,
   watchLater: data.watchLater, customLists: data.customLists,
@@ -43,7 +61,7 @@ export async function saveMergedLibrary({ fs, db, uid, local, base, isCurrent })
       throw new Error('Invalid cloud sync revision; recovery required');
     }
     if (Object.hasOwn(document, 'syncProtocol') && document.syncProtocol !== SYNC_PROTOCOL) {
-      throw new Error('Unsupported cloud sync protocol; update required');
+      throw new SyncProtocolError(document.syncProtocol);
     }
     const raw = isCompressedDoc(document) ? await decodeLibrary(document) : readCloudLibrary(document);
     const cloud = migrateLibrary(raw).data;

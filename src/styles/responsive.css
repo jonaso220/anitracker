@@ -124,9 +124,6 @@
   .update-banner,
   .storage-error-banner { bottom: calc(5rem + env(safe-area-inset-bottom, 0px)); }
 
-  .stats-grid { grid-template-columns: repeat(2, 1fr); }
-  .genre-bar-label { min-width: 75px; font-size: 0.78rem; }
-
   /* Nav tabs: emoji-only on mobile. The label stays for screen readers
      (VoiceOver announced a nameless "tab" with display: none). */
   .tab-label {
@@ -162,10 +159,6 @@
   .create-list-input-row input { min-width: 0; }
   .custom-list-name { font-size: 0.92rem; }
   .custom-list-rename-input { width: 120px; font-size: 0.88rem; }
-  .custom-list-remove-btn { opacity: 1; }
-
-  /* Stats */
-  .stat-number { font-size: 2rem; }
 
   /* ============ BOTTOM SHEET MODALS ============ */
   .modal-overlay {

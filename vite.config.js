@@ -1,9 +1,49 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { readFile, writeFile } from 'node:fs/promises'
+import { resolve } from 'node:path'
+
+// Línea de public/sw.js que se reemplaza por la lista de assets del build.
+const SW_PRECACHE_PLACEHOLDER = 'self.__PRECACHE_ASSETS = [];'
+
+/**
+ * Escribe en dist/sw.js los JS/CSS (y demás assets con hash) que emitió el
+ * build, para que el service worker los precachee al instalarse: así una
+ * pestaña o un modal lazy que nunca se abrió funciona sin conexión. Solo en
+ * build; en dev el placeholder queda vacío. La lista cambia con cada deploy,
+ * así que sw.js también cambia y el navegador detecta la versión nueva.
+ */
+function swPrecache() {
+  let outDir = 'dist'
+  let base = '/'
+  let assets = []
+  return {
+    name: 'anitracker-sw-precache',
+    apply: 'build',
+    configResolved(config) {
+      outDir = resolve(config.root, config.build.outDir)
+      base = config.base || '/'
+    },
+    generateBundle(_options, bundle) {
+      assets = Object.keys(bundle)
+        .filter((file) => !/\.(html|map)$/.test(file) && file !== 'sw.js')
+        .sort()
+        .map((file) => `${base}${file}`)
+    },
+    async closeBundle() {
+      const swPath = resolve(outDir, 'sw.js')
+      const source = await readFile(swPath, 'utf8')
+      if (!source.includes(SW_PRECACHE_PLACEHOLDER)) {
+        this.error(`swPrecache: no encontré "${SW_PRECACHE_PLACEHOLDER}" en ${swPath}`)
+      }
+      await writeFile(swPath, source.replace(SW_PRECACHE_PLACEHOLDER, `self.__PRECACHE_ASSETS = ${JSON.stringify(assets)};`))
+    },
+  }
+}
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), swPrecache()],
   build: {
     target: 'esnext',
     minify: 'terser',

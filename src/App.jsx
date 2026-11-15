@@ -86,7 +86,7 @@ export default function AnimeTracker() {
 
   // --- Hooks ---
   const { toast, showToast, dismissToast, undoToast, runToastAction } = useToast();
-  const { user, cloudLoaded, syncing, syncError, syncTooLarge, syncStatus, syncConflict, resolveConflict, downloadRecovery, retrySync, authError, authReady, authBusy, loginWithGoogle, logout, FIREBASE_ENABLED } = useFirebase(
+  const { user, cloudLoaded, syncing, syncError, syncTooLarge, syncStatus, syncConflict, resolveConflict, downloadRecovery, retrySync, authError, authReady, authResolved, authBusy, loginWithGoogle, logout, FIREBASE_ENABLED } = useFirebase(
     schedule, watchedList, watchLater, customLists, setSchedule, setWatchedList, setWatchLater, setCustomLists
   );
   const { searchQuery, setSearchQuery, searchResults, setSearchResults, isSearching, searchPartial, airingData, airingError, retryAiring, handleSearch } = useAnimeData(schedule);
@@ -101,6 +101,7 @@ export default function AnimeTracker() {
   useAutoBackup({
     schedule, watchedList, watchLater, customLists,
     owner: user?.uid ?? null,
+    authResolved,
   });
 
   // Errores que React no ve (promesas rechazadas y errores fuera del árbol).
@@ -190,7 +191,7 @@ export default function AnimeTracker() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    showToast('Copia descargada');
+    showToast(t('toast.backupDownloaded'));
   };
 
   const restoreBackup = (data) => {
@@ -199,11 +200,24 @@ export default function AnimeTracker() {
       schedule: scheduleRef.current, watchedList: watchedListRef.current,
       watchLater: watchLaterRef.current, customLists: customListsRef.current,
     };
-    setSchedule({ ...EMPTY_SCHEDULE, ...data.schedule });
-    setWatchedList(data.watchedList);
-    setWatchLater(data.watchLater);
-    setCustomLists(data.customLists);
-    showToast('Datos restaurados', () => {
+    const restored = {
+      schedule: { ...EMPTY_SCHEDULE, ...data.schedule }, watchedList: data.watchedList,
+      watchLater: data.watchLater, customLists: data.customLists,
+    };
+    setSchedule(restored.schedule);
+    setWatchedList(restored.watchedList);
+    setWatchLater(restored.watchLater);
+    setCustomLists(restored.customLists);
+    showToast(t('toast.dataRestored'), () => {
+      // Si algo cambió desde la restauración (una edición, o la nube fusionó
+      // cambios de otro dispositivo), volver a la biblioteca vieja entera
+      // borraría eso y la próxima subida lo propagaría como borrado.
+      const untouched = scheduleRef.current === restored.schedule && watchedListRef.current === restored.watchedList
+        && watchLaterRef.current === restored.watchLater && customListsRef.current === restored.customLists;
+      if (!untouched) {
+        showToast(t('toast.restoreUndoBlocked'));
+        return;
+      }
       setSchedule(previous.schedule);
       setWatchedList(previous.watchedList);
       setWatchLater(previous.watchLater);
@@ -262,7 +276,7 @@ export default function AnimeTracker() {
       />
 
       <main className="main-content" id="main-content" role="main">
-        <Suspense fallback={<div className="route-loading" role="status" aria-live="polite">Cargando…</div>}>
+        <Suspense fallback={<div className="route-loading" role="status" aria-live="polite">{t('app.loading')}</div>}>
         {activeTab === 'schedule' && weekEmpty && user && !cloudLoaded && (
           <div className="week-loading" role="status" aria-live="polite">{t('onboarding.loadingCloud')}</div>
         )}
@@ -420,6 +434,7 @@ export default function AnimeTracker() {
 
       {showBackup && (
         <BackupModal
+          owner={user?.uid ?? null}
           onClose={() => setShowBackup(false)}
           onExport={exportData}
           onRestore={restoreBackup}

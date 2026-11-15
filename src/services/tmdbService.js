@@ -1,5 +1,6 @@
 import { normalizeAnime } from '../schemas/anime';
 import { buildAiringInfo } from '../utils';
+import { pruneLocalCache } from './cachePrune';
 
 // TMDB (The Movie Database) — free API for movies & TV series with Spanish
 // metadata and per-country streaming availability (data provided by JustWatch,
@@ -17,7 +18,7 @@ export const TMDB_ENABLED = API_KEY !== '';
 const IS_BEARER_TOKEN = API_KEY.startsWith('eyJ');
 
 // App-internal ID ranges (must not collide with MAL <100000, Kitsu +100000,
-// AniList +300000 / +800000000, TVMaze +400000, iTunes +500000).
+// AniList +300000 / +800000000, TVMaze +400000, iTunes +10000000000).
 export const TMDB_MOVIE_ID_BASE = 600000000;
 export const TMDB_TV_ID_BASE = 900000000;
 
@@ -159,17 +160,9 @@ const EXTRAS_CACHE_PREFIX = 'anitracker-tmdb:';
 const EXTRAS_TTL_MS = 24 * 60 * 60 * 1000;
 const EXTRAS_CACHE_MAX = 80;
 
-function pruneExtrasCache() {
-  try {
-    const keys = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && k.startsWith(EXTRAS_CACHE_PREFIX)) keys.push(k);
-    }
-    if (keys.length > EXTRAS_CACHE_MAX) {
-      keys.slice(0, keys.length - EXTRAS_CACHE_MAX).forEach((k) => localStorage.removeItem(k));
-    }
-  } catch { /* empty */ }
+// Las más viejas primero (por `ts`), nunca la recién escrita.
+function pruneExtrasCache(justWritten) {
+  pruneLocalCache({ prefix: EXTRAS_CACHE_PREFIX, max: EXTRAS_CACHE_MAX, keep: justWritten });
 }
 
 /**
@@ -198,7 +191,7 @@ export async function fetchTmdbExtras(sourceKey, { region = getPreferredRegion()
 
   try {
     localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), data }));
-    pruneExtrasCache();
+    pruneExtrasCache(cacheKey);
   } catch { /* empty */ }
   return data;
 }
@@ -239,13 +232,18 @@ export function tmdbAiringFrom(detail, now = new Date()) {
   }, now);
 }
 
-/** { [tmdbTvId]: airingInfo } para series de TMDB (sin key: vacío). */
-export async function fetchTmdbAiringInfo({ tmdbIds = [], signal, now = new Date() } = {}) {
+/**
+ * { [tmdbTvId]: airingInfo } para series de TMDB (sin key: vacío). Si fallan
+ * algunas (no todas) se avisa por `onPartialFailure` para no cachear un
+ * resultado incompleto; un 404 (serie borrada) no cuenta como falla.
+ */
+export async function fetchTmdbAiringInfo({ tmdbIds = [], signal, now = new Date(), onPartialFailure } = {}) {
   if (!TMDB_ENABLED || tmdbIds.length === 0) return {};
   const settled = await Promise.allSettled(tmdbIds.map((id) => tmdbFetch(`/tv/${id}`, { language: 'es-ES' }, { signal }).then((d) => [id, d])));
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-  const failed = settled.filter((r) => r.status === 'rejected');
+  const failed = settled.filter((r) => r.status === 'rejected' && !/HTTP 404\b/.test(String(r.reason?.message)));
   if (failed.length === settled.length) throw failed[0].reason;
+  if (failed.length > 0) onPartialFailure?.(failed[0].reason);
   const result = {};
   for (const r of settled) {
     if (r.status !== 'fulfilled') continue;

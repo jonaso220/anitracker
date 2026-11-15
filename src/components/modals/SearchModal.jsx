@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { useAccessibleDialog } from '../../hooks/useAccessibleDialog';
+import { t } from '../../i18n';
 import { parseAnimeSearchInput, SEARCH_SOURCE_NAMES } from '../../services/searchAnime';
 
 const Highlight = ({ text, query }) => {
@@ -26,7 +27,9 @@ const Highlight = ({ text, query }) => {
     return <>{text.slice(0, start)}<mark className="search-highlight">{text.slice(start, end)}</mark>{text.slice(end)}</>;
 };
 
+// Valores tal como llegan en `anime.type`; solo 'Todos' es una etiqueta de UI.
 const TYPE_OPTIONS = ['Todos', 'TV', 'Película', 'OVA', 'ONA', 'Special', 'TV Short', 'Serie'];
+const typeLabel = (type) => (type === 'Todos' ? t('search.typeAll', 'Todos') : type);
 const SCORE_OPTIONS = [
     { label: 'Cualquiera', min: 0 },
     { label: '7+', min: 7 },
@@ -83,45 +86,45 @@ const SearchModal = ({ setShowSearch, searchQuery, handleSearch, searchResults, 
     <div className="modal-overlay" onClick={closeSearch}>
       <div ref={dialogRef} className="search-modal" role="dialog" aria-modal="true" aria-labelledby="search-modal-title" tabIndex={-1} onClick={e => e.stopPropagation()}>
         <div className="bottom-sheet-handle" aria-hidden="true"></div>
-        <h2 id="search-modal-title" className="sr-only">Buscar anime</h2>
+        <h2 id="search-modal-title" className="sr-only">{t('search.title', 'Buscar anime')}</h2>
         <div className="search-header">
-          <input type="text" placeholder="Buscar anime o pegar una URL..." value={searchQuery} onChange={e => handleSearch(e.target.value)} autoFocus aria-label="Buscar anime o pegar una URL" />
-          <button className={`filter-toggle-btn ${hasActiveFilters ? 'active' : ''}`} onClick={() => setShowFilters(!showFilters)} title="Filtros" aria-pressed={showFilters} aria-label="Mostrar filtros">
-            {hasActiveFilters ? '⚙ Filtros activos' : '⚙'}
+          <input type="text" placeholder={t('search.inputPlaceholder', 'Buscar anime o pegar una URL...')} value={searchQuery} onChange={e => handleSearch(e.target.value)} autoFocus aria-label={t('search.inputLabel', 'Buscar anime o pegar una URL')} />
+          <button className={`filter-toggle-btn ${hasActiveFilters ? 'active' : ''}`} onClick={() => setShowFilters(!showFilters)} title={t('search.filters', 'Filtros')} aria-pressed={showFilters} aria-label={t('search.showFilters', 'Mostrar filtros')}>
+            {hasActiveFilters ? t('search.filtersActive', '⚙ Filtros activos') : '⚙'}
           </button>
-          <button className="close-btn" onClick={closeSearch} aria-label="Cerrar buscador">×</button>
+          <button className="close-btn" onClick={closeSearch} aria-label={t('search.close', 'Cerrar buscador')}>×</button>
         </div>
 
         {showFilters && (
           <div className="search-filters fade-in">
             <div className="search-filters-row">
               <div className="search-filter-group">
-                <label>Tipo</label>
-                <div className="filter-chips">
-                  {TYPE_OPTIONS.map(t => (
-                    <button key={t} className={`filter-chip ${filterType === t ? 'active' : ''}`} onClick={() => setFilterType(t)}>{t}</button>
+                <span className="search-filter-label" id="search-filter-type">{t('search.type', 'Tipo')}</span>
+                <div className="filter-chips" role="group" aria-labelledby="search-filter-type">
+                  {TYPE_OPTIONS.map(type => (
+                    <button key={type} className={`filter-chip ${filterType === type ? 'active' : ''}`} onClick={() => setFilterType(type)} aria-pressed={filterType === type}>{typeLabel(type)}</button>
                   ))}
                 </div>
               </div>
               <div className="search-filter-group">
-                <label>Año</label>
-                <div className="filter-year-range">
-                  <input type="number" placeholder="Desde" value={filterYearFrom} onChange={e => setFilterYearFrom(e.target.value)} min="1960" max="2030" />
-                  <span>—</span>
-                  <input type="number" placeholder="Hasta" value={filterYearTo} onChange={e => setFilterYearTo(e.target.value)} min="1960" max="2030" />
+                <span className="search-filter-label" id="search-filter-year">{t('search.year', 'Año')}</span>
+                <div className="filter-year-range" role="group" aria-labelledby="search-filter-year">
+                  <input type="number" placeholder={t('search.yearFrom', 'Desde')} aria-label={t('search.yearFromLabel', 'Año desde')} value={filterYearFrom} onChange={e => setFilterYearFrom(e.target.value)} min="1960" max="2030" />
+                  <span aria-hidden="true">—</span>
+                  <input type="number" placeholder={t('search.yearTo', 'Hasta')} aria-label={t('search.yearToLabel', 'Año hasta')} value={filterYearTo} onChange={e => setFilterYearTo(e.target.value)} min="1960" max="2030" />
                 </div>
               </div>
               <div className="search-filter-group">
-                <label>Puntuación</label>
-                <div className="filter-chips">
+                <span className="search-filter-label" id="search-filter-score">{t('search.score', 'Puntuación')}</span>
+                <div className="filter-chips" role="group" aria-labelledby="search-filter-score">
                   {SCORE_OPTIONS.map(s => (
-                    <button key={s.min} className={`filter-chip ${filterScore === s.min ? 'active' : ''}`} onClick={() => setFilterScore(s.min)}>{s.label}</button>
+                    <button key={s.min} className={`filter-chip ${filterScore === s.min ? 'active' : ''}`} onClick={() => setFilterScore(s.min)} aria-pressed={filterScore === s.min}>{s.min === 0 ? t('search.scoreAny', 'Cualquiera') : s.label}</button>
                   ))}
                 </div>
               </div>
             </div>
             {hasActiveFilters && (
-              <button className="clear-filters-btn" onClick={clearFilters}>Limpiar filtros</button>
+              <button className="clear-filters-btn" onClick={clearFilters}>{t('directory.clear', 'Limpiar filtros')}</button>
             )}
           </div>
         )}
@@ -130,11 +133,11 @@ const SearchModal = ({ setShowSearch, searchQuery, handleSearch, searchResults, 
           {parsedSearch.isUrl && parsedSearch.searchTerm && (
             <div className="search-url-notice">
               <span aria-hidden="true">🔗</span>
-              <span>Buscando <strong>{parsedSearch.searchTerm}</strong>. El enlace de {parsedSearch.site} quedará listo para guardar.</span>
+              <span>{t('search.urlSearching', 'Buscando')} <strong>{parsedSearch.searchTerm}</strong>. {t('search.urlReady', 'El enlace de {site} quedará listo para guardar.', { site: parsedSearch.site })}</span>
             </div>
           )}
           {isSearching && searchResults.length > 0 && (
-            <div className="search-progress" role="status">Buscando en más fuentes…</div>
+            <div className="search-progress" role="status">{t('search.moreSources', 'Buscando en más fuentes…')}</div>
           )}
           {isSearching && searchResults.length === 0 ? <div className="skeleton-search-list">{Array.from({ length: 5 }).map((_, i) => (
             <div key={i} className="skeleton-search-item">
@@ -149,12 +152,12 @@ const SearchModal = ({ setShowSearch, searchQuery, handleSearch, searchResults, 
           : filteredResults.length > 0 ? <>
             {searchPartial.length > 0 && (
               <div className="search-partial-notice">
-                Algunos resultados pueden faltar ({searchPartial.join(', ')} no respondió)
+                {t('search.partial', 'Algunos resultados pueden faltar ({sources} no respondió)', { sources: searchPartial.join(', ') })}
               </div>
             )}
             {hasActiveFilters && (
               <div className="search-filter-count">
-                Mostrando {filteredResults.length} de {searchResults.length} resultados
+                {t('search.filterCount', 'Mostrando {shown} de {total} resultados', { shown: filteredResults.length, total: searchResults.length })}
               </div>
             )}
             {filteredResults.map(anime => (
@@ -162,32 +165,32 @@ const SearchModal = ({ setShowSearch, searchQuery, handleSearch, searchResults, 
               <img src={anime.imageSm || anime.image || undefined} alt={anime.title} loading="lazy" decoding="async" />
               <div className="search-result-info">
                 <div className="search-result-title-row"><h4><Highlight text={anime.title} query={parsedSearch.searchTerm} /></h4><span className="source-badge">{anime.source}</span></div>
-                {anime.altTitles?.length > 0 && <p className="alt-titles">También: {anime.altTitles.slice(0, 3).map((t, i) => <React.Fragment key={i}>{i > 0 && ' · '}<Highlight text={t} query={parsedSearch.searchTerm} /></React.Fragment>)}</p>}
+                {anime.altTitles?.length > 0 && <p className="alt-titles">{t('search.altTitles', 'También:')} {anime.altTitles.slice(0, 3).map((alt, i) => <React.Fragment key={i}>{i > 0 && ' · '}<Highlight text={alt} query={parsedSearch.searchTerm} /></React.Fragment>)}</p>}
                 <div className="search-result-meta">
                   {anime.type && <span className="meta-tag type">{anime.type}</span>}
                   {anime.year && <span className="meta-tag year">{anime.year}</span>}
-                  {anime.episodes && <span className="meta-tag eps">{anime.episodes} eps</span>}
+                  {anime.episodes && <span className="meta-tag eps">{t('meta.episodesShort', '{count} eps', { count: anime.episodes })}</span>}
                   {anime.rating > 0 && <span className="meta-tag score">⭐ {Number(anime.rating).toFixed(1)}</span>}
                 </div>
                 <div className="search-result-genres">{(anime.genres || []).slice(0, 3).map((g, i) => <span key={i} className="genre-tag-sm">{g}</span>)}</div>
                 <div className="search-result-links">
-                  {anime.malUrl && <a href={anime.malUrl} target="_blank" rel="noopener noreferrer" className="mal-link">Ver en {anime.source} ↗</a>}
+                  {anime.malUrl && <a href={anime.malUrl} target="_blank" rel="noopener noreferrer" className="mal-link">{t('detail.watchOn', 'Ver en {platform}', { platform: anime.source })} ↗</a>}
                   {parsedSearch.isUrl && anime.watchLink && (
-                    <a href={anime.watchLink} target="_blank" rel="noopener noreferrer" className="provided-watch-link">✓ URL de {parsedSearch.site} lista</a>
+                    <a href={anime.watchLink} target="_blank" rel="noopener noreferrer" className="provided-watch-link">{t('search.urlProvided', '✓ URL de {site} lista', { site: parsedSearch.site })}</a>
                   )}
                 </div>
               </div>
               <div className="search-result-actions">
-                <button className="add-btn schedule-btn" onClick={() => setShowDayPicker(anime)}>📅 Semana</button>
-                <button className="add-btn later-btn" onClick={() => addToWatchLater(anime)}>🕐 Después</button>
-                <button className="add-btn watched-btn" onClick={() => markAsWatchedFromSearch(anime)}>✓ Ya la vi</button>
+                <button className="add-btn schedule-btn" onClick={() => setShowDayPicker(anime)}>{t('action.addToSchedule', '📅 Semana')}</button>
+                <button className="add-btn later-btn" onClick={() => addToWatchLater(anime)}>{t('action.addToWatchLater', '🕐 Después')}</button>
+                <button className="add-btn watched-btn" onClick={() => markAsWatchedFromSearch(anime)}>{t('action.markAsWatched', '✓ Ya la vi')}</button>
               </div>
             </div>
           ))}</>
-          : searchResults.length > 0 && hasActiveFilters ? <div className="no-results"><span>🔍</span><p>Ningún resultado coincide con los filtros</p><button className="clear-filters-btn" onClick={clearFilters}>Limpiar filtros</button></div>
-          : parsedSearch.isUrl && !parsedSearch.searchTerm ? <div className="no-results"><span>🔗</span><p>No pude identificar el anime desde esa URL.</p><p className="search-hint">En Crunchyroll, copiá el enlace de la página de la serie en lugar del enlace de un episodio.</p></div>
-          : searchQuery.length > 1 ? <div className="no-results"><span>😢</span><p>Sin resultados para "{parsedSearch.searchTerm || searchQuery}"</p></div>
-          : <div className="search-placeholder"><span>🎌</span><p>Buscá por nombre o pegá la URL del anime</p><p className="search-hint">{SEARCH_SOURCE_NAMES.join(' · ')}</p></div>}
+          : searchResults.length > 0 && hasActiveFilters ? <div className="no-results"><span>🔍</span><p>{t('search.noFilterMatch', 'Ningún resultado coincide con los filtros')}</p><button className="clear-filters-btn" onClick={clearFilters}>{t('directory.clear', 'Limpiar filtros')}</button></div>
+          : parsedSearch.isUrl && !parsedSearch.searchTerm ? <div className="no-results"><span>🔗</span><p>{t('search.urlUnknown', 'No pude identificar el anime desde esa URL.')}</p><p className="search-hint">{t('search.urlUnknownHint', 'En Crunchyroll, copiá el enlace de la página de la serie en lugar del enlace de un episodio.')}</p></div>
+          : searchQuery.length > 1 ? <div className="no-results"><span>😢</span><p>{t('search.noResultsForQuery', 'Sin resultados para "{query}"', { query: parsedSearch.searchTerm || searchQuery })}</p></div>
+          : <div className="search-placeholder"><span>🎌</span><p>{t('search.emptyPrompt', 'Buscá por nombre o pegá la URL del anime')}</p><p className="search-hint">{SEARCH_SOURCE_NAMES.join(' · ')}</p></div>}
         </div>
       </div>
     </div>

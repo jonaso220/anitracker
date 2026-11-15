@@ -31,8 +31,9 @@ export function useToast({ ttl = DEFAULT_TTL_MS } = {}) {
   // not on a stale snapshot captured at the time the user mounted.
   const undoToast = useCallback(() => {
     const current = toastRef.current;
-    if (current?.undoFn) current.undoFn();
+    // Primero se cierra: así el deshacer puede mostrar su propio aviso.
     dismissToast();
+    if (current?.undoFn) current.undoFn();
   }, [dismissToast]);
 
   const runToastAction = useCallback(() => {

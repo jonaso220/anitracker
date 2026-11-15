@@ -183,7 +183,11 @@
 .season-card-open { position: absolute; inset: 0; z-index: 1; border: 0; background: transparent; cursor: pointer; }
 .season-card-overlay { pointer-events: none; }
 .season-card-actions { position: relative; z-index: 5; pointer-events: auto; }
-.season-ignore { position: absolute; top: 0.45rem; right: 0.45rem; z-index: 6; width: 28px; height: 28px; border-radius: 50%; border: 1px solid rgba(255,255,255,.3); background: rgba(10,10,20,.72); color: #fff; cursor: pointer; font-size: 1rem; }
+/* Arriba a la izquierda: a la derecha tapaba la puntuación (.anime-card-score).
+   Se ve en 32 px; el ::before lleva el área táctil a 44 px. */
+.season-ignore { position: absolute; top: 0.4rem; left: 0.4rem; z-index: 6; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; border-radius: 50%; border: 1px solid rgba(255,255,255,.3); background: rgba(10,10,20,.72); color: #fff; cursor: pointer; font-size: 1.1rem; line-height: 1; }
+.season-ignore::before { content: ''; position: absolute; inset: -6px; border-radius: 50%; }
+.season-ignore:hover, .season-ignore:focus-visible { background: rgba(239, 68, 68, 0.85); border-color: transparent; }
 .recommendation-reason { margin: 0; color: #ddd6fe; font-size: 0.64rem; line-height: 1.3; }
 .discovery-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 0.55rem; margin: 0 0 1rem; padding: 0.7rem; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--bg-surface); }
 .discovery-controls label { display: inline-flex; align-items: center; gap: 0.35rem; color: var(--text-muted); font-size: 0.74rem; font-weight: 600; }

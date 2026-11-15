@@ -1,6 +1,7 @@
 import React from 'react';
 import { daysOfWeek, dayEmojis } from '../../constants';
 import { useAccessibleDialog } from '../../hooks/useAccessibleDialog';
+import { t } from '../../i18n';
 
 const BulkDayPickerModal = ({ count, onPickDay, onClose }) => {
   const dialogRef = useAccessibleDialog(onClose);
@@ -13,7 +14,7 @@ const BulkDayPickerModal = ({ count, onPickDay, onClose }) => {
       <div ref={dialogRef} className="day-picker-modal fade-in" role="dialog" aria-modal="true" aria-labelledby="bulk-day-picker-title" tabIndex={-1} onClick={(e) => e.stopPropagation()}>
         <div className="bottom-sheet-handle" aria-hidden="true" />
         <h3 id="bulk-day-picker-title" style={{ marginBottom: '1rem', textAlign: 'center' }}>
-          Mover {count} anime{count > 1 ? 's' : ''} a...
+          {t('bulk.moveTitle', 'Mover {count} animes a...', { count })}
         </h3>
         <div className="days-grid">
           {daysOfWeek.map((day, i) => (

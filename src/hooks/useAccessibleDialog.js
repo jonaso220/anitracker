@@ -21,7 +21,10 @@ function syncBackground() {
   const open = openDialogs.length > 0;
   const app = document.querySelector('.anime-tracker');
   for (const node of app ? [...app.children] : []) {
-    const hostsDialog = node.classList.contains('modal-overlay') || openDialogs.some((d) => d.root && node.contains(d.root));
+    // Los avisos (toast con "Deshacer", banners) se dibujan sobre el overlay:
+    // quedan activos para que se puedan tocar y el lector de pantalla los lea.
+    const hostsDialog = node.classList.contains('modal-overlay') || node.hasAttribute('data-dialog-keep')
+      || openDialogs.some((d) => d.root && node.contains(d.root));
     if (open && !hostsDialog) {
       if (!node.hasAttribute('inert')) { node.setAttribute('inert', ''); node.dataset.dialogInert = ''; }
     } else if ('dialogInert' in node.dataset) {

@@ -4,6 +4,7 @@ import { captureEntry, restoreEntry, changeEpisode } from '../libraryEdits';
 import { daysOfWeek, sanitizeUrl } from '../constants';
 import { clean, pickAutoWatchLink } from '../utils';
 import { planImport } from '../libraryImport';
+import { t } from '../i18n';
 
 const updateInList = (list, animeId, updater) =>
   list.map((a) => (a.id === animeId ? { ...a, ...updater(a) } : a));
@@ -16,6 +17,20 @@ const prepare = (anime) => ({
   userRating: anime.userRating || 0,
   watchLink: pickAutoWatchLink(anime),
 });
+
+// Sacan una obra de los demás lugares; devuelven la misma referencia si no
+// estaba, así las vistas memoizadas no se re-renderizan de gusto.
+const withoutInSchedule = (prev, id, keepDay) => {
+  let next = prev;
+  for (const d of daysOfWeek) {
+    if (d !== keepDay && (prev[d] || []).some((a) => a.id === id)) {
+      if (next === prev) next = { ...prev };
+      next[d] = prev[d].filter((a) => a.id !== id);
+    }
+  }
+  return next;
+};
+const withoutIn = (prev, id) => (prev.some((a) => a.id === id) ? prev.filter((a) => a.id !== id) : prev);
 
 /**
  * All mutation handlers for schedule / watched / watchLater / customLists.
@@ -44,71 +59,154 @@ export function useAnimeActions({
       || anime;
   }, [scheduleRef, watchLaterRef, watchedListRef, customListsRef]);
 
+  // Una obra vive en UN solo lugar de la biblioteca: un día de la semana,
+  // Después o Vistas (las listas personalizadas van aparte). Agregar desde la
+  // búsqueda, Temporada o Directorio algo que ya está guardado lo mueve, con
+  // su progreso, en vez de duplicarlo con el episodio en 0.
+  const locate = useCallback((id) => {
+    const day = daysOfWeek.find((d) => (scheduleRef.current[d] || []).some((a) => a.id === id));
+    if (day) return day;
+    if (watchLaterRef.current.some((a) => a.id === id)) return 'watchLater';
+    if (watchedListRef.current.some((a) => a.id === id)) return 'watched';
+    return null;
+  }, [scheduleRef, watchLaterRef, watchedListRef]);
+
+  // Lo que el usuario ya cargó (progreso, nota, temporada, link) gana sobre los
+  // datos de la API; un link pegado en la búsqueda sí reemplaza al guardado.
+  const resolveIncoming = useCallback((anime) => {
+    const fromLibrary = anime._day || anime._isCustomList || anime._isWatched || anime._isWatchLater;
+    const stored = latestAnime(anime);
+    if (fromLibrary || stored === anime) return stored;
+    return { ...anime, ...stored, ...(anime.watchLink ? { watchLink: anime.watchLink } : {}) };
+  }, [latestAnime]);
+
+  const captureLocations = useCallback((id) => ({
+    days: Object.fromEntries(daysOfWeek.map((d) => [d, captureEntry(scheduleRef.current[d] || [], id)])),
+    watchLater: captureEntry(watchLaterRef.current, id),
+    watched: captureEntry(watchedListRef.current, id),
+  }), [scheduleRef, watchLaterRef, watchedListRef]);
+
+  // Deshacer de un movimiento: saca la obra de donde quedó y la devuelve a
+  // donde estaba, sin tocar el resto de la biblioteca.
+  const restoreLocations = useCallback((id, snapshot) => {
+    setSchedule((prev) => {
+      const next = { ...prev };
+      for (const d of daysOfWeek) next[d] = restoreEntry((prev[d] || []).filter((a) => a.id !== id), snapshot.days[d]);
+      return next;
+    });
+    setWatchLater((prev) => restoreEntry(prev.filter((a) => a.id !== id), snapshot.watchLater));
+    setWatchedList((prev) => restoreEntry(prev.filter((a) => a.id !== id), snapshot.watched));
+  }, [setSchedule, setWatchLater, setWatchedList]);
+
+  const closeSearch = useCallback(() => {
+    setShowSearch(false);
+    setSearchQuery('');
+    setSearchResults([]);
+  }, [setShowSearch, setSearchQuery, setSearchResults]);
+
   const addToSchedule = useCallback((anime, day) => {
     if (!daysOfWeek.includes(day)) return;
-    const fromLibrary = anime._day || anime._isCustomList || anime._isWatched || anime._isWatchLater;
-    const a = prepare(fromLibrary ? latestAnime(anime) : anime);
-    if (anime._isWatched) {
+    const from = locate(anime.id);
+    const snapshot = captureLocations(anime.id);
+    const a = prepare(resolveIncoming(anime));
+    if (from === 'watched' || anime._isWatched) {
       a.paused = false;
       delete a.finished;
       delete a.finishedDate;
       delete a.droppedDate;
-      setWatchedList((prev) => prev.filter((x) => x.id !== a.id));
     }
-    setSchedule((prev) => ({ ...prev, [day]: [...(prev[day] || []).filter((x) => x.id !== a.id), a] }));
+    setWatchedList((prev) => withoutIn(prev, a.id));
+    setWatchLater((prev) => withoutIn(prev, a.id));
+    setSchedule((prev) => {
+      const next = withoutInSchedule(prev, a.id, day);
+      return { ...next, [day]: [...(next[day] || []).filter((x) => x.id !== a.id), a] };
+    });
     setShowDayPicker(null);
-    setShowSearch(false);
-    setSearchQuery('');
-    setSearchResults([]);
-  }, [setSchedule, setWatchedList, latestAnime, setShowDayPicker, setShowSearch, setSearchQuery, setSearchResults]);
+    closeSearch();
+    // Algo nuevo se agrega desde el selector de día (elección explícita); el
+    // aviso es para cuando mueve algo que ya estaba en otro lugar.
+    if (from && from !== day) {
+      showToast(t('toast.movedToDay', undefined, { title: a.title, day }), () => restoreLocations(a.id, snapshot));
+    }
+  }, [setSchedule, setWatchedList, setWatchLater, locate, captureLocations, resolveIncoming, restoreLocations, setShowDayPicker, closeSearch, showToast]);
 
-  const markAsFinished = useCallback((anime, day) => {
-    if (!daysOfWeek.includes(day)) return;
+  // El día que trae la acción puede haber quedado viejo (p. ej. el toast
+  // "Pasar a Vistas" después de mover la tarjeta): se usa donde está ahora.
+  const currentDay = useCallback((id, day) => (
+    (scheduleRef.current[day] || []).some((a) => a.id === id)
+      ? day
+      : daysOfWeek.find((d) => (scheduleRef.current[d] || []).some((a) => a.id === id)) || null
+  ), [scheduleRef]);
+
+  const markAsFinished = useCallback((anime, requestedDay) => {
+    if (!daysOfWeek.includes(requestedDay)) return;
+    const day = currentDay(anime.id, requestedDay);
+    if (!day) return;
     const removed = captureEntry(scheduleRef.current[day] || [], anime.id);
     const previousWatched = captureEntry(watchedListRef.current, anime.id);
     setSchedule((prev) => ({ ...prev, [day]: prev[day].filter((a) => a.id !== anime.id) }));
     const current = clean(latestAnime(anime));
     setWatchedList((prev) => [...prev.filter((a) => a.id !== anime.id), { ...current, finished: true, finishedDate: new Date().toISOString() }]);
-    showToast(`"${anime.title}" marcado como finalizado`, () => {
+    showToast(t('toast.markedFinished', undefined, { title: anime.title }), () => {
       setSchedule((prev) => ({ ...prev, [day]: restoreEntry(prev[day] || [], removed) }));
       setWatchedList((prev) => restoreEntry(prev.filter((a) => a.id !== anime.id), previousWatched));
     });
-  }, [setSchedule, setWatchedList, scheduleRef, watchedListRef, showToast, latestAnime]);
+  }, [setSchedule, setWatchedList, scheduleRef, watchedListRef, showToast, latestAnime, currentDay]);
 
-  const dropAnime = useCallback((anime, day) => {
-    if (!daysOfWeek.includes(day)) return;
+  const dropAnime = useCallback((anime, requestedDay) => {
+    if (!daysOfWeek.includes(requestedDay)) return;
+    const day = currentDay(anime.id, requestedDay);
+    if (!day) return;
     const removed = captureEntry(scheduleRef.current[day] || [], anime.id);
     const previousWatched = captureEntry(watchedListRef.current, anime.id);
     setSchedule((prev) => ({ ...prev, [day]: prev[day].filter((a) => a.id !== anime.id) }));
     const current = clean(latestAnime(anime));
     setWatchedList((prev) => [...prev.filter((a) => a.id !== anime.id), { ...current, finished: false, droppedDate: new Date().toISOString() }]);
-    showToast(`"${anime.title}" dropeado`, () => {
+    showToast(t('toast.dropped', undefined, { title: anime.title }), () => {
       setSchedule((prev) => ({ ...prev, [day]: restoreEntry(prev[day] || [], removed) }));
       setWatchedList((prev) => restoreEntry(prev.filter((a) => a.id !== anime.id), previousWatched));
     });
-  }, [setSchedule, setWatchedList, scheduleRef, watchedListRef, showToast, latestAnime]);
+  }, [setSchedule, setWatchedList, scheduleRef, watchedListRef, showToast, latestAnime, currentDay]);
 
   const addToWatchLater = useCallback((anime) => {
-    const a = prepare(anime);
+    const from = locate(anime.id);
+    const snapshot = captureLocations(anime.id);
+    const a = prepare(resolveIncoming(anime));
+    if (from === 'watched') {
+      delete a.finished;
+      delete a.finishedDate;
+      delete a.droppedDate;
+    }
+    setSchedule((prev) => withoutInSchedule(prev, a.id, null));
+    setWatchedList((prev) => withoutIn(prev, a.id));
     setWatchLater((prev) => [...prev.filter((x) => x.id !== a.id), a]);
-    setShowSearch(false);
-    setSearchQuery('');
-    setSearchResults([]);
-  }, [setWatchLater, setShowSearch, setSearchQuery, setSearchResults]);
+    closeSearch();
+    if (from !== 'watchLater') {
+      showToast(t('toast.addedToWatchLater', undefined, { title: a.title }), () => restoreLocations(a.id, snapshot));
+    }
+  }, [setSchedule, setWatchedList, setWatchLater, locate, captureLocations, resolveIncoming, restoreLocations, closeSearch, showToast]);
 
   const markAsWatched = useCallback((anime) => {
-    setWatchedList((prev) => [...prev.filter((a) => a.id !== anime.id), {
-      ...clean(anime), finished: true, finishedDate: new Date().toISOString(),
-      currentEp: anime.currentEp || 0, userRating: anime.userRating || 0,
-    }]);
-  }, [setWatchedList]);
+    const from = locate(anime.id);
+    const snapshot = captureLocations(anime.id);
+    const current = resolveIncoming(anime);
+    // Volver a marcar algo que ya estaba en Vistas no pisa su fecha ni su nota.
+    if (from === 'watched' && current.finished) return;
+    const entry = {
+      ...clean(current), finished: true, finishedDate: new Date().toISOString(),
+      currentEp: current.currentEp || 0, userRating: current.userRating || 0,
+    };
+    delete entry.droppedDate;
+    setSchedule((prev) => withoutInSchedule(prev, entry.id, null));
+    setWatchLater((prev) => withoutIn(prev, entry.id));
+    setWatchedList((prev) => [...prev.filter((a) => a.id !== entry.id), entry]);
+    showToast(t('toast.markedWatched', undefined, { title: entry.title }), () => restoreLocations(entry.id, snapshot));
+  }, [setSchedule, setWatchLater, setWatchedList, locate, captureLocations, resolveIncoming, restoreLocations, showToast]);
 
   const markAsWatchedFromSearch = useCallback((anime) => {
     markAsWatched(anime);
-    setShowSearch(false);
-    setSearchQuery('');
-    setSearchResults([]);
-  }, [markAsWatched, setShowSearch, setSearchQuery, setSearchResults]);
+    closeSearch();
+  }, [markAsWatched, closeSearch]);
 
   const moveFromWatchLaterToSchedule = useCallback((anime, day) => {
     if (!daysOfWeek.includes(day)) return;
@@ -131,7 +229,7 @@ export function useAnimeActions({
     if (day) setSchedule((prev) => ({ ...prev, [day]: prev[day].filter((a) => a.id !== anime.id) }));
     if (anime._isWatchLater) setWatchLater((prev) => prev.filter((a) => a.id !== anime.id));
     if (anime._isWatched) setWatchedList((prev) => prev.filter((a) => a.id !== anime.id));
-    showToast(`"${anime.title}" eliminado`, () => {
+    showToast(t('toast.deleted', undefined, { title: anime.title }), () => {
       if (day) setSchedule((prev) => ({ ...prev, [day]: restoreEntry(prev[day] || [], removed) }));
       if (previousWatched) setWatchedList((prev) => restoreEntry(prev, previousWatched));
       if (previousLater) setWatchLater((prev) => restoreEntry(prev, previousLater));
@@ -184,12 +282,12 @@ export function useAnimeActions({
     stepTo(before, after);
     const undo = () => stepTo(after, before);
     if (day && current.episodes > 0 && after >= current.episodes) {
-      showToast(`¡Terminaste "${current.title}"!`, undo, {
-        label: 'Pasar a Vistas',
+      showToast(t('toast.finishedSeries', undefined, { title: current.title }), undo, {
+        label: t('toast.moveToWatched'),
         fn: () => markAsFinished({ ...current, _day: day }, day),
       });
     } else {
-      showToast(`Ep. ${after} de "${current.title}" visto`, undo);
+      showToast(t('toast.episodeWatched', undefined, { episode: after, title: current.title }), undo);
     }
   }, [scheduleRef, latestAnime, updateAnimeField, showToast, markAsFinished]);
 
@@ -241,7 +339,7 @@ export function useAnimeActions({
   const deleteCustomList = useCallback((listId) => {
     const removed = captureEntry(customListsRef.current, listId);
     setCustomLists((lists) => lists.filter((l) => l.id !== listId));
-    showToast('Lista eliminada', () => setCustomLists((lists) => restoreEntry(lists, removed)));
+    showToast(t('toast.listDeleted'), () => setCustomLists((lists) => restoreEntry(lists, removed)));
   }, [setCustomLists, customListsRef, showToast]);
 
   const renameCustomList = useCallback((listId, newName) => {
@@ -256,7 +354,7 @@ export function useAnimeActions({
   const removeFromCustomList = useCallback((listId, animeId) => {
     const removed = captureEntry(customListsRef.current.find((l) => l.id === listId)?.items || [], animeId);
     setCustomLists((lists) => lists.map((l) => (l.id === listId ? { ...l, items: l.items.filter((x) => x.id !== animeId) } : l)));
-    showToast('Anime removido de la lista', () => setCustomLists((lists) => lists.map((l) => (
+    showToast(t('toast.removedFromList'), () => setCustomLists((lists) => lists.map((l) => (
       l.id === listId ? { ...l, items: restoreEntry(l.items, removed) } : l
     ))));
   }, [setCustomLists, customListsRef, showToast]);
@@ -305,15 +403,15 @@ export function useAnimeActions({
       })]);
     }
 
-    const already = plan.skipped ? ` · ${plan.skipped} ya ${plan.skipped === 1 ? 'estaba' : 'estaban'} en tu biblioteca` : '';
+    const already = plan.skipped ? t('toast.importSkippedSuffix', undefined, { count: plan.skipped }) : '';
     if (!plan.added) {
-      showToast(`No había nada nuevo para importar${already}`);
+      showToast(`${t('toast.importNothing')}${already}`);
       return plan;
     }
     // Deshacer saca solo lo que agregó esta importación.
     const addedIds = new Set([...plan.schedule.map(({ anime }) => anime.id), ...plan.watchLater.map((a) => a.id), ...plan.watched.map((a) => a.id)]);
     const scheduleDays = new Set(plan.schedule.map(({ day }) => day));
-    showToast(`${plan.added === 1 ? 'Importado 1 anime' : `Importados ${plan.added} animes`} desde AniList${already}`, () => {
+    showToast(`${t('toast.imported', undefined, { count: plan.added })}${already}`, () => {
       if (scheduleDays.size) {
         setSchedule((prev) => {
           const next = { ...prev };

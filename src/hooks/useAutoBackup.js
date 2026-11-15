@@ -9,13 +9,17 @@ import { countScheduled, saveAutoBackup } from '../autoBackup';
 const LAST_KEY = 'anitracker-auto-backup-at';
 const MIN_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
-export function useAutoBackup({ schedule, watchedList, watchLater, customLists, owner }) {
+// `authResolved`: ya se sabe si hay sesión (y de quién). Mientras la auth se
+// resuelve `owner` es null aunque haya un usuario, y una copia en ese momento
+// quedaría a nombre de invitado (y al rato saldría otra con el uid). Por eso,
+// si quien llama no lo informa, no se hace ninguna copia.
+export function useAutoBackup({ schedule, watchedList, watchLater, customLists, owner, authResolved = false }) {
   // Evita que dos ediciones seguidas disparen dos copias mientras la primera
   // todavía se está escribiendo (la marca del día se pone recién al terminar).
   const saving = useRef(false);
 
   useEffect(() => {
-    if (saving.current) return;
+    if (!authResolved || saving.current) return;
     // El throttle es por cuenta: al cambiar de dispositivo/cuenta la copia de la
     // cuenta nueva no queda bloqueada por la que se hizo para la anterior.
     const lastKey = owner ? `${LAST_KEY}:${owner}` : LAST_KEY;
@@ -35,5 +39,5 @@ export function useAutoBackup({ schedule, watchedList, watchLater, customLists, 
         try { localStorage.setItem(lastKey, String(Date.now())); } catch { /* ignore */ }
       })
       .finally(() => { saving.current = false; });
-  }, [schedule, watchedList, watchLater, customLists, owner]);
+  }, [schedule, watchedList, watchLater, customLists, owner, authResolved]);
 }

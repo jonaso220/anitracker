@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useAccessibleDialog } from '../hooks/useAccessibleDialog';
 import UpdateBanner from '../components/UpdateBanner';
 import StorageErrorBanner from '../components/StorageErrorBanner';
+import Toast from '../components/Toast';
 
 function Dialog({ name, onClose }) {
   const ref = useAccessibleDialog(onClose);
@@ -48,6 +49,25 @@ describe('useAccessibleDialog', () => {
     expect(onCloseA).toHaveBeenCalledTimes(1);
     expect(page).not.toHaveAttribute('inert');
     expect(document.body.style.overflow).toBe('');
+  });
+
+  it('el toast con "Deshacer" sigue activo con un diálogo abierto', () => {
+    const onUndo = vi.fn();
+    function WithToast() {
+      return (
+        <div className="anime-tracker">
+          <main data-testid="page">Página</main>
+          <Dialog name="Detalle" onClose={() => {}} />
+          <Toast toast={{ message: 'Anime removido de la lista', undoFn: () => {} }} onUndo={onUndo} onAction={() => {}} onDismiss={() => {}} />
+        </div>
+      );
+    }
+    render(<WithToast />);
+    expect(screen.getByTestId('page')).toHaveAttribute('inert');
+    const toast = screen.getByRole('status');
+    expect(toast).not.toHaveAttribute('inert');
+    fireEvent.click(screen.getByRole('button', { name: 'Deshacer' }));
+    expect(onUndo).toHaveBeenCalledTimes(1);
   });
 
   it('usa siempre el onClose más reciente', () => {

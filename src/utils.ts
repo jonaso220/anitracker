@@ -1,4 +1,5 @@
 import { daysOfWeek } from './constants';
+import { t } from './i18n';
 import { migrateLibrary } from './idMigration';
 import type {
   AiringInfo,
@@ -205,8 +206,39 @@ export const buildAiringInfo = (
   };
 };
 
+/**
+ * Recalcula contra `now` los campos que dependen de la hora (`isToday`,
+ * `hasAired`, `timeUntilAiring`…) de una info ya armada: la emisión se baja
+ * cada tanto, pero "En 2h" tiene que seguir bajando con la app abierta. Sin
+ * `airingAt` válido devuelve la misma info; los campos extra se conservan.
+ */
+export const refreshAiringInfo = (info: AiringInfo, now: Date = new Date()): AiringInfo => {
+  if (!info || !Number.isFinite(info.airingAt)) return info;
+  return {
+    ...info,
+    ...buildAiringInfo({
+      episode: info.episode,
+      airingAt: info.airingAt,
+      totalEpisodes: info.totalEpisodes ?? null,
+      title: info.title ?? '',
+      season: info.season ?? null,
+      dateOnly: info.dateOnly ?? false,
+    }, now),
+  };
+};
+
+/**
+ * Info vencida: el episodio ya salió y dejó de contar como disponible (ni
+ * "hoy" ni "¡Ya disponible!"), así que hace falta bajar el siguiente.
+ */
+export const isAiringStale = (info: AiringInfo | null | undefined, now: Date = new Date()): boolean => {
+  if (!info || !Number.isFinite(info.airingAt)) return false;
+  const fresh = refreshAiringInfo(info, now);
+  return fresh.timeUntilAiring < 0 && !fresh.hasAired && !fresh.isToday;
+};
+
 /** 'Ep. 5' o, con temporada, 'T38 · Ep. 2'. */
-export const airingEpisodeLabel = (airing: AiringInfo): string =>
+export const airingEpisodeLabel =(airing: AiringInfo): string =>
   `${airing.season ? `T${airing.season} · ` : ''}Ep. ${airing.episode}`;
 
 /**
@@ -215,14 +247,14 @@ export const airingEpisodeLabel = (airing: AiringInfo): string =>
  */
 export const formatAiringWhen = (airing: AiringInfo | null | undefined): string => {
   if (!airing) return '';
-  if (airing.hasAired) return '¡Ya disponible!';
+  if (airing.hasAired) return t('airing.available');
   if (airing.isToday) {
-    if (airing.dateOnly) return 'Hoy';
+    if (airing.dateOnly) return t('airing.today');
     const hours = Math.floor(airing.timeUntilAiring / 3600);
     const mins = Math.floor((airing.timeUntilAiring % 3600) / 60);
-    return hours > 0 ? `En ${hours}h ${mins}m` : `En ${mins}m`;
+    return hours > 0 ? t('airing.inHoursMinutes', undefined, { hours, mins }) : t('airing.inMinutes', undefined, { mins });
   }
-  if (airing.isTomorrow) return 'Mañana';
+  if (airing.isTomorrow) return t('airing.tomorrow');
   const dayNames = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
   return dayNames[new Date(airing.airingAt * 1000).getDay()];
 };
@@ -247,17 +279,17 @@ export const formatAiringDate = (airingAt: number, { dateOnly = false }: { dateO
  */
 export const formatTimeAgo = (unixSeconds: number, nowMs: number = Date.now()): string => {
   const diff = Math.max(0, Math.floor(nowMs / 1000 - unixSeconds));
-  const label = (n: number, one: string, many: string): string => `hace ${n} ${n === 1 ? one : many}`;
-  if (diff < 60) return 'hace un momento';
+  const label = (unit: string, count: number): string => t('time.ago', undefined, { amount: t(`time.${unit}`, undefined, { count }) });
+  if (diff < 60) return t('time.justNow');
   const mins = Math.floor(diff / 60);
-  if (mins < 60) return label(mins, 'minuto', 'minutos');
+  if (mins < 60) return label('minutes', mins);
   const hours = Math.floor(diff / 3600);
-  if (hours < 24) return label(hours, 'hora', 'horas');
+  if (hours < 24) return label('hours', hours);
   const days = Math.floor(diff / 86400);
-  if (days < 7) return label(days, 'día', 'días');
+  if (days < 7) return label('days', days);
   const weeks = Math.floor(days / 7);
-  if (weeks < 5) return label(weeks, 'semana', 'semanas');
-  return label(Math.floor(days / 30), 'mes', 'meses');
+  if (weeks < 5) return label('weeks', weeks);
+  return label('months', Math.floor(days / 30));
 };
 
 /**
@@ -266,15 +298,15 @@ export const formatTimeAgo = (unixSeconds: number, nowMs: number = Date.now()): 
  */
 export const formatTimeUntil = (unixSeconds: number, nowMs: number = Date.now()): string => {
   const diff = Math.floor(unixSeconds - nowMs / 1000);
-  if (diff <= 0) return '¡ya disponible!';
-  const label = (n: number, one: string, many: string): string => `en ${n} ${n === 1 ? one : many}`;
+  if (diff <= 0) return t('time.availableNow');
+  const label = (unit: string, count: number): string => t('time.in', undefined, { amount: t(`time.${unit}`, undefined, { count }) });
   const mins = Math.floor(diff / 60);
-  if (mins < 60) return label(Math.max(1, mins), 'minuto', 'minutos');
+  if (mins < 60) return label('minutes', Math.max(1, mins));
   const hours = Math.floor(diff / 3600);
-  if (hours < 24) return label(hours, 'hora', 'horas');
+  if (hours < 24) return label('hours', hours);
   const days = Math.floor(diff / 86400);
-  if (days < 7) return label(days, 'día', 'días');
-  return label(Math.floor(days / 7), 'semana', 'semanas');
+  if (days < 7) return label('days', days);
+  return label('weeks', Math.floor(days / 7));
 };
 
 /**
@@ -488,13 +520,115 @@ export const buildBackup = (
   data: { schedule, watchedList, watchLater, customLists },
 });
 
+// --- Saneado de entradas de una copia (parseBackup) ---
+//
+// Una copia editada a mano puede traer `"genres": "Acción"` o `"title": 123`:
+// eso se guardaría, se sincronizaría y rompería tarjetas y búsqueda local en
+// todos los dispositivos. Cada campo conocido se lleva a su tipo; los que no se
+// conocen se conservan tal cual. No se usa `normalizeAnime` porque completa
+// valores por defecto y descarta campos (p. ej. `season`).
+
+const isBackupObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+
+/** Texto: string tal cual; número o booleano pasados a string; lo demás, nada. */
+const backupText = (v: unknown): string | undefined =>
+  typeof v === 'string' ? v : typeof v === 'number' || typeof v === 'boolean' ? String(v) : undefined;
+
+/** Número finito (acepta strings numéricos), o nada. */
+const backupNumber = (v: unknown): number | undefined => {
+  if (typeof v !== 'number' && typeof v !== 'string') return undefined;
+  if (typeof v === 'string' && !v.trim()) return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : undefined;
+};
+
+/** Lista de textos no vacíos; un string suelto cuenta como lista de uno. */
+const backupTextList = (v: unknown): string[] => {
+  const items = Array.isArray(v) ? v : [v];
+  return items.filter((x): x is string => typeof x === 'string' && x.trim().length > 0);
+};
+
+const backupStreamingLinks = (v: unknown): StreamingLink[] =>
+  (Array.isArray(v) ? v : []).flatMap((raw: unknown): StreamingLink[] => {
+    if (!isBackupObject(raw) || typeof raw.site !== 'string' || typeof raw.url !== 'string') return [];
+    return [{ ...raw, site: raw.site, url: raw.url, language: backupText(raw.language) ?? '' }];
+  });
+
+type BackupSeasonProgress = NonNullable<Anime['seasonProgress']>;
+const backupSeasonProgress = (v: unknown): BackupSeasonProgress | undefined => {
+  if (!isBackupObject(v)) return undefined;
+  const out: BackupSeasonProgress = {};
+  for (const [season, progress] of Object.entries(v)) {
+    const n = Number(season);
+    if (!Number.isInteger(n) || !isBackupObject(progress)) continue;
+    out[n] = { ...progress, currentEp: backupNumber(progress.currentEp) ?? 0, episodes: backupNumber(progress.episodes) ?? 0 };
+  }
+  return out;
+};
+
+const BACKUP_TEXT_FIELDS = [
+  'source', 'sourceId', 'sourceKey', 'titleOriginal', 'titleJp', 'titleEn', 'titleEnglish',
+  'image', 'imageSm', 'synopsis', 'status', 'year', 'type', 'malUrl', 'watchLink', 'trailerUrl',
+  'airDay', 'finishedDate', 'droppedDate',
+] as const;
+const BACKUP_TEXT_LIST_FIELDS = ['altTitles', 'genres'] as const;
+/** Números con valor por defecto si vienen inválidos (los que la UI suma o compara). */
+const BACKUP_NUMBER_DEFAULTS = { currentEp: 0, userRating: 0, rating: 0 } as const;
+/** Números que pueden faltar: inválidos quedan en null (`episodes`, `malId`) o se quitan. */
+const BACKUP_NULLABLE_NUMBERS = ['episodes', 'malId'] as const;
+const BACKUP_OPTIONAL_NUMBERS = ['currentSeason'] as const;
+const BACKUP_BOOLEAN_FIELDS = ['finished', 'paused'] as const;
+/** Objetos transitorios de la UI: si no son objetos, se quitan. */
+const BACKUP_OBJECT_FIELDS = ['airing', 'nextAiringEpisode', '_airing'] as const;
+
+/** Copia de `raw` con cada campo conocido llevado a su tipo. `raw.id` ya es válido. */
+const sanitizeBackupEntry = (raw: Record<string, unknown>): Anime => {
+  const out: Record<string, unknown> = { ...raw };
+  const has = (field: string) => Object.hasOwn(raw, field);
+  if (has('title')) out.title = backupText(raw.title) ?? '';
+  for (const field of BACKUP_TEXT_FIELDS) {
+    if (!has(field)) continue;
+    const text = backupText(raw[field]);
+    if (text === undefined) delete out[field]; else out[field] = text;
+  }
+  for (const field of BACKUP_TEXT_LIST_FIELDS) if (has(field)) out[field] = backupTextList(raw[field]);
+  if (has('streamingLinks')) out.streamingLinks = backupStreamingLinks(raw.streamingLinks);
+  for (const [field, fallback] of Object.entries(BACKUP_NUMBER_DEFAULTS)) {
+    if (has(field)) out[field] = backupNumber(raw[field]) ?? fallback;
+  }
+  for (const field of BACKUP_NULLABLE_NUMBERS) if (has(field)) out[field] = backupNumber(raw[field]) ?? null;
+  for (const field of BACKUP_OPTIONAL_NUMBERS) {
+    if (!has(field)) continue;
+    const n = backupNumber(raw[field]);
+    if (n === undefined) delete out[field]; else out[field] = n;
+  }
+  for (const field of BACKUP_BOOLEAN_FIELDS) {
+    if (!has(field)) continue;
+    const value = raw[field];
+    if (typeof value === 'boolean') continue;
+    if (value === 'true' || value === 'false') out[field] = value === 'true';
+    else if (field === 'finished') out[field] = false;
+    else delete out[field];
+  }
+  if (has('seasonProgress')) {
+    const progress = backupSeasonProgress(raw.seasonProgress);
+    if (progress) out.seasonProgress = progress; else delete out.seasonProgress;
+  }
+  for (const field of BACKUP_OBJECT_FIELDS) if (has(field) && !isBackupObject(raw[field])) delete out[field];
+  // Seguro: `id` se validó antes (número > 0) y cada campo conocido de `Anime`
+  // presente quedó con su tipo declarado; los opcionales ausentes siguen
+  // ausentes, igual que en las bibliotecas que ya acepta el resto de la app.
+  return out as unknown as Anime;
+};
+
 /**
  * Parse and validate a backup JSON string. Accepts both the wrapped shape
  * ({ app, data: {...} }) and a raw data object ({ schedule, ... }).
  * Returns { schedule, watchedList, watchLater, customLists, skipped }: every
  * entry is checked (an anime needs a positive numeric id, a list an items
- * array), unknown days are dropped and `skipped` counts what was discarded, so
- * a broken file can't reach the state (and from there, every synced device).
+ * array), known anime fields are coerced to their types (`sanitizeBackupEntry`),
+ * unknown days are dropped and `skipped` counts what was discarded, so a broken
+ * file can't reach the state (and from there, every synced device).
  * Throws an Error with a user-facing (Spanish) message on invalid input.
  */
 export const parseBackup = (jsonString: string): ParsedBackup => {
@@ -502,19 +636,19 @@ export const parseBackup = (jsonString: string): ParsedBackup => {
   try {
     parsed = JSON.parse(jsonString);
   } catch {
-    throw new Error('El archivo no es un JSON válido.');
+    throw new Error(t('backup.errorNotJson'));
   }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error('El archivo no tiene un formato reconocible.');
+    throw new Error(t('backup.errorUnknownFormat'));
   }
   const root = parsed as Record<string, unknown>;
   const container = (root.data && typeof root.data === 'object') ? root.data as Record<string, unknown> : root;
   const keys = ['schedule', 'watchedList', 'watchLater', 'customLists'];
   if (!keys.some((k) => k in container)) {
-    throw new Error('El archivo no contiene datos de AniTracker.');
+    throw new Error(t('backup.errorNoData'));
   }
   const isPlainObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
-  const isEntry = (a: unknown): a is Anime => {
+  const isEntry = (a: unknown): a is Record<string, unknown> => {
     if (!isPlainObject(a)) return false;
     const id = a.id;
     return typeof id === 'number' && Number.isFinite(id) && id > 0;
@@ -524,7 +658,7 @@ export const parseBackup = (jsonString: string): ParsedBackup => {
     if (!Array.isArray(v)) return [];
     const valid = v.filter(isEntry);
     skipped += v.length - valid.length;
-    return valid;
+    return valid.map(sanitizeBackupEntry);
   };
 
   const schedule: Schedule = {};
@@ -543,7 +677,7 @@ export const parseBackup = (jsonString: string): ParsedBackup => {
     customLists.push({
       ...list,
       id: typeof rawId === 'string' || typeof rawId === 'number' ? rawId : `list-restored-${i}`,
-      name: typeof rawName === 'string' && rawName.trim() ? rawName : 'Lista',
+      name: typeof rawName === 'string' && rawName.trim() ? rawName : t('lists.defaultName'),
       items: entries(list.items),
     });
   });

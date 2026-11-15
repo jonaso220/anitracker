@@ -103,6 +103,12 @@
   white-space: nowrap;
   border: 0;
 }
+/* El input está oculto: el foco de teclado se muestra en su <label>. */
+.backup-file-input:focus-visible + label {
+  outline: 2px solid var(--color-brand-primary);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(168, 85, 247, 0.18);
+}
 
 .backup-error {
   font-size: 0.85rem;

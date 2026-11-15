@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { t } from '../i18n';
 
 export default function StorageErrorBanner() {
   const [failure, setFailure] = useState(null);
@@ -15,11 +16,11 @@ export default function StorageErrorBanner() {
   if (!failure) return null;
   const isQuota = failure.error?.name === 'QuotaExceededError';
   return (
-    <div className="storage-error-banner" role="alert">
+    <div className="storage-error-banner" role="alert" data-dialog-keep="">
       <span aria-hidden="true">⚠️</span>
-      <div><strong>No se pudieron guardar tus últimos cambios</strong><small>{isQuota ? 'El almacenamiento del navegador está lleno. Exportá una copia y liberá espacio.' : 'El navegador bloqueó el almacenamiento local.'}</small></div>
-      {failure.retry && <button onClick={() => failure.retry()}>Reintentar</button>}
-      <button className="storage-error-dismiss" onClick={() => setFailure(null)} aria-label="Cerrar aviso">×</button>
+      <div><strong>{t('storage.title', 'No se pudieron guardar tus últimos cambios')}</strong><small>{isQuota ? t('storage.quota', 'El almacenamiento del navegador está lleno. Exportá una copia y liberá espacio.') : t('storage.blocked', 'El navegador bloqueó el almacenamiento local.')}</small></div>
+      {failure.retry && <button onClick={() => failure.retry()}>{t('common.retry', 'Reintentar')}</button>}
+      <button className="storage-error-dismiss" onClick={() => setFailure(null)} aria-label={t('storage.dismiss', 'Cerrar aviso')}>×</button>
     </div>
   );
 }

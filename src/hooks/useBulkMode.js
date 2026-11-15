@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 /**
  * Selection/bulk-mode state for list views. Callers pass in the active list when
@@ -41,4 +41,27 @@ export function useBulkMode() {
     enterBulkMode,
     exitBulkMode,
   };
+}
+
+/**
+ * Keeps the bulk selection inside the items the view currently shows. The bulk
+ * actions act on the whole `bulkSelected` set, so without this a filter or a
+ * search would hide selected items and "Eliminar" would still delete them.
+ * Narrowing the selection when the filtered list changes also keeps the
+ * "N seleccionados" counter honest.
+ *
+ * `bulkSelectAll(list)` replaces the selection with exactly `list`, which is
+ * what pruning needs, so this works with the props the views already get.
+ */
+export function usePruneBulkSelection({ bulkMode, bulkSelected, items, bulkSelectAll }) {
+  useEffect(() => {
+    if (!bulkMode || !bulkSelected || bulkSelected.size === 0) return;
+    const shown = new Set(items.map((a) => a.id));
+    for (const id of bulkSelected) {
+      if (!shown.has(id)) {
+        bulkSelectAll(items.filter((a) => bulkSelected.has(a.id)));
+        return;
+      }
+    }
+  }, [bulkMode, bulkSelected, items, bulkSelectAll]);
 }

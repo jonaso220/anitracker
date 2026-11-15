@@ -1,10 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { buildAiringInfo, airingEpisodeLabel, formatAiringWhen, formatAiringDate } from '../utils';
+import { buildAiringInfo, airingEpisodeLabel, formatAiringWhen, formatAiringDate, refreshAiringInfo, isAiringStale } from '../utils';
 import { trackingAiring } from '../tracking';
-import { buildAgenda } from '../agenda';
 import { fetchTvmazeAiringInfo, tvmazeIdOf } from '../services/tvmazeService';
 import { tmdbAiringFrom, tmdbTvIdOf } from '../services/tmdbService';
-import { daysOfWeek } from '../constants';
 
 // Lunes 28 de septiembre de 2026, 10:00 hora local.
 const NOW = new Date(2026, 8, 28, 10);
@@ -37,21 +35,6 @@ describe('temporada que sigue el usuario', () => {
     expect(trackingAiring({ id: 1, currentSeason: 3 }, airing)).toBeUndefined();
   });
 
-  it('la agenda no inventa pendientes con episodios de otra temporada', () => {
-    const schedule = Object.fromEntries(daysOfWeek.map((d) => [d, []]));
-    schedule.Lunes = [
-      { id: 1, title: 'Viendo la T1', currentEp: 3 },
-      { id: 2, title: 'Al día en la T38', currentSeason: 38, currentEp: 0 },
-    ];
-    const airingData = {
-      1: { episode: 2, season: 38, hasAired: true },
-      2: { episode: 2, season: 38, hasAired: true },
-    };
-    const agenda = buildAgenda(schedule, airingData, NOW);
-    const all = [...(agenda.active?.items || []), ...agenda.upcoming];
-    expect(all.find((a) => a.id === 2)._pendingEpisodes).toBe(2);
-    expect(all.find((a) => a.id === 1)._pendingEpisodes).toBe(1); // solo el siguiente, no 2 - 3
-  });
 });
 
 describe('TVMaze', () => {
@@ -94,6 +77,62 @@ describe('TVMaze', () => {
     const res = await pending;
     expect(fetchSpy).toHaveBeenCalledTimes(20);
     expect(Object.keys(res)).toHaveLength(20);
+  });
+});
+
+describe('TVMaze: fallas parciales', () => {
+  afterEach(() => { vi.restoreAllMocks(); });
+  const next = { season: 1, number: 3, airstamp: new Date(2026, 9, 1, 21).toISOString() };
+
+  it('si algunas series fallan (429) devuelve el resto y avisa que quedó incompleto', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => (url.includes('/shows/2?')
+      ? { ok: false, status: 429 }
+      : { ok: true, status: 200, json: async () => ({ name: 'Uno', _embedded: { nextepisode: next } }) }));
+    const onPartialFailure = vi.fn();
+    const res = await fetchTvmazeAiringInfo({ tvmazeIds: [1, 2], now: NOW, onPartialFailure });
+    expect(Object.keys(res)).toEqual(['1']);
+    expect(onPartialFailure).toHaveBeenCalledWith(expect.objectContaining({ message: 'TVMaze HTTP 429' }));
+  });
+
+  it('un 404 (serie borrada) no cuenta como falla', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => (url.includes('/shows/2?')
+      ? { ok: false, status: 404 }
+      : { ok: true, status: 200, json: async () => ({ name: 'Uno', _embedded: { nextepisode: next } }) }));
+    const onPartialFailure = vi.fn();
+    const res = await fetchTvmazeAiringInfo({ tvmazeIds: [1, 2], now: NOW, onPartialFailure });
+    expect(Object.keys(res)).toEqual(['1']);
+    expect(onPartialFailure).not.toHaveBeenCalled();
+  });
+});
+
+describe('info de emisión: recalculada con el reloj', () => {
+  it('refreshAiringInfo baja la cuenta regresiva y pasa a disponible al llegar la hora', () => {
+    const fetched = buildAiringInfo({ episode: 5, airingAt: at(new Date(2026, 8, 28, 12)) }, NOW);
+    expect(formatAiringWhen(fetched)).toBe('En 2h 0m');
+    expect(formatAiringWhen(refreshAiringInfo(fetched, new Date(2026, 8, 28, 11, 30)))).toBe('En 30m');
+    const aired = refreshAiringInfo(fetched, new Date(2026, 8, 28, 12, 1));
+    expect(aired.hasAired).toBe(true);
+    expect(formatAiringWhen(aired)).toBe('¡Ya disponible!');
+  });
+
+  it('al día siguiente "mañana" pasa a "hoy" y conserva los campos extra', () => {
+    const fetched = { ...buildAiringInfo({ episode: 2, season: 38, airingAt: at(new Date(2026, 8, 29, 21)) }, NOW), extra: 'x' };
+    expect(fetched.isTomorrow).toBe(true);
+    const next = refreshAiringInfo(fetched, new Date(2026, 8, 29, 9));
+    expect(next).toMatchObject({ isToday: true, isTomorrow: false, season: 38, extra: 'x' });
+  });
+
+  it('sin airingAt devuelve la misma info; isAiringStale marca lo que ya dejó de estar disponible', () => {
+    const bare = { episode: 1 };
+    expect(refreshAiringInfo(bare, NOW)).toBe(bare);
+    expect(isAiringStale(bare, NOW)).toBe(false);
+    const info = buildAiringInfo({ episode: 1, airingAt: at(new Date(2026, 8, 28, 9)) }, NOW);
+    expect(isAiringStale(info, NOW)).toBe(false); // salió hace 1 h: disponible
+    expect(isAiringStale(info, new Date(2026, 8, 29, 10))).toBe(true); // 25 h después
+    // Solo fecha (TMDB): el día de estreno no está vencido aunque ya pasó el mediodía.
+    const dated = buildAiringInfo({ episode: 1, airingAt: noon(28), dateOnly: true }, NOW);
+    expect(isAiringStale(dated, new Date(2026, 8, 28, 20))).toBe(false);
+    expect(isAiringStale(dated, new Date(2026, 8, 30, 10))).toBe(true);
   });
 });
 

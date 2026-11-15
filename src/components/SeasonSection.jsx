@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { daysOfWeek } from '../constants';
 import DiscoveryCard from './DiscoveryCard';
 import RatingFilterBar from './RatingFilterBar';
@@ -8,11 +8,16 @@ import { applyRatingFilter, filterDiscovery, groupSeasonByDay, personalizeDiscov
 import { t } from '../i18n';
 
 const SEASONS = ['WINTER', 'SPRING', 'SUMMER', 'FALL'];
-const SEASON_LABELS = { WINTER: 'Invierno', SPRING: 'Primavera', SUMMER: 'Verano', FALL: 'Otoño' };
+const SEASON_FALLBACK = { WINTER: 'Invierno', SPRING: 'Primavera', SUMMER: 'Verano', FALL: 'Otoño' };
 const SEASON_ICONS = { WINTER: '❄️', SPRING: '🌸', SUMMER: '☀️', FALL: '🍂' };
 const DEFAULT_PREFERENCES = { personalized: false, hideAdded: false, genre: 'all', platform: 'all' };
+const NOOP = () => {};
+const NO_IDS = [];
 
-const SeasonSection = ({ seasonAnime, seasonLoading, error, onRetry, schedule, watchedList, watchLater, preferences = DEFAULT_PREFERENCES, setPreferences = () => {}, ignoredIds = [], setIgnoredIds = () => {}, selectedSeason, onChangeSeason, setShowDayPicker, addToWatchLater, markAsWatched, onDetail }) => {
+// Lo que se ve en un día (o en "Todos", sin las que continúan de temporadas anteriores).
+const pickDay = (list, grouped, day) => (day === 'all' ? list.filter((a) => !a._continuing) : grouped.days[day] || []);
+
+const SeasonSection = ({ seasonAnime, seasonLoading, error, onRetry, schedule, watchedList, watchLater, preferences = DEFAULT_PREFERENCES, setPreferences = NOOP, ignoredIds = NO_IDS, setIgnoredIds = NOOP, selectedSeason, onChangeSeason, setShowDayPicker, addToWatchLater, markAsWatched, onDetail }) => {
     const [minRating, setMinRating] = useState(0);
     const [sortByRating, setSortByRating] = useState(false);
 
@@ -35,13 +40,28 @@ const SeasonSection = ({ seasonAnime, seasonLoading, error, onRetry, schedule, w
         return filterDiscovery(ordered, { ...preferences, ignoredIds }, allUserIds);
     }, [seasonAnime, library, preferences, ignoredIds, allUserIds]);
     const grouped = useMemo(() => groupSeasonByDay(discoverySource), [discoverySource]);
+    // Lo mismo sin filtros de descubrimiento: distingue "no se emite nada" de
+    // "tus filtros (u Ocultar añadidos) lo esconden todo".
+    const rawGrouped = useMemo(() => groupSeasonByDay(seasonAnime), [seasonAnime]);
 
-    const visible = useMemo(() => {
-        const base = activeDay === 'all'
-            ? discoverySource.filter((a) => !a._continuing)
-            : grouped.days[activeDay] || [];
-        return applyRatingFilter(base, { minRating, sortByRating });
-    }, [discoverySource, grouped, activeDay, minRating, sortByRating]);
+    const dayItems = useMemo(() => pickDay(discoverySource, grouped, activeDay), [discoverySource, grouped, activeDay]);
+    const visible = useMemo(
+        () => applyRatingFilter(dayItems, { minRating, sortByRating }),
+        [dayItems, minRating, sortByRating],
+    );
+    const rawDayItems = useMemo(() => pickDay(seasonAnime, rawGrouped, activeDay), [seasonAnime, rawGrouped, activeDay]);
+
+    // Estables: DiscoveryCard y DiscoveryControls no se re-renderizan por esto.
+    const ignore = useCallback((item) => setIgnoredIds((prev) => [...new Set([...prev, item.id])]), [setIgnoredIds]);
+    const restoreIgnored = useCallback(() => setIgnoredIds([]), [setIgnoredIds]);
+    const showAdded = useCallback(() => setPreferences((prev) => ({ ...prev, hideAdded: false })), [setPreferences]);
+    // Los "ocultos" (No me interesa) no se tocan: se restauran a propósito.
+    const clearDiscoveryFilters = useCallback(
+        () => setPreferences((prev) => ({ ...prev, hideAdded: false, genre: 'all', platform: 'all' })),
+        [setPreferences],
+    );
+
+    const seasonLabel = (season) => t(`season.name.${season}`, SEASON_FALLBACK[season]);
 
     const goPrev = () => {
         const idx = SEASONS.indexOf(selectedSeason.season);
@@ -55,24 +75,60 @@ const SeasonSection = ({ seasonAnime, seasonLoading, error, onRetry, schedule, w
     };
     const goCurrentSeason = () => onChangeSeason(curSeason, curYear);
 
+    const renderEmpty = () => {
+        if (seasonAnime.length === 0) {
+            return <div className="empty-state"><span aria-hidden="true">🌸</span><p>{t('season.emptySeason', 'No se encontraron animes para esta temporada')}</p></div>;
+        }
+        if (rawDayItems.length === 0) {
+            return (
+                <div className="empty-state"><span aria-hidden="true">📭</span><p>{activeDay === 'all'
+                    ? t('season.emptyAll', 'No hay estrenos nuevos esta temporada')
+                    : t('season.emptyDay', 'Ningún anime se emite este día')}</p></div>
+            );
+        }
+        if (dayItems.length > 0 && minRating > 0) {
+            return <div className="empty-state"><span aria-hidden="true">⭐</span><p>{t('season.noRatingMatch', 'Sin animes con esa valoración')}</p></div>;
+        }
+        // Se emite algo, pero los filtros de descubrimiento lo esconden todo.
+        const addedHidden = preferences.hideAdded ? rawDayItems.filter((a) => allUserIds.has(a.id)).length : 0;
+        const allAdded = addedHidden === rawDayItems.length;
+        const hasPreferenceFilters = preferences.hideAdded || preferences.genre !== 'all' || preferences.platform !== 'all';
+        return (
+            <div className="empty-state" role="status">
+                <span aria-hidden="true">{allAdded ? '✓' : '🙈'}</span>
+                <p>{allAdded
+                    ? t('season.allAdded', 'Ya tenés en tu biblioteca todo lo que hay acá.')
+                    : t('season.filteredOut', 'Hay {count} animes acá, pero tus filtros los ocultan.', { count: rawDayItems.length })}</p>
+                <p className="empty-state-hint">{allAdded
+                    ? t('season.allAddedHint', 'Desactivá «Ocultar añadidos» para verlos.')
+                    : t('season.filteredOutHint', 'Revisá «Ocultar añadidos», el género, la plataforma o los ocultos.')}</p>
+                {(allAdded || hasPreferenceFilters) && (
+                    <button type="button" className="filter-btn" onClick={allAdded ? showAdded : clearDiscoveryFilters}>
+                        {allAdded ? t('discovery.showAdded', 'Mostrar añadidos') : t('discovery.clearFilters', 'Quitar filtros')}
+                    </button>
+                )}
+            </div>
+        );
+    };
+
     return (
         <>
             <div className="section-header">
-                <h2>{SEASON_ICONS[selectedSeason.season]} Temporada</h2>
+                <h2>{SEASON_ICONS[selectedSeason.season]} {t('nav.season', 'Temporada')}</h2>
                 <span className="count">{visible.length}{minRating > 0 && ` / ${seasonAnime.length}`}</span>
             </div>
             <div className="season-selector">
-                <button className="season-nav-btn" onClick={goPrev} title="Temporada anterior">◀</button>
+                <button className="season-nav-btn" onClick={goPrev} title={t('season.prev', 'Temporada anterior')} aria-label={t('season.prev', 'Temporada anterior')}>◀</button>
                 <div className="season-current-label">
-                    <span className="season-name">{SEASON_LABELS[selectedSeason.season]} {selectedSeason.year}</span>
+                    <span className="season-name">{seasonLabel(selectedSeason.season)} {selectedSeason.year}</span>
                 </div>
-                <button className="season-nav-btn" onClick={goNext} title="Temporada siguiente">▶</button>
+                <button className="season-nav-btn" onClick={goNext} title={t('season.next', 'Temporada siguiente')} aria-label={t('season.next', 'Temporada siguiente')}>▶</button>
                 {!isCurrent && (
-                    <button className="season-today-btn" onClick={goCurrentSeason} title="Ir a temporada actual">Actual</button>
+                    <button className="season-today-btn" onClick={goCurrentSeason} title={t('season.goCurrent', 'Ir a temporada actual')}>{t('season.current', 'Actual')}</button>
                 )}
             </div>
             {isCurrent && !seasonLoading && seasonAnime.length > 0 && (
-                <div className="season-day-tabs" role="tablist" aria-label="Día de emisión">
+                <div className="season-day-tabs" role="tablist" aria-label={t('season.dayTabs', 'Día de emisión')}>
                     {daysOfWeek.map((day, i) => (
                         <button
                             key={day}
@@ -96,7 +152,7 @@ const SeasonSection = ({ seasonAnime, seasonLoading, error, onRetry, schedule, w
                 </div>
             )}
             {!seasonLoading && seasonAnime.length > 0 && (
-                <><DiscoveryControls items={seasonAnime} preferences={preferences} setPreferences={setPreferences} ignoredCount={ignoredIds.length} onRestoreIgnored={() => setIgnoredIds([])} /><RatingFilterBar
+                <><DiscoveryControls items={seasonAnime} preferences={preferences} setPreferences={setPreferences} ignoredCount={ignoredIds.length} onRestoreIgnored={restoreIgnored} /><RatingFilterBar
                     minRating={minRating}
                     setMinRating={setMinRating}
                     sortByRating={sortByRating}
@@ -130,7 +186,7 @@ const SeasonSection = ({ seasonAnime, seasonLoading, error, onRetry, schedule, w
                                 airing={anime._airing}
                                 alreadyAdded={allUserIds.has(anime.id)}
                                 recommendationReason={preferences.personalized ? anime._recommendationReason : null}
-                                onIgnore={(item) => setIgnoredIds((prev) => [...new Set([...prev, item.id])])}
+                                onIgnore={ignore}
                                 onDetail={onDetail}
                                 onAddToSchedule={setShowDayPicker}
                                 onAddToWatchLater={addToWatchLater}
@@ -139,13 +195,7 @@ const SeasonSection = ({ seasonAnime, seasonLoading, error, onRetry, schedule, w
                         ))}
                     </div>
                 </>
-            ) : seasonAnime.length === 0 ? (
-                <div className="empty-state"><span>🌸</span><p>No se encontraron animes para esta temporada</p></div>
-            ) : minRating > 0 ? (
-                <div className="empty-state"><span>⭐</span><p>Sin animes con esa valoración</p></div>
-            ) : (
-                <div className="empty-state"><span>📭</span><p>{t('season.emptyDay', 'Ningún anime se emite este día')}</p></div>
-            )}
+            ) : renderEmpty()}
         </>
     );
 };

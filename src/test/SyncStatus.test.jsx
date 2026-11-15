@@ -17,3 +17,9 @@ it('shows both conflicting values, explains preservation, and passes an explicit
   fireEvent.click(screen.getByRole('button', { name: 'Usar nube en las diferencias' }));
   expect(onResolve).toHaveBeenCalledWith('cloud');
 });
+it('explains that sync is paused until the app is updated', () => {
+  render(<SyncStatus status="update-required" />);
+  expect(screen.getByRole('status')).toHaveTextContent('Sincronización pausada');
+  expect(screen.getByText(/Actualizá la app para seguir sincronizando/)).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Reintentar' })).toBeNull();
+});

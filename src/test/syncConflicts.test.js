@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { hashLibrary, inspectCloudSnapshot, chooseSyncConflicts } from '../syncMerge';
-import { checkpointSync, exportSyncRecovery } from '../syncRecovery';
+import { MAX_RECOVERY_CHECKPOINTS, checkpointSync, exportSyncRecovery } from '../syncRecovery';
 import { readSyncBase } from '../accountStorage';
 const lib = (watchedList = []) => ({ schedule: {}, watchedList, watchLater: [], customLists: [] });
 const entry = (currentEp, userRating = 1) => ({ id: 1, title: 'Fixture', currentEp, userRating });
@@ -44,12 +44,42 @@ describe('protected conflict handling', () => {
     expect(exported.current.cloud.watchedList[0].currentEp).toBe(3);
     expect(JSON.parse(exportSyncRecovery('B', {})).recoveryHistory).toBeNull();
   });
-  it('quota and corrupt history throw instead of deleting recovery records', () => {
-    localStorage.setItem('anitracker-sync-recovery:A', 'corrupt-history');
-    expect(() => checkpointSync('A', {})).toThrow();
-    expect(JSON.parse(exportSyncRecovery('A', {})).recoveryHistory).toBe('corrupt-history');
+  it(`keeps only the last ${MAX_RECOVERY_CHECKPOINTS} checkpoints per account`, () => {
+    for (let ep = 1; ep <= MAX_RECOVERY_CHECKPOINTS + 2; ep++) {
+      checkpointSync('A', { local: lib([entry(ep)]) });
+    }
+    checkpointSync('B', { local: lib([entry(99)]) });
+    const history = JSON.parse(localStorage.getItem('anitracker-sync-recovery:A'));
+    expect(history).toHaveLength(MAX_RECOVERY_CHECKPOINTS);
+    expect(history.map(r => JSON.parse(r.payload).local.watchedList[0].currentEp)).toEqual([3, 4, 5]);
+    expect(JSON.parse(localStorage.getItem('anitracker-sync-recovery:B'))).toHaveLength(1);
+  });
+  it('on quota, drops older checkpoints until the new one fits', () => {
+    checkpointSync('A', { local: lib([entry(1)]) });
+    checkpointSync('A', { local: lib([entry(2)]) });
+    const set = Storage.prototype.setItem;
+    // Simula una cuota que solo admite un registro.
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (key, value) {
+      if (key.startsWith('anitracker-sync-recovery:') && JSON.parse(value).length > 1) throw new Error('Quota');
+      return set.call(this, key, value);
+    });
+    expect(() => checkpointSync('A', { local: lib([entry(3)]) })).not.toThrow();
+    const history = JSON.parse(localStorage.getItem('anitracker-sync-recovery:A'));
+    expect(history.map(r => JSON.parse(r.payload).local.watchedList[0].currentEp)).toEqual([3]);
+  });
+  it('throws only when even the new checkpoint alone does not fit', () => {
+    checkpointSync('B', { local: lib([entry(1)]) });
+    const before = localStorage.getItem('anitracker-sync-recovery:B');
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('Quota'); });
-    expect(() => checkpointSync('B', {})).toThrow('Quota');
+    expect(() => checkpointSync('B', { local: lib([entry(2)]) })).toThrow('Quota');
+    expect(localStorage.getItem('anitracker-sync-recovery:B')).toBe(before);
+  });
+  it.each(['corrupt-history', '{"not":"an array"}'])('replaces an unreadable history %s instead of throwing forever', raw => {
+    localStorage.setItem('anitracker-sync-recovery:A', raw);
+    // The export still carries the unreadable value verbatim before it is replaced.
+    expect(JSON.parse(exportSyncRecovery('A', {})).recoveryHistory).toBe(raw);
+    expect(() => checkpointSync('A', { choice: 'local' })).not.toThrow();
+    expect(JSON.parse(localStorage.getItem('anitracker-sync-recovery:A'))).toHaveLength(1);
   });
   it.each(['{}', '{"o|w":null}', '[]', 'null'])('an invalid persisted base %s requires migration review', raw => {
     localStorage.setItem('anitracker-sync-base:A', raw);
@@ -64,5 +94,66 @@ describe('protected conflict handling', () => {
     expect(chooseSyncConflicts(input, 'cloud').customLists).toEqual([]);
     const reversed = { base: input.base, local: input.cloud, cloud: local };
     expect(chooseSyncConflicts(reversed, 'cloud').customLists).toEqual(local.customLists);
+  });
+
+});
+
+describe('concurrent moves of the same anime', () => {
+  const week = (days) => ({ schedule: { Lunes: [], Martes: [], Miércoles: [], ...days }, watchedList: [], watchLater: [], customLists: [] });
+  const x = { id: 1, title: 'Movida', currentEp: 3 };
+  const where = (library) => [
+    ...Object.entries(library.schedule).flatMap(([day, items]) => items.filter(a => a.id === 1).map(() => day)),
+    ...library.watchedList.filter(a => a.id === 1).map(() => 'Vistas'),
+    ...library.watchLater.filter(a => a.id === 1).map(() => 'Después'),
+  ];
+  it('two different moves pause as a placement conflict instead of duplicating', () => {
+    const input = {
+      base: hashLibrary(week({ Lunes: [x] })),
+      local: week({ Martes: [x], Lunes: [{ id: 2 }] }),
+      cloud: week({ Miércoles: [x], Martes: [{ id: 3 }] }),
+    };
+    const decision = inspectCloudSnapshot(input);
+    expect(decision.action).toBe('conflict');
+    expect(decision.conflicts).toEqual([{ key: 'p|1', kind: 'placement', label: 'Movida · Ubicación', local: 'Semana · Martes', cloud: 'Semana · Miércoles' }]);
+    const local = chooseSyncConflicts(input, 'local');
+    expect(where(local)).toEqual(['Martes']);
+    const cloud = chooseSyncConflicts(input, 'cloud');
+    expect(where(cloud)).toEqual(['Miércoles']);
+    // Independent additions on both sides survive either choice.
+    expect(cloud.schedule.Lunes.map(a => a.id)).toEqual([2]);
+    expect(cloud.schedule.Martes.map(a => a.id)).toEqual([3]);
+  });
+  it('a move to Vistas against a move to another day is also a placement conflict', () => {
+    const input = { base: hashLibrary(week({ Lunes: [x] })), local: { ...week({}), watchedList: [{ ...x, finished: true }] }, cloud: week({ Martes: [x] }) };
+    expect(inspectCloudSnapshot(input).conflicts).toMatchObject([{ kind: 'placement', local: 'Vistas', cloud: 'Semana · Martes' }]);
+    expect(where(chooseSyncConflicts(input, 'local'))).toEqual(['Vistas']);
+    expect(where(chooseSyncConflicts(input, 'cloud'))).toEqual(['Martes']);
+  });
+  it('a move on one side only merges silently into one place', () => {
+    const input = { base: hashLibrary(week({ Lunes: [x] })), local: week({ Martes: [x] }), cloud: week({ Lunes: [x], Miércoles: [{ id: 5 }] }) };
+    const decision = inspectCloudSnapshot(input);
+    expect(decision.conflicts).toEqual([]);
+    expect(where(decision.data)).toEqual(['Martes']);
+  });
+  it('the same move on both sides is not a conflict', () => {
+    const input = { base: hashLibrary(week({ Lunes: [x] })), local: week({ Martes: [x] }), cloud: week({ Martes: [x] }) };
+    expect(inspectCloudSnapshot(input).action).toBe('apply');
+  });
+  it('a move against an edit in the original day keeps a single place whichever side wins', () => {
+    const input = { base: hashLibrary(week({ Lunes: [x] })), local: week({ Martes: [x] }), cloud: week({ Lunes: [{ ...x, currentEp: 4 }] }) };
+    expect(inspectCloudSnapshot(input).conflicts).toMatchObject([{ kind: 'deletion', key: 's:Lunes|1' }]);
+    const cloud = chooseSyncConflicts(input, 'cloud');
+    expect(where(cloud)).toEqual(['Lunes']);
+    expect(cloud.schedule.Lunes[0].currentEp).toBe(4);
+    expect(where(chooseSyncConflicts(input, 'local'))).toEqual(['Martes']);
+  });
+  it('custom lists do not count as a place', () => {
+    const list = (items) => [{ id: 'fav', name: 'Fav', items }];
+    const input = {
+      base: hashLibrary({ ...week({ Lunes: [x] }), customLists: list([x]) }),
+      local: { ...week({ Martes: [x] }), customLists: list([x]) },
+      cloud: { ...week({ Lunes: [x] }), customLists: list([x]) },
+    };
+    expect(inspectCloudSnapshot(input).conflicts).toEqual([]);
   });
 });

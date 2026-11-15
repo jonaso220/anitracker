@@ -1,5 +1,6 @@
 import { normalizeAnime } from '../schemas/anime';
 import { hashString } from '../utils';
+import { ITUNES_ID_BASE } from '../idMigration';
 
 const ITUNES_BASE = 'https://itunes.apple.com';
 
@@ -18,7 +19,9 @@ export function toAnime(item) {
   const isMovie = item.kind === 'feature-movie';
   const artUrl = (item.artworkUrl100 || '').replace('100x100', '600x600');
   const sourceId = item.trackId || item.collectionId || hashString(title);
-  const id = sourceId + 500000;
+  // Rango propio (ver idMigration): los trackId pasan de 1e9 y con el +500000
+  // de antes chocaban con TMDB, Viki y AniList.
+  const id = ITUNES_ID_BASE + sourceId;
   return normalizeAnime({
     id,
     source: 'iTunes',

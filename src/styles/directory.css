@@ -126,6 +126,7 @@
 }
 
 .directory-row {
+  position: relative;
   display: flex;
   align-items: stretch;
   gap: 1rem;
@@ -136,7 +137,8 @@
   cursor: pointer;
   transition: border-color var(--transition-fast), background var(--transition-fast);
 }
-.directory-row:hover {
+.directory-row:hover,
+.directory-row:focus-within {
   border-color: var(--border-brand);
   background: var(--bg-surface-hover);
 }
@@ -188,6 +190,30 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* Botón real del título; su ::after cubre la fila para abrir la ficha con un
+   clic en cualquier parte (las acciones quedan por encima). */
+.directory-row-open {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.directory-row-open::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-md);
+}
+.directory-row-open:focus-visible { outline: none; box-shadow: none; }
+.directory-row-open:focus-visible::after {
+  outline: 2px solid var(--color-brand-primary);
+  outline-offset: 2px;
+}
+.directory-row-actions { position: relative; z-index: 1; }
 .directory-row-score {
   flex-shrink: 0;
   font-size: 0.8rem;

@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import AnimeCard from '../components/AnimeCard';
-import StatsPanel from '../components/StatsPanel';
 import DiscoveryCard from '../components/DiscoveryCard';
 import SeasonSection from '../components/SeasonSection';
 import DirectorySection from '../components/DirectorySection';
@@ -10,8 +9,8 @@ import SearchModal from '../components/modals/SearchModal';
 import DayPickerModal from '../components/modals/DayPickerModal';
 import BackupModal from '../components/modals/BackupModal';
 import CustomListsTab from '../components/CustomListsTab';
-import TodayPanel from '../components/TodayPanel';
-import { buildAgenda } from '../agenda';
+import DirectoryListRow from '../components/DirectoryListRow';
+import ImportModal from '../components/modals/ImportModal';
 import { clearRelationsCache } from '../services/anilistService';
 
 const mockAnime = {
@@ -70,61 +69,6 @@ describe('SearchModal URL search', () => {
   });
 });
 
-describe('TodayPanel', () => {
-  afterEach(() => vi.useRealTimers());
-
-  const sundaySchedule = (sunday, monday = []) => ({
-    Lunes: monday, Martes: [], Miércoles: [], Jueves: [], Viernes: [], Sábado: [], Domingo: sunday,
-  });
-
-  it('recommends today\'s episode only while it is still pending', () => {
-    const now = new Date('2026-07-12T15:00:00Z');
-    const due = { id: 101, title: 'Sale hoy', currentEp: 2, episodes: 12 };
-    const caughtUp = { id: 102, title: 'Ya al día', currentEp: 3, episodes: 12 };
-    const airingData = {
-      101: { episode: 3, isToday: true, hasAired: false, airingAt: 1783868400 },
-      102: { episode: 3, isToday: true, hasAired: false, airingAt: 1783868400 },
-    };
-
-    const agenda = buildAgenda(sundaySchedule([due, caughtUp]), airingData, now);
-    expect(agenda.active.day).toBe('Domingo');
-    expect(agenda.active.items.map((anime) => anime.title)).toEqual(['Sale hoy']);
-    expect(agenda.active.items[0]._nextToWatch).toBe(3);
-  });
-
-  it('moves the next pending day into the main column as soon as today is completed', () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-07-12T15:00:00Z'));
-    const onIncrementEpisode = vi.fn();
-    const today = { id: 201, title: 'Domingo pendiente', currentEp: 2, episodes: 12, image: 'today.jpg' };
-    const tomorrow = { id: 202, title: 'Lunes atrasado', currentEp: 0, episodes: 12, image: 'next.jpg' };
-    const airingData = {
-      201: { episode: 3, isToday: true, hasAired: false, airingAt: 1783868400 },
-      202: { episode: 4, isToday: false, hasAired: false, airingAt: 1784127600 },
-    };
-    const { rerender } = render(
-      <TodayPanel schedule={sundaySchedule([today], [tomorrow])} airingData={airingData} onDetail={() => {}} onIncrementEpisode={onIncrementEpisode} />,
-    );
-
-    expect(screen.getByText('Domingo pendiente')).toBeInTheDocument();
-    expect(screen.getByText('Lunes atrasado')).toBeInTheDocument();
-    fireEvent.click(screen.getByLabelText('Marcar episodio 3 de Domingo pendiente'));
-    expect(onIncrementEpisode).toHaveBeenCalledWith(201, 1);
-
-    rerender(
-      <TodayPanel schedule={sundaySchedule([{ ...today, currentEp: 3 }], [tomorrow])} airingData={airingData} onDetail={() => {}} onIncrementEpisode={onIncrementEpisode} />,
-    );
-    expect(screen.queryByText('Domingo pendiente')).not.toBeInTheDocument();
-    expect(screen.getByText('▶ Continuar · Lunes')).toBeInTheDocument();
-    expect(screen.getByText('Ver episodio 1 · 3 pendientes')).toBeInTheDocument();
-  });
-
-  it('does not recommend a future episode when the user is already caught up', () => {
-    const future = { id: 301, title: 'Al día hasta la semana que viene', currentEp: 3, episodes: 12 };
-    const airingData = { 301: { episode: 4, isToday: false, hasAired: false, airingAt: 1784473200 } };
-    expect(buildAgenda(sundaySchedule([future]), airingData, new Date('2026-07-12T15:00:00Z')).active).toBeNull();
-  });
-});
 
 describe('AnimeCard', () => {
   it('renders anime title', () => {
@@ -441,61 +385,6 @@ describe('AnimeDetailModal', () => {
   });
 });
 
-describe('StatsPanel', () => {
-  const mockStats = {
-    totalSchedule: 5,
-    totalWatched: 10,
-    totalWatchLater: 3,
-    finished: 8,
-    dropped: 2,
-    totalEps: 150,
-    avgRating: '7.5',
-    topGenres: [['Action', 10], ['Comedy', 7], ['Drama', 3]],
-    allTotal: 18,
-    ratingDist: [0, 0, 0, 0, 0, 1, 2, 3, 2, 2],
-    ratedCount: 10,
-  };
-
-  it('renders summary values', () => {
-    render(<StatsPanel stats={mockStats} />);
-    expect(screen.getByText('18')).toBeInTheDocument(); // allTotal
-    expect(screen.getByText('150')).toBeInTheDocument(); // totalEps
-    expect(screen.getByText('7.5')).toBeInTheDocument(); // avgRating
-  });
-
-  it('renders summary card labels', () => {
-    render(<StatsPanel stats={mockStats} />);
-    expect(screen.getByText('Total')).toBeInTheDocument();
-    expect(screen.getByText('En horario')).toBeInTheDocument();
-    expect(screen.getByText('Episodios')).toBeInTheDocument();
-  });
-
-  it('renders the library composition and genre charts', () => {
-    render(<StatsPanel stats={mockStats} />);
-    expect(screen.getByText('Composición de tu biblioteca')).toBeInTheDocument();
-    expect(screen.getByText('Géneros favoritos')).toBeInTheDocument();
-    expect(screen.getByText('Action')).toBeInTheDocument();
-    expect(screen.getByText('Comedy')).toBeInTheDocument();
-  });
-
-  it('renders the rating distribution when there are ratings', () => {
-    render(<StatsPanel stats={mockStats} />);
-    expect(screen.getByText('Tus puntuaciones')).toBeInTheDocument();
-  });
-
-  it('hides charts gracefully when everything is empty', () => {
-    const emptyStats = {
-      totalSchedule: 0, totalWatched: 0, totalWatchLater: 0,
-      finished: 0, dropped: 0, totalEps: 0, avgRating: '—',
-      topGenres: [], allTotal: 0, ratingDist: [], ratedCount: 0,
-    };
-    render(<StatsPanel stats={emptyStats} />);
-    expect(screen.queryByText('Géneros favoritos')).not.toBeInTheDocument();
-    expect(screen.queryByText('Composición de tu biblioteca')).not.toBeInTheDocument();
-    expect(screen.queryByText('Tus puntuaciones')).not.toBeInTheDocument();
-  });
-});
-
 describe('DayPickerModal', () => {
   const renderPicker = (anime, addToSchedule = vi.fn()) => render(
     <DayPickerModal showDayPicker={anime} setShowDayPicker={vi.fn()} watchLater={[]} addToSchedule={addToSchedule} moveFromWatchLaterToSchedule={vi.fn()} />,
@@ -609,5 +498,141 @@ describe('AnimeCard sin portada', () => {
     expect(container.querySelector('img')).toBeNull();
     expect(container.querySelector('.img-fallback')).toHaveStyle({ display: 'flex' });
     expect(container.querySelector('.img-fallback')).toHaveTextContent('S');
+  });
+});
+
+describe('Directorio: página entera ya agregada', () => {
+  beforeEach(() => { localStorage.clear(); });
+  const noop = () => {};
+  const filters = { search: '', genre: '', demography: '', format: '', status: '', year: '', season: '', sort: 'POPULARITY_DESC' };
+  const directory = (over = {}) => ({
+    filters, results: [{ id: 1, title: 'Ya la tengo', image: '', genres: [], rating: 8 }],
+    loading: false, loadingMore: false, hasNextPage: true,
+    updateFilter: vi.fn(), resetFilters: vi.fn(), loadInitial: noop, loadMore: vi.fn(), ...over,
+  });
+  const props = {
+    schedule: {}, watchedList: [{ id: 1, title: 'Ya la tengo' }], watchLater: [],
+    preferences: { personalized: false, hideAdded: true, genre: 'all', platform: 'all' },
+    setShowDayPicker: noop, addToWatchLater: noop, markAsWatched: noop, onDetail: noop,
+  };
+
+  it('explica que todo está en la biblioteca y deja seguir cargando', () => {
+    const dir = directory();
+    const setPreferences = vi.fn();
+    render(<DirectorySection {...props} setPreferences={setPreferences} directory={dir} />);
+    expect(screen.queryByText('Sin resultados con esos filtros')).not.toBeInTheDocument();
+    expect(screen.getByText('Todo lo de esta página ya está en tu biblioteca.')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Cargar más'));
+    expect(dir.loadMore).toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Mostrar añadidos' }));
+    expect(setPreferences).toHaveBeenCalled();
+    expect(setPreferences.mock.calls[0][0](props.preferences).hideAdded).toBe(false);
+  });
+
+  it('sin más páginas no ofrece "Cargar más"', () => {
+    render(<DirectorySection {...props} directory={directory({ hasNextPage: false })} />);
+    expect(screen.getByText('Todo lo de esta página ya está en tu biblioteca.')).toBeInTheDocument();
+    expect(screen.queryByText('Cargar más')).not.toBeInTheDocument();
+  });
+});
+
+describe('Temporada: vacío por filtros vs. nada se emite', () => {
+  const noop = () => {};
+  const now = new Date();
+  const month = now.getMonth() + 1;
+  const currentSeason = {
+    season: month <= 3 ? 'WINTER' : month <= 6 ? 'SPRING' : month <= 9 ? 'SUMMER' : 'FALL',
+    year: now.getFullYear(),
+  };
+  const nowSec = Math.floor(now.getTime() / 1000);
+  const show = { id: 1, title: 'Today Show', image: '', genres: [], rating: 8, _airing: { nextEpisode: 3, nextAiringAt: nowSec } };
+  const baseProps = {
+    seasonLoading: false, schedule: {}, watchLater: [], selectedSeason: currentSeason,
+    onChangeSeason: noop, setShowDayPicker: noop, addToWatchLater: noop, markAsWatched: noop, onDetail: noop,
+  };
+
+  it('con "Ocultar añadidos" dice que ya está todo en la biblioteca', () => {
+    render(<SeasonSection {...baseProps} seasonAnime={[show]} watchedList={[{ id: 1, title: 'Today Show' }]}
+      preferences={{ personalized: false, hideAdded: true, genre: 'all', platform: 'all' }} setPreferences={noop} />);
+    expect(screen.queryByText('Ningún anime se emite este día')).not.toBeInTheDocument();
+    expect(screen.getByText('Ya tenés en tu biblioteca todo lo que hay acá.')).toBeInTheDocument();
+    // También en "Todos".
+    fireEvent.click(screen.getByRole('tab', { name: 'Todos' }));
+    expect(screen.getByText('Ya tenés en tu biblioteca todo lo que hay acá.')).toBeInTheDocument();
+  });
+
+  it('un filtro de género que oculta todo no se confunde con "nada se emite"', () => {
+    render(<SeasonSection {...baseProps} seasonAnime={[{ ...show, genres: ['Drama'] }]} watchedList={[]}
+      preferences={{ personalized: false, hideAdded: false, genre: 'Action', platform: 'all' }} setPreferences={noop} />);
+    expect(screen.getByText('Hay 1 anime acá, pero tus filtros lo ocultan.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Quitar filtros' })).toBeInTheDocument();
+  });
+
+  it('un día sin emisiones sigue diciendo que no se emite nada', () => {
+    const otherDay = { ...show, _airing: { nextEpisode: 3, nextAiringAt: nowSec + 86400 } };
+    render(<SeasonSection {...baseProps} seasonAnime={[otherDay]} watchedList={[]} />);
+    expect(screen.getByText('Ningún anime se emite este día')).toBeInTheDocument();
+  });
+});
+
+describe('accesibilidad de controles', () => {
+  it('la fila del Directorio se abre con un botón real (teclado)', () => {
+    const onDetail = vi.fn();
+    const anime = { id: 9, title: 'Fila', genres: [], synopsis: 'Texto en español para la sinopsis.' };
+    render(<DirectoryListRow anime={anime} onDetail={onDetail} onAddToSchedule={vi.fn()} onAddToWatchLater={vi.fn()} onMarkWatched={vi.fn()} />);
+    const open = screen.getByRole('button', { name: 'Abrir detalles de Fila' });
+    expect(open.tagName).toBe('BUTTON');
+    fireEvent.click(open);
+    expect(onDetail).toHaveBeenCalledWith(anime);
+    // Las acciones no abren la ficha.
+    fireEvent.click(screen.getByRole('button', { name: 'Ver después' }));
+    expect(onDetail).toHaveBeenCalledTimes(1);
+  });
+
+  it('el ✕ de una lista personalizada nombra el anime y la lista', () => {
+    const onRemoveFromList = vi.fn();
+    const onDetail = vi.fn();
+    render(<CustomListsTab customLists={[{ id: 'l1', name: 'Favs', emoji: '⭐', items: [{ id: 5, title: 'Frieren' }] }]}
+      onCreateList={vi.fn()} onDeleteList={vi.fn()} onRenameList={vi.fn()} onRemoveFromList={onRemoveFromList} onDetail={onDetail} airingData={{}} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Quitar Frieren de Favs' }));
+    expect(onRemoveFromList).toHaveBeenCalledWith('l1', 5);
+    expect(onDetail).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir ficha de Frieren' }));
+    expect(onDetail).toHaveBeenCalledWith(expect.objectContaining({ id: 5, _customListId: 'l1', _isCustomList: true }));
+  });
+
+  it('el indicador de estado en Vistas tiene nombre y distingue dropeada de en pausa', () => {
+    const { rerender } = render(<AnimeCard anime={{ id: 1, title: 'A', finished: true }} isWatched />);
+    expect(screen.getByRole('img', { name: 'Completada' })).toBeInTheDocument();
+    rerender(<AnimeCard anime={{ id: 1, title: 'A', finished: false }} isWatched />);
+    const dropped = screen.getByRole('img', { name: 'Dropeada' });
+    expect(dropped).not.toHaveTextContent('⏸');
+  });
+
+  it('el usuario de AniList tiene etiqueta', () => {
+    render(<ImportModal onClose={vi.fn()} onImport={vi.fn()} />);
+    expect(screen.getByLabelText('Usuario de AniList')).toBeInTheDocument();
+  });
+});
+
+describe('AnimeDetailModal: quitar de una lista', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    clearRelationsCache();
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true, json: () => Promise.resolve({ data: { Media: null } }) });
+  });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it('el ✕ de cada lista tiene nombre accesible', () => {
+    const noop = () => {};
+    const removeFromCustomList = vi.fn();
+    const anime = { id: 30, title: 'Bocchi', genres: [], synopsis: '', _isWatchLater: true };
+    render(<AnimeDetailModal showAnimeDetail={anime} setShowAnimeDetail={noop} airingData={{}}
+      updateEpisode={noop} updateUserRating={noop} updateAnimeLink={noop} markAsFinished={noop} dropAnime={noop}
+      deleteAnime={noop} addToWatchLater={noop} markAsWatched={noop} setShowMoveDayPicker={noop} setShowDayPicker={noop}
+      resumeAnime={noop} addToCustomList={noop} removeFromCustomList={removeFromCustomList}
+      customLists={[{ id: 'l1', name: 'Favs', emoji: '⭐', items: [{ id: 30, title: 'Bocchi' }] }]} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Quitar de Favs' }));
+    expect(removeFromCustomList).toHaveBeenCalledWith('l1', 30);
   });
 });

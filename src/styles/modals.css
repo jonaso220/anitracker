@@ -787,16 +787,27 @@ a.provider-chip:hover { border-color: var(--border-brand-strong); transform: tra
   border: 1px solid rgba(168, 85, 247, 0.25);
   font-size: 0.8rem;
 }
+/* 28 px visibles dentro del chip; el ::before lleva el área táctil a 44 px. */
 .detail-list-tag-remove {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin: -0.3rem -0.55rem -0.3rem 0;
   background: none;
   border: none;
+  border-radius: 50%;
   color: inherit;
   cursor: pointer;
-  opacity: 0.5;
-  font-size: 0.7rem;
+  opacity: 0.7;
+  font-size: 0.8rem;
   padding: 0;
 }
-.detail-list-tag-remove:hover { opacity: 1; color: #f87171; }
+.detail-list-tag-remove::before { content: ''; position: absolute; inset: -8px; border-radius: 50%; }
+.detail-list-tag-remove:hover,
+.detail-list-tag-remove:focus-visible { opacity: 1; color: #f87171; background: rgba(239, 68, 68, 0.12); }
 .detail-list-picker {
   display: flex;
   flex-direction: column;

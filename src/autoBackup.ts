@@ -18,7 +18,7 @@ const DB_NAME = 'anitracker-backups';
 const DB_VERSION = 1;
 const STORE = 'snapshots';
 
-/** Cuántas copias se conservan (la más nueva y las anteriores). */
+/** Cuántas copias se conservan por cuenta (la más nueva y las anteriores). */
 export const MAX_SNAPSHOTS = 3;
 
 export interface AutoBackupCounts {
@@ -81,10 +81,19 @@ function readAll(db: IDBDatabase): Promise<SnapshotRecord[]> {
   });
 }
 
-/** Borra las copias más viejas dejando solo las últimas `MAX_SNAPSHOTS`. */
+/**
+ * Borra las copias más viejas dejando solo las últimas `MAX_SNAPSHOTS` de cada
+ * dueño: las copias de una cuenta (o de invitado) nunca desplazan a las de otra
+ * que use el mismo navegador.
+ */
 async function prune(db: IDBDatabase): Promise<void> {
   const all = await readAll(db); // en orden de clave = del más viejo al más nuevo
-  const extra = all.slice(0, Math.max(0, all.length - MAX_SNAPSHOTS));
+  const byOwner = new Map<string | null, SnapshotRecord[]>();
+  for (const record of all) {
+    const owner = record.owner ?? null;
+    byOwner.set(owner, [...(byOwner.get(owner) ?? []), record]);
+  }
+  const extra = [...byOwner.values()].flatMap((records) => records.slice(0, Math.max(0, records.length - MAX_SNAPSHOTS)));
   if (extra.length === 0) return;
   await new Promise<void>((resolve) => {
     const tx = db.transaction(STORE, 'readwrite');
@@ -127,14 +136,26 @@ export async function saveAutoBackup(
   }
 }
 
-/** Copias guardadas, de la más nueva a la más vieja. Nunca lanza. */
-export async function listAutoBackups(factory: IdbFactoryLike | null = defaultFactory()): Promise<AutoBackupMeta[]> {
+/** Filtro de `listAutoBackups`: `owner: null` son las copias de invitado. */
+export interface AutoBackupFilter {
+  owner: string | null;
+}
+
+/**
+ * Copias guardadas, de la más nueva a la más vieja. Con `filter`, solo las de
+ * ese dueño (sin él, todas). Nunca lanza.
+ */
+export async function listAutoBackups(
+  factory: IdbFactoryLike | null = defaultFactory(),
+  filter?: AutoBackupFilter,
+): Promise<AutoBackupMeta[]> {
   if (!factory) return [];
   let db: IDBDatabase | null = null;
   try {
     db = await openDb(factory);
     const all = await readAll(db);
     return all
+      .filter((record) => !filter || (record.owner ?? null) === filter.owner)
       .map(({ id, at, owner, counts }) => ({ id, at, owner, counts }))
       .reverse();
   } catch {

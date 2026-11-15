@@ -1,8 +1,11 @@
 {
+  "id": "/",
   "name": "AniTracker",
   "short_name": "AniTracker",
   "description": "Tu tracker de anime semanal",
+  "lang": "es",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#0f0f1a",
   "theme_color": "#0f0f1a",

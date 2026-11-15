@@ -17,6 +17,7 @@ import { LOCAL_REV_KEY, readActiveLibrary } from '../accountStorage';
 import { FIREBASE_ENABLED, authMessage, getAuthHandles, initFirebase } from './firebaseClient';
 import { useAuth } from './useAuth';
 import { useCloudSync } from './useCloudSync';
+import { t } from '../i18n';
 
 // La app (y los tests) importan `serializeData` desde acá.
 export { serializeData } from './firebaseClient';
@@ -38,6 +39,10 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
   });
 
   const { setUser, setAuthError, setAuthReady } = auth;
+  // Si ya se sabe quién es el usuario (o que no hay sesión). `authReady` llega
+  // antes, apenas carga el SDK: en ese lapso `user` es null aunque haya sesión,
+  // y una copia automática hecha ahí quedaría como de invitado.
+  const [authResolved, setAuthResolved] = useState(!FIREBASE_ENABLED);
   const { handleAuthUser, dispose, prepareLogout, persistAccount, unsubscribeFromCloud } = cloud;
 
   // Inicializar Auth: resolver el SDK, recuperar un redirect pendiente y
@@ -48,7 +53,8 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
     let cancelled = false;
     initFirebase().then(async () => {
       const { firebaseAuth, auth: fbAuth } = getAuthHandles();
-      if (cancelled || !firebaseAuth || !fbAuth) return;
+      if (cancelled) return;
+      if (!firebaseAuth || !fbAuth) { setAuthResolved(true); return; }
       setAuthReady(true);
       if (initialAccount?.rev) {
         try { localStorage.setItem(LOCAL_REV_KEY, initialAccount.rev); } catch { /* best-effort */ }
@@ -68,8 +74,9 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
         setUser(u);
         if (u) setAuthError('');
         handleAuthUser(u);
+        setAuthResolved(true);
       });
-    }).catch((error) => { if (!cancelled) { setAuthReady(true); setAuthError(authMessage(error)); } });
+    }).catch((error) => { if (!cancelled) { setAuthReady(true); setAuthResolved(true); setAuthError(authMessage(error)); } });
     return () => {
       cancelled = true;
       if (unsubscribe) unsubscribe();
@@ -91,10 +98,10 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
       window.dispatchEvent(new Event('anitracker-account-changed'));
       setUser(null);
       if (unsynced) {
-        setAuthError('Cerraste sesión con cambios sin subir. Quedaron guardados en este dispositivo. Revisá la sincronización al volver a entrar con esta cuenta.');
+        setAuthError(t('auth.logoutUnsynced', 'Cerraste sesión con cambios sin subir. Quedaron guardados en este dispositivo. Revisá la sincronización al volver a entrar con esta cuenta.'));
       }
     } catch {
-      setAuthError('No se pudo cerrar la sesión. Tus datos siguen en esta cuenta. Volvé a intentarlo.');
+      setAuthError(t('auth.logoutFailed', 'No se pudo cerrar la sesión. Tus datos siguen en esta cuenta. Volvé a intentarlo.'));
     }
   }, [prepareLogout, persistAccount, unsubscribeFromCloud, setUser, setAuthError]);
 
@@ -111,6 +118,7 @@ export function useFirebase(schedule, watchedList, watchLater, customLists, setS
     retrySync: cloud.retrySync,
     authError: auth.authError,
     authReady: auth.authReady,
+    authResolved,
     authBusy: auth.authBusy,
     loginWithGoogle: auth.loginWithGoogle,
     logout,

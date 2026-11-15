@@ -1,3 +1,5 @@
+import { pruneLocalCache } from './services/cachePrune';
+
 export const daysOfWeek: string[] = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 export const dayEmojis: string[] = ['📅', '🎯', '⚡', '🔥', '🎉', '🌟', '💫'];
 
@@ -15,18 +17,8 @@ const TR_PREFIX = 'anitracker-tr-';
 // cache se pisaba solo.
 const TR_MAX = 200;
 
-export const pruneTranslationCache = (): void => {
-  try {
-    const keys: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && k.startsWith(TR_PREFIX)) keys.push(k);
-    }
-    if (keys.length > TR_MAX) {
-      // Remove oldest entries (order of localStorage.key is not guaranteed,
-      // so we just remove random excess ones - simple and effective)
-      const toRemove = keys.slice(0, keys.length - TR_MAX);
-      toRemove.forEach((k) => localStorage.removeItem(k));
-    }
-  } catch { /* empty */ }
+// Las traducciones son texto plano (sin fecha): el índice lateral guarda cuándo
+// se escribió cada una para borrar primero las más viejas.
+export const pruneTranslationCache = (justWritten?: string): void => {
+  pruneLocalCache({ prefix: TR_PREFIX, max: TR_MAX, keep: justWritten, indexKey: 'anitracker-trindex' });
 };

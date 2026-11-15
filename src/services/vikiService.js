@@ -12,7 +12,7 @@ const VIKI_APP_ID = '100000a';
 const VIKI_WEB = 'https://www.viki.com';
 
 // Rango interno de IDs (no choca con MAL <100000, Kitsu +100000, AniList
-// +300000 / +800000000, TVMaze +400000, iTunes +500000, TMDB +600000000 / +900000000).
+// +300000 / +800000000, TVMaze +400000, iTunes +10000000000, TMDB +600000000 / +900000000).
 // Series y películas comparten el espacio de ids de Viki ("41650c").
 export const VIKI_ID_BASE = 700000000;
 
@@ -88,7 +88,7 @@ export async function searchViki(query, { signal, limit = 10 } = {}) {
 
 /**
  * Viki id ("41650c") de un anime guardado de Viki, o null. Solo por
- * `sourceKey`: por rango de id un item de iTunes (trackId + 500000, ~1e9)
+ * `sourceKey`: por rango de id un item de iTunes (antes trackId + 500000, ~1e9)
  * podía pasar por serie de Viki.
  */
 export function vikiIdOf(anime) {
@@ -99,16 +99,19 @@ export function vikiIdOf(anime) {
 /**
  * Próximo episodio de series de Viki en emisión, con la misma forma que
  * la info de AniList (ver useAnimeData), indexado por id interno. Usa `watch_next` de
- * la ficha. Una ficha que falla solo omite esa serie; si fallan todas, lanza.
+ * la ficha. Una ficha que falla solo omite esa serie, avisando por
+ * `onPartialFailure` (el resultado queda incompleto y no se cachea como
+ * completo); si fallan todas, lanza. Un 404 (serie borrada) no es una falla.
  */
-export async function fetchVikiAiringInfo({ vikiIds = [], signal } = {}) {
+export async function fetchVikiAiringInfo({ vikiIds = [], signal, onPartialFailure } = {}) {
   if (vikiIds.length === 0) return {};
   const settled = await Promise.allSettled(
     vikiIds.map((id) => vikiFetch(`/series/${id}.json`, {}, { signal })),
   );
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-  const failed = settled.filter((s) => s.status === 'rejected');
+  const failed = settled.filter((s) => s.status === 'rejected' && !/HTTP 404\b/.test(String(s.reason?.message)));
   if (failed.length === settled.length) throw failed[0].reason;
+  if (failed.length > 0) onPartialFailure?.(failed[0].reason);
 
   const now = new Date();
   const result = {};

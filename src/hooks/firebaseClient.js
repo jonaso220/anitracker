@@ -5,6 +5,7 @@
 // llamada a `initFirebase()` resuelve los imports y deja los handles listos.
 import { resolveAuthDomain } from '../authFlow';
 import { serializeLibrary } from '../cloudSync';
+import { t } from '../i18n';
 
 const env = import.meta.env;
 
@@ -57,12 +58,12 @@ export const getAuthHandles = () => ({ firebaseAuth, auth, firebaseDb, db });
 
 export function authMessage(error) {
   switch (error?.code) {
-    case 'auth/popup-blocked': return 'El navegador bloqueó la ventana de Google. Permití las ventanas emergentes para esta app y volvé a intentarlo.';
-    case 'auth/popup-closed-by-user': return 'Se cerró el acceso de Google. Tocá Google para intentarlo otra vez.';
-    case 'auth/network-request-failed': return 'No se pudo conectar con Google. Revisá tu conexión y volvé a intentarlo.';
-    case 'auth/unauthorized-domain': return 'El dominio de esta app no está autorizado para iniciar sesión. Contactá al administrador.';
-    case 'auth/web-storage-unsupported': return 'El navegador no permite guardar la sesión. Habilitá el almacenamiento para esta app.';
-    default: return 'No se pudo iniciar sesión con Google. Volvé a intentarlo.';
+    case 'auth/popup-blocked': return t('auth.popupBlocked', 'El navegador bloqueó la ventana de Google. Permití las ventanas emergentes para esta app y volvé a intentarlo.');
+    case 'auth/popup-closed-by-user': return t('auth.popupClosed', 'Se cerró el acceso de Google. Tocá Google para intentarlo otra vez.');
+    case 'auth/network-request-failed': return t('auth.network', 'No se pudo conectar con Google. Revisá tu conexión y volvé a intentarlo.');
+    case 'auth/unauthorized-domain': return t('auth.unauthorizedDomain', 'El dominio de esta app no está autorizado para iniciar sesión. Contactá al administrador.');
+    case 'auth/web-storage-unsupported': return t('auth.storageUnsupported', 'El navegador no permite guardar la sesión. Habilitá el almacenamiento para esta app.');
+    default: return t('auth.failed', 'No se pudo iniciar sesión con Google. Volvé a intentarlo.');
   }
 }
 

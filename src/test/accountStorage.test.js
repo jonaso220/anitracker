@@ -1,4 +1,4 @@
-import { beforeEach, it, expect } from 'vitest';
+import { beforeEach, it, expect, vi } from 'vitest';
 import { emptyLibrary, readActiveLibrary, selectLibraryAccount, persistAccountLibrary } from '../accountStorage';
 
 beforeEach(() => localStorage.clear());
@@ -22,4 +22,15 @@ it('persists offline changes under their existing owner', () => {
   const data={...emptyLibrary(),watchedList:[{id:9}]};
   persistAccountLibrary('A',data,'2026-09-06');
   expect(readActiveLibrary()).toEqual({owner:'A',data,rev:'2026-09-06'});
+});
+it('selecting the same account again does not rewrite the whole library', () => {
+  const data={...emptyLibrary(),watchedList:[{id:3}]};
+  persistAccountLibrary('A',data,'2026-09-06');
+  const before=localStorage.getItem('anitracker-account-state');
+  const set=vi.spyOn(Storage.prototype,'setItem').mockImplementation(()=>{ throw new Error('Quota'); });
+  try {
+    expect(selectLibraryAccount('A','A',data,'2026-09-06')).toEqual({owner:'A',data,rev:'2026-09-06'});
+    expect(set).not.toHaveBeenCalled();
+  } finally { set.mockRestore(); }
+  expect(localStorage.getItem('anitracker-account-state')).toBe(before);
 });

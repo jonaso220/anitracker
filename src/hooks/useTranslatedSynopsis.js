@@ -63,7 +63,7 @@ export function useTranslatedSynopsis(anime) {
         setText(tr);
         try {
           localStorage.setItem(`anitracker-tr-${anime.id}`, tr);
-          pruneTranslationCache();
+          pruneTranslationCache(`anitracker-tr-${anime.id}`);
         } catch { /* empty */ }
       } else {
         setText(syn); // sin traducción disponible: dejar el original

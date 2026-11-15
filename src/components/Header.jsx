@@ -1,5 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
 import SyncStatus from './SyncStatus';
+import { t } from '../i18n';
+
+/**
+ * Estado de la nube en una línea para el menú. `syncStatus` sale de
+ * useCloudSync ('synced' | 'pending' | 'offline' | 'conflict'); sin él (tests,
+ * Firebase apagado) se cae a `syncing`.
+ */
+const cloudLine = ({ syncStatus, syncing }) => {
+  if (syncStatus === 'offline') return { text: t('header.syncOffline', '📴 Sin conexión · los cambios quedan en este dispositivo'), warn: true };
+  if (syncStatus === 'conflict') return { text: t('header.syncConflict', '⚠️ Cambios pendientes · revisá las diferencias'), warn: true };
+  if (syncing) return { text: t('header.syncing', '☁️ Sincronizando…'), warn: false };
+  if (syncStatus === 'pending') return { text: t('header.syncPending', '☁️ Cambios pendientes'), warn: false };
+  return { text: t('header.synced', '☁️ Sincronizado'), warn: false };
+};
 
 const Header = ({
   darkMode, setDarkMode,
@@ -10,13 +24,21 @@ const Header = ({
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
+  const triggerRef = useRef(null);
 
+  // Menú tipo "disclosure": un botón que muestra/oculta una lista de botones
+  // comunes (Tab los recorre). Escape lo cierra y devuelve el foco al botón,
+  // así el teclado no queda perdido en un elemento que desapareció.
   useEffect(() => {
     if (!menuOpen) return;
     const onDocClick = (e) => {
       if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false);
     };
-    const onKey = (e) => { if (e.key === 'Escape') setMenuOpen(false); };
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      setMenuOpen(false);
+      if (menuRef.current?.contains(document.activeElement)) triggerRef.current?.focus();
+    };
     document.addEventListener('mousedown', onDocClick);
     document.addEventListener('keydown', onKey);
     return () => {
@@ -36,6 +58,8 @@ const Header = ({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onOpenSearch]);
+
+  const line = cloudLine({ syncStatus, syncing });
 
   return (
     <header className="header" role="banner">
@@ -117,25 +141,27 @@ const Header = ({
             type="button"
             className="search-input-wrap"
             onClick={onOpenSearch}
-            aria-label="Abrir buscador de anime"
+            aria-label={t('header.openSearch', 'Abrir buscador de anime')}
           >
             <span className="search-input-icon" aria-hidden="true">🔍</span>
-            <span className="search-input-placeholder">Buscar anime...</span>
+            <span className="search-input-placeholder">{t('header.searchPlaceholder', 'Buscar anime...')}</span>
             <kbd className="search-input-hint" aria-hidden="true">⌘K</kbd>
           </button>
           {firebaseEnabled && !user && (
-            <button className="auth-btn google" onClick={loginWithGoogle} disabled={!authReady || authBusy} aria-busy={authBusy} aria-label="Iniciar sesión con Google">
-              <span aria-hidden="true">🔑</span><span className="btn-label">{authBusy ? ' Conectando…' : !authReady ? ' Cargando…' : ' Google'}</span>
+            <button className="auth-btn google" onClick={loginWithGoogle} disabled={!authReady || authBusy} aria-busy={authBusy} aria-label={t('header.loginGoogle', 'Iniciar sesión con Google')}>
+              <span aria-hidden="true">🔑</span><span className="btn-label">{' '}{authBusy ? t('header.connecting', 'Conectando…') : !authReady ? t('header.loading', 'Cargando…') : 'Google'}</span>
             </button>
           )}
 
           <div className="user-menu" ref={menuRef}>
             <button
+              ref={triggerRef}
+              type="button"
               className="user-menu-trigger"
               onClick={() => setMenuOpen((v) => !v)}
-              aria-haspopup="menu"
               aria-expanded={menuOpen}
-              aria-label="Menú de usuario"
+              aria-controls="user-menu-dropdown"
+              aria-label={t('header.userMenu', 'Menú de usuario')}
             >
               {user?.photoURL ? (
                 <img src={user.photoURL} alt="" />
@@ -144,64 +170,64 @@ const Header = ({
                   {user?.displayName?.charAt(0) || '👤'}
                 </span>
               )}
-              {syncError ? (
-                <span className="user-menu-warn" title="No se pudo sincronizar con la nube" aria-hidden="true">⚠️</span>
+              {user && (syncError || line.warn) ? (
+                <span className="user-menu-warn" title={syncError ? t('header.syncFailedShort', 'No se pudo sincronizar con la nube') : line.text} aria-hidden="true">⚠️</span>
               ) : (
                 syncing && <span className="user-menu-sync" aria-hidden="true">☁️</span>
               )}
             </button>
             {menuOpen && (
-              <div className="user-menu-dropdown" role="menu">
+              <div className="user-menu-dropdown" id="user-menu-dropdown">
                 {user && (
                   <div className="user-menu-header">
                     {user.photoURL && <img src={user.photoURL} alt="" />}
                     <div className="user-menu-name">
-                      <strong>{user.displayName || 'Usuario'}</strong>
+                      <strong>{user.displayName || t('header.userFallback', 'Usuario')}</strong>
                       {syncError ? (
                         <span className="user-menu-syncing user-menu-sync-error">
                           {syncTooLarge
-                            ? '⚠️ Tu biblioteca superó el límite de la nube (1 MB comprimida). Tus cambios siguen guardados en este dispositivo; exportá una copia de seguridad.'
-                            : '⚠️ No se pudo sincronizar. Tus cambios siguen guardados en este dispositivo.'}
+                            ? t('header.syncTooLarge', '⚠️ Tu biblioteca superó el límite de la nube (1 MB comprimida). Tus cambios siguen guardados en este dispositivo; exportá una copia de seguridad.')
+                            : t('header.syncFailed', '⚠️ No se pudo sincronizar. Tus cambios siguen guardados en este dispositivo.')}
                         </span>
                       ) : (
-                        <span className="user-menu-syncing">{syncing ? '☁️ Sincronizando…' : '☁️ Sincronizado'}</span>
+                        <span className={`user-menu-syncing ${line.warn ? 'user-menu-sync-error' : ''}`}>{line.text}</span>
                       )}
                     </div>
                   </div>
                 )}
-                {user && syncError && <button className="user-menu-item" role="menuitem" onClick={onRetrySync}>Reintentar sincronización</button>}
-                {user && onDownloadRecovery && <button className="user-menu-item" role="menuitem" onClick={onDownloadRecovery}>Descargar recuperación de sincronización</button>}
+                {user && syncError && <button type="button" className="user-menu-item" onClick={onRetrySync}>{t('header.retrySync', 'Reintentar sincronización')}</button>}
+                {user && onDownloadRecovery && <button type="button" className="user-menu-item" onClick={onDownloadRecovery}>{t('header.downloadRecovery', 'Descargar recuperación de sincronización')}</button>}
                 <button
+                  type="button"
                   className="user-menu-item"
-                  role="menuitem"
                   onClick={() => { setMenuOpen(false); onOpenImport?.(); }}
                 >
                   <span aria-hidden="true">📥</span>
-                  <span>Importar desde AniList</span>
+                  <span>{t('header.importAniList', 'Importar desde AniList')}</span>
                 </button>
                 <button
+                  type="button"
                   className="user-menu-item"
-                  role="menuitem"
                   onClick={() => { setMenuOpen(false); onOpenBackup?.(); }}
                 >
                   <span aria-hidden="true">💾</span>
-                  <span>Copia de seguridad</span>
+                  <span>{t('header.backup', 'Copia de seguridad')}</span>
                 </button>
-                <div className="user-menu-divider" />
+                <div className="user-menu-divider" aria-hidden="true" />
                 <button
+                  type="button"
                   className="user-menu-item"
-                  role="menuitem"
                   onClick={() => { setDarkMode(!darkMode); }}
                 >
                   <span aria-hidden="true">{darkMode ? '☀️' : '🌙'}</span>
-                  <span>{darkMode ? 'Tema claro' : 'Tema oscuro'}</span>
+                  <span>{darkMode ? t('header.themeToLight', 'Tema claro') : t('header.themeToDark', 'Tema oscuro')}</span>
                 </button>
                 {user && (
                   <>
-                    <div className="user-menu-divider" />
-                    <button className="user-menu-item danger" role="menuitem" onClick={() => { setMenuOpen(false); logout(); }}>
+                    <div className="user-menu-divider" aria-hidden="true" />
+                    <button type="button" className="user-menu-item danger" onClick={() => { setMenuOpen(false); logout(); }}>
                       <span aria-hidden="true">🚪</span>
-                      <span>Cerrar sesión</span>
+                      <span>{t('header.logoutFull', 'Cerrar sesión')}</span>
                     </button>
                   </>
                 )}

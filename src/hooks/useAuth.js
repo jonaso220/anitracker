@@ -7,6 +7,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { shouldRedirectGoogle } from '../authFlow';
 import { FIREBASE_CONFIG, authMessage, getAuthHandles, initFirebase } from './firebaseClient';
+import { t } from '../i18n';
 
 export function useAuth() {
   const [user, setUser] = useState(null);
@@ -25,7 +26,7 @@ export function useAuth() {
       setAuthReady(false);
       try {
         await initFirebase();
-        setAuthError('Google está listo. Tocá el botón para continuar.');
+        setAuthError(t('auth.ready', 'Google está listo. Tocá el botón para continuar.'));
       } catch (error) { setAuthError(authMessage(error)); }
       setAuthReady(true);
       return;
