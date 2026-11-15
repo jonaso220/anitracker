@@ -1,8 +1,10 @@
 import { anilistIdsOf } from './anilistService';
+import { fetchKitsuMappings } from './kitsuService';
 import {
   ANILIST_PUSHED_KEY,
   ANILIST_PUSHED_OWNER_KEY,
   ANILIST_SENT_KEY,
+  ANILIST_SOURCES_KEY,
   AnilistAuthError,
   AnilistRateLimitError,
   AnilistRequestError,
@@ -19,8 +21,9 @@ import {
 //   entera pisaría la lista de AniList y chocaría con el límite de pedidos).
 // - **Nunca se borra en AniList**: sacar un anime de la app solo olvida su
 //   huella.
-// - Solo se manda lo que tiene id de AniList o de MAL; TVMaze, TMDB, iTunes,
-//   Viki y Kitsu sin MAL se saltean en silencio.
+// - Solo se manda lo que se puede ubicar en AniList: lo que tiene id de AniList
+//   o de MAL, y lo de Kitsu a través de sus equivalencias (`fetchKitsuMappings`).
+//   TVMaze, TMDB, iTunes y Viki se saltean en silencio.
 
 export { AnilistAuthError, AnilistRateLimitError, AnilistRequestError };
 
@@ -64,7 +67,7 @@ export function desiredEntries({ schedule, watchLater, watchedList } = {}) {
     const key = String(anime.id);
     if (desired.has(key)) return;
     const { anilistId, malId } = anilistIdsOf(anime);
-    if (!anilistId && !malId) return;
+    if (!anilistId && !malId && !kitsuIdOf(anime)) return;
     const status = statusOf(anime);
     let progress = toProgress(anime.currentEp);
     // Un anime terminado tiene todos sus episodios vistos, aunque el contador
@@ -96,6 +99,44 @@ export function fullSyncPushed(pushed, sent) {
   const next = {};
   for (const [key, signature] of Object.entries(pushed || {})) {
     if (sent?.[key] === signature) next[key] = signature;
+  }
+  return next;
+}
+
+// --- Fuentes que cubre la huella --------------------------------------------
+// Cuando una fuente pasa a poder enviarse (Kitsu), lo que ya estaba en la
+// biblioteca aparece de golpe como "nunca enviado". Eso no son cambios del
+// usuario: se suma a la línea base una sola vez por dueño.
+
+const PUSHED_SOURCES = 'anilist,mal,kitsu';
+const sourcesKeyFor = (owner) => `${ANILIST_SOURCES_KEY}:${owner}`;
+
+/** ¿La huella de este dueño ya contempla todas las fuentes que hoy se envían? */
+export function sourcesUpToDate(owner = '') {
+  try {
+    return localStorage.getItem(sourcesKeyFor(owner)) === PUSHED_SOURCES;
+  } catch {
+    return true; // sin localStorage no hay huella que extender
+  }
+}
+
+export function markSources(owner = '') {
+  try {
+    localStorage.setItem(sourcesKeyFor(owner), PUSHED_SOURCES);
+  } catch { /* best-effort */ }
+}
+
+/**
+ * Suma a la huella, como ya enviados, los anime de Kitsu que estaban en la
+ * biblioteca antes de que Kitsu se pudiera enviar. Devuelve el mismo objeto si
+ * no había ninguno.
+ */
+export function extendBaseline(pushed, desired) {
+  let next = pushed;
+  for (const [key, entry] of desired) {
+    if (key in pushed || !isKitsuOnly(entry.anime)) continue;
+    if (next === pushed) next = { ...pushed };
+    next[key] = entry.signature;
   }
   return next;
 }
@@ -225,6 +266,46 @@ export function rememberSent(viewerId, key, signature, keep) {
 
 // --- Id de AniList de un anime ---------------------------------------------
 
+/** Cache `[[kitsuId, anilistId], …]`; 0 = Kitsu no tiene equivalencia para ese anime. */
+export const ANILIST_KITSU_IDS_KEY = 'anitracker-anilist-kitsu-ids';
+/** Los ids internos de Kitsu van de 100000 a 299999 (ver «Datos persistidos»). */
+const KITSU_ID_BASE = 100000;
+const KITSU_ID_LIMIT = 300000;
+
+/** Id de Kitsu de un anime guardado desde Kitsu, o null. */
+export function kitsuIdOf(anime) {
+  const m = /^kitsu:(\d+)$/.exec(anime?.sourceKey || '');
+  if (m) return Number(m[1]);
+  const id = Number(anime?.id);
+  // Items viejos guardados antes de que existiera sourceKey.
+  return !anime?.sourceKey && id >= KITSU_ID_BASE && id < KITSU_ID_LIMIT ? id - KITSU_ID_BASE : null;
+}
+
+const isKitsuOnly = (anime) => {
+  const { anilistId, malId } = anilistIdsOf(anime);
+  return !anilistId && !malId && !!kitsuIdOf(anime);
+};
+
+function readKitsuCache() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(ANILIST_KITSU_IDS_KEY) || '[]');
+    if (!Array.isArray(parsed)) return new Map();
+    return new Map(parsed.filter((pair) => Array.isArray(pair) && Number(pair[0]) > 0 && Number(pair[1]) >= 0)
+      .map(([kitsuId, mediaId]) => [Number(kitsuId), Number(mediaId)]));
+  } catch {
+    return new Map();
+  }
+}
+
+function rememberKitsuId(kitsuId, mediaId) {
+  try {
+    const cache = readKitsuCache();
+    cache.delete(kitsuId);
+    cache.set(kitsuId, mediaId > 0 ? mediaId : 0);
+    localStorage.setItem(ANILIST_KITSU_IDS_KEY, JSON.stringify([...cache].slice(-ANILIST_IDS_MAX)));
+  } catch { /* la cache es opcional */ }
+}
+
 function readIdCache() {
   try {
     const parsed = JSON.parse(localStorage.getItem(ANILIST_IDS_KEY) || '[]');
@@ -253,8 +334,11 @@ function rememberMediaId(malId, mediaId) {
 export function cachedMediaId(anime) {
   const { anilistId, malId } = anilistIdsOf(anime);
   if (anilistId) return anilistId;
-  if (!malId) return null;
-  return readIdCache().get(malId);
+  if (malId) return readIdCache().get(malId);
+  const kitsuId = kitsuIdOf(anime);
+  if (!kitsuId) return null;
+  const cached = readKitsuCache().get(kitsuId);
+  return cached === undefined ? undefined : (cached || null);
 }
 
 const MEDIA_BY_MAL_QUERY = 'query ($id: Int) { Media(idMal: $id, type: ANIME) { id } }';
@@ -268,11 +352,30 @@ const MEDIA_BATCH_SIZE = 50;
  * `resolveMediaId` lo consulta después por separado.
  */
 export async function prefetchMediaIds(animes, { signal, queue = anilistQueue } = {}) {
-  const missing = [...new Set((animes || [])
-    .filter((anime) => cachedMediaId(anime) === undefined)
-    .map((anime) => anilistIdsOf(anime).malId)
-    .filter(Boolean))];
+  const pending = (animes || []).filter((anime) => cachedMediaId(anime) === undefined);
   let resolved = 0;
+
+  // Kitsu: su API da la equivalencia directa con AniList, o al menos con MAL.
+  const kitsuIds = [...new Set(pending.map(kitsuIdOf).filter(Boolean))];
+  const kitsuByMal = new Map(); // malId → [kitsuId, …] para los que solo tienen MAL
+  if (kitsuIds.length > 0) {
+    try {
+      for (const [kitsuId, found] of await fetchKitsuMappings(kitsuIds, { signal })) {
+        if (found.anilistId) { rememberKitsuId(kitsuId, found.anilistId); resolved += 1; }
+        else if (found.malId) kitsuByMal.set(found.malId, [...(kitsuByMal.get(found.malId) || []), kitsuId]);
+        else rememberKitsuId(kitsuId, 0);
+      }
+    } catch (err) {
+      if (signal?.aborted || err?.name === 'AbortError') throw err;
+      // Kitsu caído: se resuelve después, de a uno (`resolveMediaId`).
+      console.error('[AniTracker] Kitsu mappings lookup failed:', err?.message || err?.name);
+    }
+  }
+
+  const missing = [...new Set([
+    ...pending.map((anime) => anilistIdsOf(anime).malId).filter(Boolean),
+    ...kitsuByMal.keys(),
+  ])];
   for (let i = 0; i < missing.length; i += MEDIA_BATCH_SIZE) {
     const ids = missing.slice(i, i + MEDIA_BATCH_SIZE);
     const data = await queue.run(() => anilistRequest(MEDIA_BY_MAL_BATCH_QUERY, { ids }, { signal }), { signal });
@@ -281,6 +384,11 @@ export async function prefetchMediaIds(animes, { signal, queue = anilistQueue } 
       const mediaId = Number(media?.id);
       if (malId > 0 && mediaId > 0) { rememberMediaId(malId, mediaId); resolved += 1; }
     }
+  }
+  // Los de Kitsu que llegaron por MAL: su id de AniList, o 0 si AniList no la tiene.
+  const byMal = readIdCache();
+  for (const [malId, ids] of kitsuByMal) {
+    for (const kitsuId of ids) rememberKitsuId(kitsuId, byMal.get(malId) || 0);
   }
   return resolved;
 }
@@ -293,16 +401,27 @@ export async function prefetchMediaIds(animes, { signal, queue = anilistQueue } 
 export async function resolveMediaId(anime, { signal } = {}) {
   const cached = cachedMediaId(anime);
   if (cached !== undefined) return cached;
-  const { malId } = anilistIdsOf(anime);
+  let { malId } = anilistIdsOf(anime);
+  const kitsuId = malId ? null : kitsuIdOf(anime);
+  if (kitsuId) {
+    const found = (await fetchKitsuMappings([kitsuId], { signal })).get(kitsuId);
+    if (found?.anilistId) { rememberKitsuId(kitsuId, found.anilistId); return found.anilistId; }
+    if (!found?.malId) { rememberKitsuId(kitsuId, 0); return null; }
+    ({ malId } = found);
+  }
+  const settle = (mediaId) => {
+    if (kitsuId) rememberKitsuId(kitsuId, mediaId || 0);
+    return mediaId;
+  };
   try {
     const data = await anilistRequest(MEDIA_BY_MAL_QUERY, { id: malId }, { signal });
     const mediaId = Number(data?.Media?.id);
-    if (!(mediaId > 0)) return null;
+    if (!(mediaId > 0)) return settle(null);
     rememberMediaId(malId, mediaId);
-    return mediaId;
+    return settle(mediaId);
   } catch (err) {
     // AniList contesta 404 cuando no tiene la obra: no es un error.
-    if (err instanceof AnilistRequestError && err.status === 404) return null;
+    if (err instanceof AnilistRequestError && err.status === 404) return settle(null);
     throw err;
   }
 }

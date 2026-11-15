@@ -21,7 +21,9 @@ import {
   AnilistRateLimitError,
   baselineOf,
   desiredEntries,
+  extendBaseline,
   fullSyncPushed,
+  markSources,
   pendingChanges,
   prefetchMediaIds,
   prunePushed,
@@ -29,6 +31,7 @@ import {
   readPushed,
   readSent,
   rememberSent,
+  sourcesUpToDate,
   writePushed,
 } from '../services/anilistSync';
 import { t } from '../i18n';
@@ -162,6 +165,16 @@ function createEngine({ getLibrary, getOptions, patch }) {
         desired = desiredEntries(getLibrary());
         patch({ sendableCount: desired.size });
         let pushed = readPushed(owner);
+        if (!sourcesUpToDate(owner)) {
+          // Una fuente pasó a poder enviarse (Kitsu): lo que ya estaba en la
+          // biblioteca se suma a la línea base, no se manda de golpe.
+          if (pushed) {
+            const extended = extendBaseline(pushed, desired);
+            if (extended !== pushed) writePushed(extended, owner);
+            pushed = extended;
+          }
+          markSources(owner);
+        }
         if (fullSync) {
           // Todo lo que AniList no confirmó tal cual vuelve a estar pendiente.
           // La huella recortada queda guardada: si se corta, sigue después.

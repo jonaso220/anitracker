@@ -572,7 +572,7 @@ export const es = {
   'settings.anilistConnectedAs': 'Conectado como {name}.',
   'settings.anilistConnected': 'Cuenta conectada.',
   'settings.anilistDisconnect': 'Desconectar AniList',
-  'settings.anilistHint': 'Conectá tu cuenta para que los episodios vistos, el estado y tu nota se actualicen en AniList. Solo se envían los cambios que hagas desde ahora, nunca se borra nada allá y lo que no viene de AniList o MyAnimeList se saltea.',
+  'settings.anilistHint': 'Conectá tu cuenta para que los episodios vistos, el estado y tu nota se actualicen en AniList. Solo se envían los cambios que hagas desde ahora, nunca se borra nada allá y lo que viene de TVMaze, TMDB, iTunes o Viki se saltea.',
   'settings.anilistConnect': 'Conectar con AniList',
   'settings.anilistExpired': 'La conexión venció. Volvé a conectar tu cuenta.',
   'settings.anilistUpToDate': 'AniList está al día.',

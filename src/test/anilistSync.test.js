@@ -32,6 +32,8 @@ import {
   pendingChanges,
   prunePushed,
   prefetchMediaIds,
+  kitsuIdOf,
+  extendBaseline,
   fullSyncPushed,
   pushChanges,
   readPushed,
@@ -64,6 +66,26 @@ const requests = (fetchMock) => fetchMock.mock.calls.map(([url, init]) => ({
   ...JSON.parse(init.body),
 }));
 const mutations = (fetchMock) => requests(fetchMock).filter((r) => r.query.includes('SaveMediaListEntry'));
+
+const kitsuAnime = (extra = {}) => ({ id: 113209, sourceKey: 'kitsu:13209', malId: null, title: 'Black Clover', currentEp: 24, userRating: 0, episodes: 170, ...extra });
+/** Respuesta JSON:API de Kitsu: `{ [kitsuId]: { anilist?, mal? } }`. */
+const kitsuMappingsReply = (byId) => {
+  const data = [];
+  const included = [];
+  let n = 0;
+  for (const [id, { anilist, mal }] of Object.entries(byId)) {
+    const refs = [];
+    const push = (externalSite, externalId) => { n += 1; included.push({ type: 'mappings', id: String(n), attributes: { externalSite, externalId: String(externalId) } }); refs.push({ type: 'mappings', id: String(n) }); };
+    if (anilist) push('anilist/anime', anilist);
+    if (mal) push('myanimelist/anime', mal);
+    push('anidb', 999);
+    data.push({ id: String(id), type: 'anime', relationships: { mappings: { data: refs } } });
+  }
+  return reply({ data, included });
+};
+const isKitsuCall = (url) => String(url).includes('kitsu.app');
+/** Solo los pedidos a AniList (los de Kitsu son GET sin cuerpo). */
+const anilistRequests = (fetchMock) => fetchMock.mock.calls.filter(([url]) => !isKitsuCall(url)).map(([url, init]) => ({ url, ...JSON.parse(init.body) }));
 
 const anilistAnime = (extra = {}) => ({ id: 800150000, sourceKey: 'anilist:150000', malId: null, title: 'Solo AniList', currentEp: 0, userRating: 0, episodes: 12, ...extra });
 const malAnime = (extra = {}) => ({ id: 21, sourceKey: 'mal:21', malId: 21, title: 'One Piece', currentEp: 0, userRating: 0, episodes: null, ...extra });
@@ -154,6 +176,7 @@ describe('anilistAuth', () => {
     expect(readPushed('5|')).toBeNull();
     expect(readPushed('5|uid-1')).toBeNull();
     expect(readSent(5)).toEqual({});
+    expect(Object.keys(localStorage).filter((key) => key.startsWith('anitracker-anilist-'))).toEqual([]);
     expect(localStorage.getItem(ANILIST_PUSHED_KEY)).toBeNull();
     expect(localStorage.getItem(ANILIST_PUSHED_OWNER_KEY)).toBeNull();
   });
@@ -214,7 +237,8 @@ describe('desiredEntries', () => {
       ],
       watchedList: [{ id: 600000010, sourceKey: 'tmdb:movie:10', malId: null, finished: true }],
     });
-    expect([...desired.keys()]).toEqual(['100046']);
+    // Kitsu sí entra (con o sin MAL): su id de AniList sale de las equivalencias de Kitsu.
+    expect([...desired.keys()]).toEqual(['100045', '100046']);
     expect(desired.get('100046')).toMatchObject({ status: 'CURRENT', progress: 7 });
   });
 
@@ -426,6 +450,61 @@ describe('cola y envío', () => {
     const pushed = { 1: 'CURRENT|5|', 2: 'PLANNING|0|', 3: 'COMPLETED|12|80' };
     expect(fullSyncPushed(pushed, { 1: 'CURRENT|5|', 3: 'COMPLETED|11|80' })).toEqual({ 1: 'CURRENT|5|' });
     expect(fullSyncPushed(null, {})).toEqual({});
+  });
+
+  it('kitsuIdOf reconoce lo guardado desde Kitsu, también lo viejo sin sourceKey', () => {
+    expect(kitsuIdOf(kitsuAnime())).toBe(13209);
+    expect(kitsuIdOf({ id: 149883 })).toBe(49883); // rango de Kitsu, sin sourceKey
+    expect(kitsuIdOf(anilistAnime())).toBeNull();
+    expect(kitsuIdOf({ id: 400123, sourceKey: 'tvmaze:123' })).toBeNull();
+    expect(kitsuIdOf({ id: 61323 })).toBeNull(); // rango de MAL
+  });
+
+  it('prefetchMediaIds resuelve Kitsu por su equivalencia con AniList, o por MAL, o lo deja sin mapear', async () => {
+    const direct = kitsuAnime();
+    const viaMal = kitsuAnime({ id: 100500, sourceKey: 'kitsu:500' });
+    const none = kitsuAnime({ id: 100600, sourceKey: 'kitsu:600' });
+    fetchMock.mockImplementation(async (url, init) => {
+      if (isKitsuCall(url)) return kitsuMappingsReply({ 13209: { anilist: 97940, mal: 34572 }, 500: { mal: 21 }, 600: {} });
+      const { variables } = JSON.parse(init.body);
+      return reply({ data: { Page: { media: variables.ids.map((id) => ({ id: 7000 + id, idMal: id })) } } });
+    });
+    expect(cachedMediaId(direct)).toBeUndefined();
+    const run = prefetchMediaIds([direct, viaMal, none], { queue: createRequestQueue() });
+    await vi.advanceTimersByTimeAsync(ANILIST_MIN_INTERVAL_MS * 3);
+    await run;
+
+    expect(cachedMediaId(direct)).toBe(97940);
+    expect(cachedMediaId(viaMal)).toBe(7021);
+    expect(cachedMediaId(none)).toBeNull();
+    const kitsuCalls = fetchMock.mock.calls.filter(([url]) => isKitsuCall(url));
+    expect(kitsuCalls).toHaveLength(1);
+    expect(String(kitsuCalls[0][0])).toContain('filter[id]=13209,500,600');
+    expect(anilistRequests(fetchMock).map((r) => r.variables.ids)).toEqual([[21]]);
+  });
+
+  it('prefetchMediaIds no se cae si Kitsu no responde', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    fetchMock.mockImplementation(async (url) => (isKitsuCall(url) ? reply({}, { status: 503 }) : reply({ data: { Page: { media: [] } } })));
+    const run = prefetchMediaIds([kitsuAnime()], { queue: createRequestQueue() });
+    await vi.advanceTimersByTimeAsync(ANILIST_MIN_INTERVAL_MS);
+    await expect(run).resolves.toBe(0);
+    expect(cachedMediaId(kitsuAnime())).toBeUndefined(); // se reintenta después
+  });
+
+  it('resolveMediaId resuelve un anime de Kitsu suelto y lo recuerda', async () => {
+    fetchMock.mockImplementation(async (url) => (isKitsuCall(url) ? kitsuMappingsReply({ 13209: { anilist: 97940 } }) : reply({ data: null })));
+    await expect(resolveMediaId(kitsuAnime())).resolves.toBe(97940);
+    await expect(resolveMediaId(kitsuAnime())).resolves.toBe(97940);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('extendBaseline suma solo lo de Kitsu que faltaba', () => {
+    const desired = desiredEntries({ schedule: { Lunes: [kitsuAnime(), anilistAnime({ currentEp: 3 })] }, watchLater: [], watchedList: [] });
+    const pushed = { 800150000: 'CURRENT|2|' };
+    expect(extendBaseline(pushed, desired)).toEqual({ 800150000: 'CURRENT|2|', 113209: 'CURRENT|24|' });
+    const done = { 800150000: 'CURRENT|2|', 113209: 'CURRENT|20|' };
+    expect(extendBaseline(done, desired)).toBe(done);
   });
 
   it('pushChanges corta ante un error de sesión y no manda lo que sigue', async () => {
@@ -801,6 +880,58 @@ describe('useAnilistSync', () => {
     await settle();
     await flush(ANILIST_MIN_INTERVAL_MS * 4);
     expect(mutations(fetchMock).map((m) => m.variables.mediaId).sort()).toEqual([1030, 150000]);
+  });
+
+  // --- Kitsu ------------------------------------------------------------------
+  const answerWithKitsu = async (url, init) => {
+    if (isKitsuCall(url)) return kitsuMappingsReply({ 13209: { anilist: 97940, mal: 34572 } });
+    return answerAll(url, init);
+  };
+  const withKitsu = (currentEp = 24) => ({ ...library(5), schedule: { Lunes: [anilistAnime({ currentEp: 5 }), kitsuAnime({ currentEp })] } });
+
+  it('una cuenta ya conectada no manda de golpe lo de Kitsu que ya tenía', async () => {
+    connect();
+    fetchMock.mockImplementation(answerWithKitsu);
+    // Huella tomada cuando Kitsu todavía no se enviaba.
+    writePushed({ 800150000: 'CURRENT|5|', 30: 'PLANNING|0|' }, '77|');
+    await mount(withKitsu());
+    await settle();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(readPushed('77|')).toEqual({ 800150000: 'CURRENT|5|', 30: 'PLANNING|0|', 113209: 'CURRENT|24|' });
+  });
+
+  it('un cambio en un anime de Kitsu sí se manda, con su id de AniList', async () => {
+    connect();
+    fetchMock.mockImplementation(answerWithKitsu);
+    const { rerender } = await mount(withKitsu());
+    await settle();
+    rerender(withKitsu(25));
+    await settle();
+    expect(mutations({ mock: { calls: fetchMock.mock.calls.filter(([url]) => !isKitsuCall(url)) } }).map((m) => m.variables))
+      .toEqual([{ mediaId: 97940, status: 'CURRENT', progress: 25 }]);
+  });
+
+  it('un anime de Kitsu agregado después de conectar se manda', async () => {
+    connect();
+    fetchMock.mockImplementation(answerWithKitsu);
+    const { rerender } = await mount();
+    await settle();
+    rerender(withKitsu());
+    await settle();
+    const sent = anilistRequests(fetchMock).filter((r) => r.query.includes('SaveMediaListEntry')).map((r) => r.variables.mediaId);
+    expect(sent).toEqual([97940]);
+  });
+
+  it('enviar todo incluye lo de Kitsu', async () => {
+    connect();
+    fetchMock.mockImplementation(answerWithKitsu);
+    const { result } = await mount(withKitsu());
+    await settle();
+    expect(result.current.sendableCount).toBe(3);
+    act(() => result.current.sendAll());
+    await flush(ANILIST_MIN_INTERVAL_MS * 8);
+    const sent = anilistRequests(fetchMock).filter((r) => r.query.includes('SaveMediaListEntry')).map((r) => r.variables.mediaId);
+    expect(sent.sort((a, b) => a - b)).toEqual([1030, 97940, 150000]);
   });
 
   it('sacar un anime no borra nada en AniList', async () => {

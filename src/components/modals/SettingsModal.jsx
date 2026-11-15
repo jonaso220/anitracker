@@ -105,7 +105,7 @@ const SettingsModal = ({ onClose, alertsEnabled, onSetAlerts, anilist, reload = 
                 </>
               ) : (
                 <>
-                  <p className="settings-note">{t('settings.anilistHint', 'Conectá tu cuenta para que los episodios vistos, el estado y tu nota se actualicen en AniList. Solo se envían los cambios que hagas desde ahora, nunca se borra nada allá y lo que no viene de AniList o MyAnimeList se saltea.')}</p>
+                  <p className="settings-note">{t('settings.anilistHint', 'Conectá tu cuenta para que los episodios vistos, el estado y tu nota se actualicen en AniList. Solo se envían los cambios que hagas desde ahora, nunca se borra nada allá y lo que viene de TVMaze, TMDB, iTunes o Viki se saltea.')}</p>
                   <button className="backup-btn backup-btn-primary" onClick={anilist.connect}>{t('settings.anilistConnect', 'Conectar con AniList')}</button>
                 </>
               )}

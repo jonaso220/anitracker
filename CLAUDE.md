@@ -145,6 +145,8 @@ store global ni context; el estado vive en `App.jsx` y baja por props.
 | `anitracker-anilist-pushed:<viewerId>\|<scope>` | firma de lo último enviado a AniList por anime (`ESTADO\|progreso\|nota`), **una por dueño** (cuenta de AniList + uid de Google, `''` invitado) |
 | `anitracker-anilist-sent:<viewerId>` | lo que AniList confirmó, por cuenta: evita repetir un envío que ya hizo otra pestaña |
 | `anitracker-anilist-ids` | cache id de MAL → id de AniList (máx. 2000) |
+| `anitracker-anilist-kitsu-ids` | cache id de Kitsu → id de AniList (0 = sin equivalencia; máx. 2000) |
+| `anitracker-anilist-sources:<dueño>` | qué fuentes cubría la huella de ese dueño cuando se tomó |
 | `anitracker-directory-filters` | filtros elegidos en Directorio (sin el texto de búsqueda) |
 | `anitracker-directory-view` | modo de vista de Directorio (`'grid'` / `'list'`) |
 | `anitracker-season-cache` | copia de la temporada vigente (TTL 15 min, para abrir al instante) |
@@ -288,8 +290,13 @@ Vitest + Testing Library (jsdom), setup en `src/test/setup.js`. Al tocar
   (semana → CURRENT o PAUSED, Después → PLANNING, Vistas → COMPLETED o
   DROPPED; estrellas ×20 = `scoreRaw`). Al conectar se toma lo actual como
   base y **no se envía nada**; después solo van los cambios, de a uno cada
-  ~2 s (límite de AniList), y nunca se borra nada allá. Lo que no tiene id de
-  AniList o MAL se saltea. La huella va **una por dueño**: con una sola
+  ~2 s (límite de AniList), y nunca se borra nada allá. Se envía lo que tiene
+  id de AniList o de MAL, y lo de Kitsu a través de sus equivalencias
+  (`fetchKitsuMappings` en `kitsuService.js`, de a 20 por pedido, con cache en
+  `anitracker-anilist-kitsu-ids`); TVMaze, TMDB, iTunes y Viki se saltean.
+  Cuando una fuente pasa a poder enviarse, lo que ya estaba en la biblioteca se
+  suma a la línea base una sola vez por dueño (`extendBaseline`,
+  `anitracker-anilist-sources:<dueño>`) en vez de mandarse de golpe. La huella va **una por dueño**: con una sola
   compartida, dos contextos con distinto scope (otra pestaña, o la sesión de
   Google todavía sin resolver) se la pisaban, cada pasada retomaba la línea
   base y no se mandaba nunca nada. Las pasadas corren dentro de un Web Lock

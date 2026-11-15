@@ -574,7 +574,7 @@ export const en: SameShapeAs<typeof es> = {
   'settings.anilistConnectedAs': 'Connected as {name}.',
   'settings.anilistConnected': 'Account connected.',
   'settings.anilistDisconnect': 'Disconnect AniList',
-  'settings.anilistHint': "Connect your account so the episodes you watch, the status and your score are updated on AniList. Only changes you make from now on are sent, nothing is ever deleted there, and anything that doesn't come from AniList or MyAnimeList is skipped.",
+  'settings.anilistHint': "Connect your account so the episodes you watch, the status and your score are updated on AniList. Only changes you make from now on are sent, nothing is ever deleted there, and anything that comes from TVMaze, TMDB, iTunes or Viki is skipped.",
   'settings.anilistConnect': 'Connect with AniList',
   'settings.anilistExpired': 'The connection expired. Connect your account again.',
   'settings.anilistUpToDate': 'AniList is up to date.',

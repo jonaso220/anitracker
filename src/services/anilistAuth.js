@@ -30,6 +30,8 @@ export const ANILIST_PUSHED_KEY = 'anitracker-anilist-pushed';
 export const ANILIST_PUSHED_OWNER_KEY = 'anitracker-anilist-pushed-owner';
 /** Prefijo de lo que de verdad llegó a AniList, por cuenta: `anitracker-anilist-sent:<viewerId>`. */
 export const ANILIST_SENT_KEY = 'anitracker-anilist-sent';
+/** Prefijo de "qué fuentes cubría la huella" por dueño: `anitracker-anilist-sources:<owner>`. */
+export const ANILIST_SOURCES_KEY = 'anitracker-anilist-sources';
 /** Marca de "el usuario tocó Conectar": sin ella no se acepta un token del hash. */
 export const ANILIST_LOGIN_PENDING_KEY = 'anitracker-anilist-login-pending';
 
@@ -188,7 +190,7 @@ export function clearAnilistSession() {
     const stale = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
-      if (key && (key.startsWith(`${ANILIST_PUSHED_KEY}:`) || key.startsWith(`${ANILIST_SENT_KEY}:`))) stale.push(key);
+      if (key && [ANILIST_PUSHED_KEY, ANILIST_SENT_KEY, ANILIST_SOURCES_KEY].some((prefix) => key.startsWith(`${prefix}:`))) stale.push(key);
     }
     removeKeys(...stale);
   } catch { /* best-effort */ }

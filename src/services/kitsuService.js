@@ -87,3 +87,41 @@ export function toAnime(a, linksById = new Map()) {
     streamingLinks,
   });
 }
+
+/** Kitsu devuelve hasta 20 anime por página. */
+const KITSU_MAPPINGS_BATCH = 20;
+
+/**
+ * Equivalencias de Kitsu con otras bases, para poder enviar a AniList el
+ * progreso de un anime guardado desde Kitsu. Devuelve
+ * `Map<kitsuId, { anilistId, malId }>` (null si Kitsu no la tiene); un id que
+ * Kitsu no conoce igual vuelve, con las dos en null.
+ */
+export async function fetchKitsuMappings(kitsuIds, { signal } = {}) {
+  const ids = [...new Set((kitsuIds || []).map(Number).filter((id) => id > 0))];
+  const mappings = new Map();
+  for (let i = 0; i < ids.length; i += KITSU_MAPPINGS_BATCH) {
+    const chunk = ids.slice(i, i + KITSU_MAPPINGS_BATCH);
+    const url = `${KITSU_BASE}/anime?filter[id]=${chunk.join(',')}&include=mappings`
+      + `&fields[anime]=mappings&fields[mappings]=externalSite,externalId&page[limit]=${KITSU_MAPPINGS_BATCH}`;
+    const res = await fetch(url, { signal, headers: { Accept: 'application/vnd.api+json' } });
+    if (!res.ok) throw new Error(`Kitsu mappings request failed: ${res.status}`);
+    const json = await res.json();
+    const byId = new Map((json?.included || [])
+      .filter((item) => item?.type === 'mappings')
+      .map((item) => [item.id, item.attributes || {}]));
+    for (const anime of json?.data || []) {
+      const found = { anilistId: null, malId: null };
+      for (const ref of anime?.relationships?.mappings?.data || []) {
+        const mapping = byId.get(ref.id);
+        const externalId = Number(mapping?.externalId);
+        if (!(externalId > 0)) continue;
+        if (mapping.externalSite === 'anilist/anime') found.anilistId = externalId;
+        else if (mapping.externalSite === 'myanimelist/anime') found.malId = externalId;
+      }
+      mappings.set(Number(anime.id), found);
+    }
+    for (const id of chunk) if (!mappings.has(id)) mappings.set(id, { anilistId: null, malId: null });
+  }
+  return mappings;
+}
