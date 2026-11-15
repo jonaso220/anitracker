@@ -72,7 +72,7 @@ it('Maraton session count should include normal + and - controls',()=>{
  render(<AnimeDetailModal {...modalProps()} showAnimeDetail={{...a,_day:'Lunes',currentEp:2}}/>);
  fireEvent.click(screen.getByRole('button',{name:'🔥 Maratón'}));
  fireEvent.click(screen.getByRole('button',{name:'+1 ep',exact:true}));
- fireEvent.click(screen.getByRole('button',{name:'Siguiente episodio',exact:true}));
+ fireEvent.click(screen.getByRole('button',{name:/^✓ Vi el episodio/}));
  expect(screen.getByText(/esta sesión/).textContent).toContain('2 eps');
  fireEvent.click(screen.getByRole('button',{name:'Episodio anterior',exact:true}));
  expect(screen.getByText(/esta sesión/).textContent).toContain('1 ep');
@@ -158,10 +158,10 @@ it('Maraton caps a batch, counts only applied episodes, and allows correction', 
  fireEvent.click(screen.getByRole('button',{name:'+5 eps'}));
  expect(screen.getByRole('textbox',{name:'Episodio actual',exact:true})).toHaveValue('12');
  expect(screen.getByText(/esta sesión/)).toHaveTextContent('1 ep esta sesión');
- expect(screen.getByRole('button',{name:'Siguiente episodio',exact:true})).toBeDisabled();
+ expect(screen.getByRole('button',{name:'✓ Al día'})).toBeDisabled();
  expect(screen.getByRole('button',{name:'+5 eps'})).toBeDisabled();
  fireEvent.click(screen.getByRole('button',{name:'Episodio anterior',exact:true}));
- expect(screen.getByRole('button',{name:'Siguiente episodio',exact:true})).toBeEnabled();
+ expect(screen.getByRole('button',{name:'✓ Vi el episodio 12'})).toBeEnabled();
  expect(screen.getByText(/esta sesión/)).toHaveTextContent('0 eps esta sesión');
 });
 it('Maraton pauses its clock while disabled and resumes accumulated active time', () => {
@@ -310,4 +310,51 @@ it('retains the full long title and original title behind explicit disclosures',
  expect(container.querySelector('h2')).not.toHaveClass('detail-title-compact');
  expect(container.querySelector('h2').textContent).toBe(title);
  expect(container.querySelector('.detail-original-title p')).toHaveTextContent('原題');
+});
+
+// ---- Rediseño del detalle: avance, acciones y "Dónde ver" ----
+it('shows progress as a bar with what is left, and names the episode the button marks', () => {
+ const p=modalProps();
+ render(<AnimeDetailModal {...p} showAnimeDetail={{...a,_day:'Lunes',currentEp:3,episodes:12}}/>);
+ const bar=screen.getByRole('progressbar',{name:'Progreso de episodios'});
+ expect(bar).toHaveAttribute('aria-valuenow','3');
+ expect(bar).toHaveAttribute('aria-valuemax','12');
+ expect(screen.getByText('25% · faltan 9')).toBeInTheDocument();
+ expect(screen.getByText('de 12')).toBeInTheDocument();
+ fireEvent.click(screen.getByRole('button',{name:'✓ Vi el episodio 4'}));
+ expect(p.updateEpisode).toHaveBeenCalledWith(a.id,1);
+ expect(screen.getByRole('button',{name:'✓ Vi el episodio 5'})).toBeInTheDocument();
+ expect(screen.getByText('33% · faltan 8')).toBeInTheDocument();
+});
+it('a finished series says so and has nothing left to mark', () => {
+ render(<AnimeDetailModal {...modalProps()} showAnimeDetail={{...a,_day:'Lunes',currentEp:12,episodes:12}}/>);
+ expect(screen.getByRole('button',{name:'✓ Al día'})).toBeDisabled();
+ expect(screen.getByText('Viste los 12 episodios')).toBeInTheDocument();
+});
+it('without a known total there is no bar, only the next episode to mark', () => {
+ render(<AnimeDetailModal {...modalProps()} showAnimeDetail={{...a,_day:'Lunes',currentEp:40,episodes:0}}/>);
+ expect(screen.queryByRole('progressbar')).toBeNull();
+ expect(screen.getByRole('button',{name:'✓ Vi el episodio 41'})).toBeEnabled();
+});
+it('ranks the actions: Finalizar first and full width, Dropear last and apart', () => {
+ const {container}=render(<AnimeDetailModal {...modalProps()}/>);
+ const buttons=[...container.querySelectorAll('.detail-secondary-row > button')].map((b)=>b.textContent);
+ expect(buttons[0]).toBe('✓ Finalizar');
+ expect(buttons[buttons.length-1]).toBe('✗ Dropear');
+ expect(screen.getByRole('button',{name:'✓ Finalizar'})).toHaveClass('detail-action-primary');
+ expect(screen.getByRole('button',{name:'✗ Dropear'})).toHaveClass('detail-action-danger');
+ expect(container.querySelectorAll('.detail-action-primary')).toHaveLength(1);
+});
+it('has a single "Dónde ver" section holding the main link and the other options', () => {
+ const watchLink='https://www.crunchyroll.com/series/original';
+ const {container}=render(<AnimeDetailModal {...modalProps()} showAnimeDetail={{...a,_day:'Lunes',watchLink,trailerUrl:'https://www.youtube.com/watch?v=abc',streamingLinks:[{site:'Crunchyroll',url:watchLink},{site:'Netflix',url:'https://www.netflix.com/title/1'}]}}/>);
+ expect(screen.getAllByRole('heading',{name:/Dónde ver/})).toHaveLength(1);
+ const section=container.querySelector('.detail-watch-section');
+ expect(section.querySelector('a.platform-btn.watch')).toHaveAttribute('href',watchLink);
+ expect([...section.querySelectorAll('.streaming-chip')].some((chip)=>chip.textContent.includes('Netflix'))).toBe(true);
+ expect(container.querySelector('.detail-primary').contains(section)).toBe(true);
+ // El trailer no es "dónde ver": va junto a la sinopsis.
+ const trailer=screen.getByRole('link',{name:'🎬 Ver trailer'});
+ expect(section.contains(trailer)).toBe(false);
+ expect(container.querySelector('.detail-synopsis').contains(trailer)).toBe(true);
 });

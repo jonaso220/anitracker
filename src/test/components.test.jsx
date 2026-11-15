@@ -331,7 +331,7 @@ describe('AnimeDetailModal', () => {
     expect(screen.queryByRole('button', {name: '✗ Dropear'})).not.toBeInTheDocument();
     expect(screen.queryByRole('button', {name: '↔ Mover día'})).not.toBeInTheDocument();
     expect(screen.getByRole('button', {name: '📅 Añadir a semana'})).toBeInTheDocument();
-    expect(screen.getByRole('button', {name: 'Siguiente episodio'})).toBeInTheDocument();
+    expect(screen.getByRole('button', {name: /^✓ Vi el episodio/})).toBeInTheDocument();
     await screen.findByText('🎬 Más de este anime');
   });
 

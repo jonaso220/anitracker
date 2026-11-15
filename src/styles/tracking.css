@@ -145,3 +145,32 @@
   .detail-progress-section .episode-entry-hint { text-align: left; }
   .tracking-detail .detail-rating-row { flex-wrap: wrap; }
 }
+
+/* ---- Detalle: avance con barra y "Vi el episodio N" ---- */
+.tracking-detail .detail-progress-section .detail-section-header { grid-column: 1 / -1; justify-content: space-between; margin-bottom: 0.6rem; }
+.tracking-detail .detail-progress-section .episode-controls { grid-column: 1; justify-content: flex-start; }
+.ep-total { color: var(--text-secondary); font-size: 0.95rem; font-weight: 600; white-space: nowrap; }
+.tracking-detail .ep-watch-btn { grid-column: 2; min-height: 48px; padding: 0.6rem 1.1rem; border: 0; border-radius: 12px; background: var(--gradient-brand); color: #fff; font: inherit; font-size: 0.92rem; font-weight: 700; cursor: pointer; transition: filter var(--transition-fast); }
+.tracking-detail .ep-watch-btn:hover:not(:disabled) { filter: brightness(1.1); }
+.tracking-detail .ep-watch-btn:disabled { background: var(--bg-surface-strong); color: var(--text-secondary); cursor: default; }
+.detail-progress { grid-column: 1 / -1; margin-top: 0.85rem; }
+.detail-progress .card-progress-track { height: 6px; }
+.detail-progress-copy { display: block; margin-top: 0.35rem; color: var(--text-secondary); font-size: 0.78rem; }
+.tracking-detail .detail-progress-section .episode-entry-hint { text-align: left; margin: 0.35rem 0 0.6rem; }
+
+/* ---- Detalle: una sola sección "Dónde ver" ---- */
+.detail-watch-extras { margin-top: 0.75rem; }
+.detail-watch-extras-label { margin: 0 0 0.4rem; color: var(--text-secondary); font-size: 0.75rem; }
+.detail-trailer-link { display: inline-flex; align-items: center; text-decoration: none; }
+
+/* ---- Detalle: acciones con jerarquía ----
+   Una principal a lo ancho, las secundarias de a dos, y "Dropear" aparte y
+   chica: es la única que no se quiere tocar por error. */
+.tracking-detail .detail-secondary-row > .detail-action-primary { grid-column: 1 / -1; min-height: 48px; font-size: 0.9rem; font-weight: 700; background: var(--bg-surface-strong); border-color: var(--border-brand-strong); }
+.tracking-detail .detail-secondary-row > .detail-action-danger { grid-column: 1 / -1; justify-self: start; margin-top: 0.15rem; padding: 0.5rem 0.25rem; border-color: transparent; background: none; color: #f87171; font-size: 0.8rem; }
+.tracking-detail .detail-secondary-row > .detail-action-danger:hover { background: rgba(248, 113, 113, 0.1); }
+.light .tracking-detail .detail-secondary-row > .detail-action-danger { color: #b91c1c; }
+
+@media (max-width: 600px) {
+  .tracking-detail .ep-watch-btn { grid-column: 1; width: 100%; margin-top: 0.6rem; }
+}

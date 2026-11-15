@@ -186,8 +186,9 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
     const trailerUrl = a.trailerUrl || tmdbExtras?.trailerUrl || '';
     const providers = tmdbExtras?.providers;
     const hasProviders = !!providers && (providers.flatrate.length > 0 || providers.rent.length > 0 || providers.buy.length > 0);
-    const showWhereToWatch = streamingLinks.length > 0 || isTmdbItem || trailerUrl;
+    const hasWatchExtras = streamingLinks.length > 0 || isTmdbItem;
     const episodeComplete = a.episodes > 0 && localEp >= a.episodes;
+    const progressPercent = a.episodes > 0 ? Math.round((Math.min(localEp, a.episodes) / a.episodes) * 100) : 0;
     const changeLocalEpisode = (delta) => {
         setEpisodeDraft(null);
         setEpisodeError('');
@@ -256,7 +257,7 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                 {(isSchedule || a._isCustomList) && (
                     <div className="detail-section detail-progress-section">
                         <div className="detail-section-header">
-                            <h4>{t('detail.currentEpisodeTitle', '📺 Episodio actual')}</h4>
+                            <h4>{t('detail.progressTitle', '📺 Tu avance')}</h4>
                             <button className={`binge-toggle ${bingeMode ? 'active' : ''}`} onClick={toggleBinge} aria-pressed={bingeMode}>
                                 {t('detail.binge', '🔥 Maratón')}
                             </button>
@@ -270,9 +271,25 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                                     if (e.key === 'Enter') { e.preventDefault(); commitEpisode(); }
                                     if (e.key === 'Escape' && episodeDraft !== null) { e.stopPropagation(); setEpisodeDraft(null); setEpisodeError(''); }
                                 }} />
-                            <button className="ep-control-btn" disabled={episodeComplete} onClick={() => changeLocalEpisode(1)} aria-label={t('detail.nextEpisode', 'Siguiente episodio')}>+</button>
+                            {a.episodes > 0 && <span className="ep-total">{t('detail.ofTotal', 'de {total}', { total: a.episodes })}</span>}
                         </div>
-                        <p id="episode-entry-hint" className="episode-entry-hint">{a.episodes > 0 ? t('detail.editHintTotal', 'Tocá el número para editar · {total} episodios en total', { total: a.episodes }) : t('detail.editHint', 'Tocá el número para editar')}</p>
+                        {/* La acción de todos los días, con nombre: qué episodio se marca. */}
+                        <button className="ep-watch-btn" disabled={episodeComplete} onClick={() => changeLocalEpisode(1)}>
+                            {episodeComplete ? t('detail.caughtUp', '✓ Al día') : t('detail.watchedEpisode', '✓ Vi el episodio {episode}', { episode: localEp + 1 })}
+                        </button>
+                        {a.episodes > 0 && (
+                            <div className="detail-progress">
+                                <div className="card-progress-track" role="progressbar" aria-label={t('card.progress', 'Progreso de episodios')} aria-valuemin={0} aria-valuemax={a.episodes} aria-valuenow={Math.min(localEp, a.episodes)}>
+                                    <span style={{ width: `${progressPercent}%` }} />
+                                </div>
+                                <span className="detail-progress-copy">
+                                    {episodeComplete
+                                        ? t('detail.progressDone', 'Viste todos los episodios', { count: a.episodes })
+                                        : t('detail.progressLeft', '{percent}% · faltan {count}', { percent: progressPercent, count: a.episodes - localEp })}
+                                </span>
+                            </div>
+                        )}
+                        <p id="episode-entry-hint" className="episode-entry-hint">{t('detail.editHint', 'Tocá el número para editar')}</p>
                         {episodeError && <p className="tracking-error" role="alert">{episodeError}</p>}
                         {setAnimeSeason && <SeasonControls anime={{ ...a, currentEp: localEp }} onChange={changeSeason} />}
                         {airing && (
@@ -298,8 +315,22 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                     </div>
                 )}
 
-                <div className="detail-section">
-                    <h4>{t(effectiveWatchLink ? 'detail.watch' : 'detail.watchLink')}</h4>
+                {/* Una sola sección "Dónde ver": el enlace principal y, debajo, el
+                    resto de las opciones (otras plataformas, proveedores por país). */}
+                <div className="detail-section detail-watch-section">
+                    <div className="detail-section-header">
+                        <h4>📺 {t('detail.watch', 'Dónde ver')}</h4>
+                        {isTmdbItem && (
+                            <select
+                                className="region-select"
+                                value={region}
+                                onChange={(e) => changeRegion(e.target.value)}
+                                aria-label={t('detail.region', 'País para ver disponibilidad')}
+                            >
+                                {TMDB_REGIONS.map((r) => <option key={r.code} value={r.code}>{t(`region.${r.code}`, r.label)}</option>)}
+                            </select>
+                        )}
+                    </div>
                     {effectiveWatchLink && !showLinkInput ? (
                         <div className="detail-link-row">
                             <a href={sanitizeUrl(effectiveWatchLink)} target="_blank" rel="noopener noreferrer" className="platform-btn watch" style={{ '--platform-color': watchPlatform.color }}>▶ {watchPlatform.generic ? t('detail.watchNow') : t('detail.watchOn', undefined, { platform: watchPlatform.name })}</a>
@@ -311,31 +342,68 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                             <button className="save-link-btn" onClick={saveLink}>{t('detail.saveLink', 'Guardar')}</button>
                         </div>
                     )}
+                    {linkError && <p id="watch-link-error" className="detail-link-error" role="alert">{linkError}</p>}
+                    {hasWatchExtras && (
+                        <div className="detail-watch-extras">
+                            {effectiveWatchLink && otherPlatforms.length > 0 && <p className="detail-watch-extras-label">{t('detail.otherOptions', 'Otras opciones')}</p>}
+                            {otherPlatforms.length > 0 && (
+                                <div className="streaming-links">
+                                    {otherPlatforms.map((l, i) => {
+                                        const info = getPlatformInfo(l.url);
+                                        return (
+                                            <a key={i} href={sanitizeUrl(l.url)} target="_blank" rel="noopener noreferrer"
+                                                className="streaming-chip" style={{ '--platform-color': info.color }}>
+                                                ▶ {l.site}{l.language ? ` · ${linkLanguageLabel(l.language)}` : ''}
+                                            </a>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                            {watchAlternatives.length > 0 && <details className="detail-watch-alternatives">
+                                <summary>{t('detail.otherLinks', undefined, { platform: watchPlatform.name })}</summary>
+                                <div className="streaming-links">{watchAlternatives.map((link) => <a key={link.url} className="streaming-chip" href={sanitizeUrl(link.url)} target="_blank" rel="noopener noreferrer">{link.site}{link.language ? ` · ${linkLanguageLabel(link.language)}` : ''}</a>)}</div>
+                            </details>}
+                            {isTmdbItem && (
+                                tmdbLoading ? <p className="streaming-status">{t('detail.providersLoading', 'Buscando plataformas…')}</p>
+                                : hasProviders ? <>
+                                    {providers.flatrate.length > 0 && <ProviderRow label={t('detail.providerStreaming', 'Streaming')} items={providers.flatrate} link={providers.link} />}
+                                    {providers.rent.length > 0 && <ProviderRow label={t('detail.providerRent', 'Alquiler')} items={providers.rent} link={providers.link} />}
+                                    {providers.buy.length > 0 && <ProviderRow label={t('detail.providerBuy', 'Compra')} items={providers.buy} link={providers.link} />}
+                                    <p className="tmdb-attribution">{t('detail.providersAttribution', 'Disponibilidad por JustWatch, vía TMDB')}</p>
+                                </>
+                                : tmdbExtras ? <p className="streaming-status">{t('detail.providersNone', 'Sin plataformas conocidas en este país.')}</p>
+                                : null
+                            )}
+                        </div>
+                    )}
                 </div>
 
-                {linkError && <p id="watch-link-error" className="detail-link-error" role="alert">{linkError}</p>}
-
+                {/* Una acción principal por contexto, las secundarias de a dos y
+                    "Dropear" aparte: es la única que no se quiere tocar por error. */}
                 <div className="detail-secondary-row" role="group" aria-label={t('detail.actions')}>
-                {(a._isWatchLater || a._isCustomList || isDiscovery) && <button className="tracking-text-button" onClick={() => closeAndDo(() => setShowDayPicker(a))}>{t('detail.addToWeek', '📅 Añadir a semana')}</button>}
-                {isDiscovery && <button className="tracking-text-button" onClick={() => closeAndDo(() => addToWatchLater(a))}>{t('detail.watchLater', '🕐 Ver después')}</button>}
-                {a._isWatched && !a.finished && <button className="tracking-pause-button resume" onClick={() => closeAndDo(() => resumeAnime(a))}>{t('detail.resume', '▶ Retomar')}</button>}
-                {isSchedule && setAnimePaused && <button className={`tracking-pause-button ${a.paused ? 'resume' : ''}`}
-                    onClick={() => closeAndDo(() => setAnimePaused(a.id, !a.paused))}>
-                    {a.paused ? t('detail.resumeOn', '▶ Retomar en {day}', { day: dayLabel(a._day) }) : t('detail.pause', '⏸ Poner en pausa')}
-                </button>}
+                    {isSchedule && <button className="detail-action-btn finish detail-action-primary" onClick={() => closeAndDo(() => markAsFinished(a, a._day))}>{t('detail.finish', '✓ Finalizar')}</button>}
+                    {(a._isWatchLater || a._isCustomList || isDiscovery) && <button className="tracking-text-button detail-action-primary" onClick={() => closeAndDo(() => setShowDayPicker(a))}>{t('detail.addToWeek', '📅 Añadir a semana')}</button>}
+                    {a._isWatched && !a.finished && <button className="tracking-pause-button resume detail-action-primary" onClick={() => closeAndDo(() => resumeAnime(a))}>{t('detail.resume', '▶ Retomar')}</button>}
 
-                    {isSchedule && <>
-                        <button className="detail-action-btn finish" onClick={() => closeAndDo(() => markAsFinished(a, a._day))}>{t('detail.finish', '✓ Finalizar')}</button>
-                        <button className="detail-action-btn drop" onClick={() => closeAndDo(() => dropAnime(a, a._day))}>{t('detail.drop', '✗ Dropear')}</button>
-                        <button className="detail-action-btn move" onClick={() => closeAndDo(() => setShowMoveDayPicker({ anime: a, fromDay: a._day }))}>{t('detail.moveDay', '↔ Mover día')}</button>
-                    </>}
+                    {isDiscovery && <button className="tracking-text-button" onClick={() => closeAndDo(() => addToWatchLater(a))}>{t('detail.watchLater', '🕐 Ver después')}</button>}
                     {isDiscovery && <button className="detail-action-btn watched" onClick={() => closeAndDo(() => markAsWatched(a))}>{t('detail.watched', '✓ Visto')}</button>}
+                    {isSchedule && setAnimePaused && <button className={`tracking-pause-button ${a.paused ? 'resume' : ''}`}
+                        onClick={() => closeAndDo(() => setAnimePaused(a.id, !a.paused))}>
+                        {a.paused ? t('detail.resumeOn', '▶ Retomar en {day}', { day: dayLabel(a._day) }) : t('detail.pause', '⏸ Poner en pausa')}
+                    </button>}
+                    {isSchedule && <button className="detail-action-btn move" onClick={() => closeAndDo(() => setShowMoveDayPicker({ anime: a, fromDay: a._day }))}>{t('detail.moveDay', '↔ Mover día')}</button>}
 
+                    {isSchedule && <button className="detail-action-btn drop detail-action-danger" onClick={() => closeAndDo(() => dropAnime(a, a._day))}>{t('detail.drop', '✗ Dropear')}</button>}
                 </div>
                 </div>
                 <div className="detail-synopsis">
                     <div className="detail-synopsis-header">
                         <h4>{t('detail.synopsis', '📖 Sinopsis')}</h4>
+                        {trailerUrl && (
+                            <a className="detail-action-sm detail-trailer-link" href={sanitizeUrl(trailerUrl)} target="_blank" rel="noopener noreferrer">
+                                {t('detail.trailer', '🎬 Ver trailer')}
+                            </a>
+                        )}
                         {translationFailed && !isTranslating && (
                             <button
                                 type="button"
@@ -361,57 +429,6 @@ const AnimeDetailModal = ({ showAnimeDetail, setShowAnimeDetail, airingData, upd
                             <span className="detail-airing-ep">{airingEpisodeLabel(airing)}</span>
                             <span className="detail-airing-date">{formatAiringDate(airing.airingAt, airing)}</span>
                         </div>
-                    </div>
-                )}
-
-                {showWhereToWatch && (
-                    <div className="detail-section">
-                        <div className="detail-section-header">
-                            <h4>📺 {t('detail.watch', 'Dónde ver')}</h4>
-                            {isTmdbItem && (
-                                <select
-                                    className="region-select"
-                                    value={region}
-                                    onChange={(e) => changeRegion(e.target.value)}
-                                    aria-label={t('detail.region', 'País para ver disponibilidad')}
-                                >
-                                    {TMDB_REGIONS.map((r) => <option key={r.code} value={r.code}>{t(`region.${r.code}`, r.label)}</option>)}
-                                </select>
-                            )}
-                        </div>
-                        {otherPlatforms.length > 0 && (
-                            <div className="streaming-links">
-                                {otherPlatforms.map((l, i) => {
-                                    const info = getPlatformInfo(l.url);
-                                    return (
-                                        <a key={i} href={sanitizeUrl(l.url)} target="_blank" rel="noopener noreferrer"
-                                            className="streaming-chip" style={{ '--platform-color': info.color }}>
-                                            ▶ {l.site}{l.language ? ` · ${linkLanguageLabel(l.language)}` : ''}
-                                        </a>
-                                    );
-                                })}
-                            </div>
-                        )}
-                        {watchAlternatives.length > 0 && <details className="detail-watch-alternatives">
-                            <summary>{t('detail.otherLinks', undefined, { platform: watchPlatform.name })}</summary>
-                            <div className="streaming-links">{watchAlternatives.map((link) => <a key={link.url} className="streaming-chip" href={sanitizeUrl(link.url)} target="_blank" rel="noopener noreferrer">{link.site}{link.language ? ` · ${linkLanguageLabel(link.language)}` : ''}</a>)}</div>
-                        </details>}
-                        {isTmdbItem && (
-                            tmdbLoading ? <p className="streaming-status">{t('detail.providersLoading', 'Buscando plataformas…')}</p>
-                            : hasProviders ? <>
-                                {providers.flatrate.length > 0 && <ProviderRow label={t('detail.providerStreaming', 'Streaming')} items={providers.flatrate} link={providers.link} />}
-                                {providers.rent.length > 0 && <ProviderRow label={t('detail.providerRent', 'Alquiler')} items={providers.rent} link={providers.link} />}
-                                {providers.buy.length > 0 && <ProviderRow label={t('detail.providerBuy', 'Compra')} items={providers.buy} link={providers.link} />}
-                                <p className="tmdb-attribution">{t('detail.providersAttribution', 'Disponibilidad por JustWatch, vía TMDB')}</p>
-                            </>
-                            : tmdbExtras ? <p className="streaming-status">{t('detail.providersNone', 'Sin plataformas conocidas en este país.')}</p>
-                            : null
-                        )}
-                        {trailerUrl && (
-                            <a className="platform-btn trailer" href={sanitizeUrl(trailerUrl)} target="_blank" rel="noopener noreferrer">
-                                {t('detail.trailer', '🎬 Ver trailer')}
-                            </a>
-                        )}
                     </div>
                 )}
 
